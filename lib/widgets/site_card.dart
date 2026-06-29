@@ -277,7 +277,7 @@ class _RecentActivityReports extends StatelessWidget {
   Widget build(BuildContext context) {
     final reports = reportsAsync.value
         ?.where((report) => report.activityType != null)
-        .take(3)
+        .take(5)
         .toList();
     if (reports == null || reports.isEmpty) return const SizedBox.shrink();
 

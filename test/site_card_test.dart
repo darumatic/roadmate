@@ -59,7 +59,9 @@ Future<void> _pump(WidgetTester tester, FakeSiteRepository repo) {
     ProviderScope(
       overrides: [siteRepositoryProvider.overrideWithValue(repo)],
       child: const MaterialApp(
-        home: Scaffold(body: SiteCard(site: _site)),
+        home: Scaffold(
+          body: SingleChildScrollView(child: SiteCard(site: _site)),
+        ),
       ),
     ),
   );
@@ -116,9 +118,7 @@ void main() {
     ]);
   });
 
-  testWidgets('shows latest three categorized activity reports', (
-    tester,
-  ) async {
+  testWidgets('shows latest five categorized activity reports', (tester) async {
     final repo = FakeSiteRepository()
       ..watchedReports = [
         SiteReport(
@@ -153,6 +153,18 @@ void main() {
           createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
           activityType: ActivityReportType.defectChecks,
         ),
+        SiteReport(
+          id: '5',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 40)),
+          activityType: ActivityReportType.delays,
+        ),
+        SiteReport(
+          id: '6',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 50)),
+          activityType: ActivityReportType.other,
+        ),
       ];
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -161,9 +173,11 @@ void main() {
     expect(find.text('Long queue'), findsOneWidget);
     expect(find.text('Police present'), findsOneWidget);
     expect(find.text('No activity'), findsOneWidget);
-    expect(find.text('Defect checks'), findsNothing);
+    expect(find.text('Defect checks'), findsOneWidget);
+    expect(find.text('Delays'), findsOneWidget);
+    expect(find.text('Other'), findsNothing);
     expect(find.text('Old report shape'), findsNothing);
     expect(find.text('Alex'), findsOneWidget);
-    expect(find.text('Anonymous'), findsNWidgets(2));
+    expect(find.text('Anonymous'), findsNWidgets(4));
   });
 }
