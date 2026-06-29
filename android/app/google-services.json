@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "976338726022",
+    "project_id": "roadmate-b1551",
+    "storage_bucket": "roadmate-b1551.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:976338726022:android:3cf67620a8ab393b0ef507",
+        "android_client_info": {
+          "package_name": "com.darumatic.roadmate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPLoikmH9I70WSKe_34hoXkn1gPrrmfYc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

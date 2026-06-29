@@ -1,0 +1,87 @@
+rules_version = '2';
+
+// RoadMate AU security rules.
+// Identity is anonymous Firebase Auth (request.auth != null for any app user).
+// Posture: signed-in users may read sites/reports; cast status votes (validated
+// so a vote bumps exactly one counter by 1); post activity reports; save sites
+// under their own uid; and submit NEW sites as *pending* (approved == false).
+// Official seeded sites (approved == true) are admin-managed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /sites/{siteId} {
+      allow read: if true;
+
+      // Community-submitted sites are created as pending (approved == false);
+      // they only become visible after a moderator approves them.
+      allow create: if signedIn() && isValidNewSite();
+
+      // Two permitted update shapes:
+      //  - a validated status vote (one counter +1, valid status), or
+      //  - a bare lastReportAt touch (accompanies an activity report).
+      allow update: if signedIn() && (isValidVote() || isReportTouch());
+
+      allow delete: if false;
+
+      match /reports/{reportId} {
+        allow read: if true;
+        allow create: if signedIn() && isValidReport(siteId);
+        allow update, delete: if false;
+      }
+    }
+
+    // A user's saved sites live under their own uid and are private to them.
+    match /users/{uid}/saved/{siteId} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    function affectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Exactly one of the three status counters increases by 1; none decrease;
+    // currentStatus is a valid value; no other fields change.
+    function isValidVote() {
+      let a = resource.data;
+      let b = request.resource.data;
+      return affectedKeys().hasOnly(
+               ['openVotes', 'blitzVotes', 'closedVotes',
+                'currentStatus', 'lastReportAt'])
+        && b.currentStatus in ['open', 'blitz', 'closed']
+        && b.openVotes >= a.openVotes
+        && b.blitzVotes >= a.blitzVotes
+        && b.closedVotes >= a.closedVotes
+        && (b.openVotes + b.blitzVotes + b.closedVotes)
+             == (a.openVotes + a.blitzVotes + a.closedVotes) + 1;
+    }
+
+    function isReportTouch() {
+      return affectedKeys().hasOnly(['lastReportAt']);
+    }
+
+    function isValidReport(siteId) {
+      let d = request.resource.data;
+      return d.uid == request.auth.uid
+        && d.siteId == siteId
+        && d.createdAt == request.time
+        && (
+             (d.status is string && d.status in ['open', 'blitz', 'closed'])
+             || (d.activityNote is string && d.activityNote.size() > 0)
+           );
+    }
+
+    function isValidNewSite() {
+      let d = request.resource.data;
+      return d.approved == false
+        && d.createdBy == request.auth.uid
+        && d.name is string && d.name.size() > 0
+        && d.state is string
+        && d.type is string
+        && d.address is string;
+    }
+  }
+}

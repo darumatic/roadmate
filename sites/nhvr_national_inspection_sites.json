@@ -1,0 +1,273 @@
+{
+  "agency": "National Heavy Vehicle Regulator",
+  "acronym": "NHVR",
+  "dataset": "National Heavy Vehicle Inspection Sites",
+  "timestamp": "2026-06-29T00:00:00Z",
+  "data_notes": "Fixed mandatory HVSS stations are located in NSW. Other states utilize mobile patrols, roadside weighbridges, and pre-booked PVI centres. WA and NT are non-participating jurisdictions.",
+  "states": {
+    "NSW": {
+      "facility_type": "Heavy Vehicle Safety Station (HVSS)",
+      "mandatory_entry": true,
+      "stations": [
+        {
+          "site_id": "HVSS-NSW-001",
+          "location": "Mt Boyce",
+          "route": "Great Western Highway",
+          "direction": "Both",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -33.61565,
+          "lng": 150.26645
+        },
+        {
+          "site_id": "HVSS-NSW-002",
+          "location": "Mt White (Northbound)",
+          "route": "M1 Motorway",
+          "direction": "Northbound",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -33.45667,
+          "lng": 151.19278
+        },
+        {
+          "site_id": "HVSS-NSW-003",
+          "location": "Mt White (Southbound)",
+          "route": "M1 Motorway",
+          "direction": "Southbound",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -33.45667,
+          "lng": 151.19278
+        },
+        {
+          "site_id": "HVSS-NSW-004",
+          "location": "Marulan (Northbound)",
+          "route": "Hume Highway",
+          "direction": "Northbound",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -34.71117,
+          "lng": 150.0064
+        },
+        {
+          "site_id": "HVSS-NSW-005",
+          "location": "Marulan (Southbound)",
+          "route": "Hume Highway",
+          "direction": "Southbound",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -34.71117,
+          "lng": 150.0064
+        },
+        {
+          "site_id": "HVSS-NSW-006",
+          "location": "Twelve Mile Creek",
+          "route": "Pacific Highway",
+          "direction": "Both",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -32.64,
+          "lng": 151.86778
+        },
+        {
+          "site_id": "HVSS-NSW-007",
+          "location": "Chinderah",
+          "route": "Pacific Highway",
+          "direction": "Northbound",
+          "gvm_requirement_tonnes": 4.5,
+          "lat": -28.2335,
+          "lng": 153.55625
+        },
+        {
+          "site_id": "HVSS-NSW-008",
+          "location": "Pine Creek",
+          "route": "Pacific Highway",
+          "direction": "Both",
+          "gvm_requirement_tonnes": 4.5,
+          "lat": -30.38854,
+          "lng": 153.06483
+        },
+        {
+          "site_id": "HVSS-NSW-009",
+          "location": "Halfway Creek",
+          "route": "Pacific Highway",
+          "direction": "Both",
+          "gvm_requirement_tonnes": 4.5,
+          "lat": -29.92406,
+          "lng": 153.07086
+        },
+        {
+          "site_id": "HVSS-NSW-010",
+          "location": "Bell",
+          "route": "Bells Line of Road",
+          "direction": "Both",
+          "gvm_requirement_tonnes": 4.5,
+          "lat": -33.50336,
+          "lng": 150.27976
+        },
+        {
+          "site_id": "HVSS-NSW-011",
+          "location": "Kankool",
+          "route": "New England Highway",
+          "direction": "Both",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -31.69833,
+          "lng": 150.76778
+        },
+        {
+          "site_id": "HVSS-NSW-012",
+          "location": "Daroobalgie (Northbound)",
+          "route": "Newell Highway",
+          "direction": "Northbound",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -33.31052,
+          "lng": 148.15917
+        },
+        {
+          "site_id": "HVSS-NSW-013",
+          "location": "Daroobalgie (Southbound)",
+          "route": "Newell Highway",
+          "direction": "Southbound",
+          "gvm_requirement_tonnes": 8.0,
+          "lat": -33.31052,
+          "lng": 148.15917
+        }
+      ]
+    },
+    "QLD": {
+      "facility_type": "Programmed Vehicle Inspection (PVI) & Intercept Sites",
+      "mandatory_entry": false,
+      "stations": [
+        {
+          "site_id": "PVI-QLD-001",
+          "location": "Burpengary Weighbridge",
+          "route": "Bruce Highway",
+          "direction": "Both",
+          "notes": "NHVR Intercept & TMR PVI site",
+          "lat": -27.15486,
+          "lng": 152.97082
+        },
+        {
+          "site_id": "PVI-QLD-002",
+          "location": "Coomera Weighbridge",
+          "route": "Pacific Motorway",
+          "direction": "Northbound",
+          "notes": "NHVR Intercept & TMR PVI site",
+          "lat": -27.84883,
+          "lng": 153.3297
+        },
+        {
+          "site_id": "PVI-QLD-003",
+          "location": "Gailes Weighbridge",
+          "route": "Ipswich Motorway",
+          "direction": "Eastbound",
+          "notes": "NHVR Intercept & TMR PVI site",
+          "lat": -27.61141,
+          "lng": 152.91283
+        }
+      ]
+    },
+    "VIC": {
+      "facility_type": "Roadside Weighbridge & Intercept Sites",
+      "mandatory_entry": "Directed by VMS or Officers",
+      "stations": [
+        {
+          "site_id": "WB-VIC-001",
+          "location": "Broadford Weighbridge",
+          "route": "Hume Freeway",
+          "direction": "Southbound",
+          "notes": "NHVR/VicRoads Intercept",
+          "lat": -37.21555,
+          "lng": 145.05343
+        },
+        {
+          "site_id": "WB-VIC-002",
+          "location": "Wallan Weighbridge",
+          "route": "Hume Freeway",
+          "direction": "Northbound",
+          "notes": "NHVR/VicRoads Intercept",
+          "lat": -37.41389,
+          "lng": 144.97745
+        },
+        {
+          "site_id": "WB-VIC-003",
+          "location": "Fawcett Weighbridge",
+          "route": "Goulburn Valley Highway",
+          "direction": "Both",
+          "notes": "NHVR/VicRoads Intercept",
+          "lat": -37.10309,
+          "lng": 145.71818
+        }
+      ]
+    },
+    "SA": {
+      "facility_type": "Roadside Weighbridge & Intercept Sites",
+      "mandatory_entry": "Directed by VMS or Officers",
+      "stations": [
+        {
+          "site_id": "WB-SA-001",
+          "location": "Port Augusta Weighbridge",
+          "route": "Augusta Highway",
+          "direction": "Both",
+          "notes": "NHVR Intercept",
+          "lat": -32.49088,
+          "lng": 137.76399
+        },
+        {
+          "site_id": "WB-SA-002",
+          "location": "Monteith Weighbridge",
+          "route": "Princes Highway",
+          "direction": "Both",
+          "notes": "NHVR Intercept",
+          "lat": -35.17264,
+          "lng": 139.34059
+        }
+      ]
+    },
+    "TAS": {
+      "facility_type": "Approved Inspection Stations (AIS) & Mobile Patrols",
+      "regulatory_status": "NHVR Participating Jurisdiction",
+      "mandatory_entry": "Directed by Officers or Scheduled Inspection",
+      "stations": [
+        {
+          "site_id": "AIS-TAS-001",
+          "location": "Launceston",
+          "route": "Statewide/Local Hub",
+          "direction": "N/A",
+          "notes": "Pre-booked AIS / NHVR Intercept Area",
+          "lat": -41.43408,
+          "lng": 147.13735
+        },
+        {
+          "site_id": "AIS-TAS-002",
+          "location": "Devonport",
+          "route": "Statewide/Local Hub",
+          "direction": "N/A",
+          "notes": "Pre-booked AIS / NHVR Intercept Area",
+          "lat": -41.17976,
+          "lng": 146.3613
+        },
+        {
+          "site_id": "AIS-TAS-003",
+          "location": "Glenorchy",
+          "route": "Statewide/Local Hub",
+          "direction": "N/A",
+          "notes": "Pre-booked AIS / NHVR Intercept Area",
+          "lat": -42.8339,
+          "lng": 147.27444
+        }
+      ]
+    },
+    "WA": {
+      "facility_type": "None (Non-NHVR)",
+      "regulatory_status": "Non-Participating Jurisdiction",
+      "local_regulator": "Main Roads Western Australia",
+      "mandatory_entry": "N/A",
+      "notes": "WA has not adopted the HVNL. No NHVR data applies.",
+      "stations": []
+    },
+    "NT": {
+      "facility_type": "None (Non-NHVR)",
+      "regulatory_status": "Non-Participating Jurisdiction",
+      "local_regulator": "Northern Territory Department of Infrastructure, Planning and Logistics",
+      "mandatory_entry": "N/A",
+      "notes": "NT has not adopted the HVNL. No NHVR data applies.",
+      "stations": []
+    }
+  },
+  "coordinate_notes": "Coordinates geocoded (town/locality level) via OpenStreetMap Nominatim 2026-06-29; approximate, verify exact site positions before production."
+}
