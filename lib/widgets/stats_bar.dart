@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/enums.dart';
 import '../services/site_stats.dart';
 import '../theme/app_theme.dart';
+import 'status_labels.dart';
 
 /// The Open / Blitz / Closed summary row at the top of Home. Each tile is
 /// tappable and acts as a status filter.
@@ -71,13 +72,17 @@ class StatsBar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    status.label.toUpperCase(),
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      statusDisplayLabel(status),
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
                 ],

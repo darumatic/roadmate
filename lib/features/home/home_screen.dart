@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/blitz_banner.dart';
 import '../../widgets/load_error.dart';
 import '../../widgets/state_card.dart';
+import '../../widgets/status_labels.dart';
 import '../../widgets/stats_bar.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -202,12 +203,18 @@ class HomeScreen extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              s.currentStatus.label.toUpperCase(),
-                              style: TextStyle(
-                                color: s.currentStatus.color,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  statusDisplayLabel(s.currentStatus),
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    color: s.currentStatus.color,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
                             ),
                             Expanded(
