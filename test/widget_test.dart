@@ -84,6 +84,8 @@ void main() {
       find.textContaining('Built by Leandro Pervieux and Adrian Deccico.'),
       findsOneWidget,
     );
+    expect(find.text('Share RoadMate'), findsWidgets);
+    expect(find.text(InfoScreen.shareUrl), findsOneWidget);
     expect(find.text('Support'), findsOneWidget);
     expect(find.textContaining('info@roadmate.club'), findsOneWidget);
     expect(find.text('Report activity data'), findsNothing);
