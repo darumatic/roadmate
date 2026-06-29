@@ -133,6 +133,26 @@ void main() {
     expect(find.text('20m ago'), findsOneWidget);
   });
 
+  testWidgets('Home Add Site action opens the submission form', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStartupProvider.overrideWith((ref) => Future.value()),
+          siteRepositoryProvider.overrideWithValue(
+            FakeSiteRepository(const []),
+          ),
+        ],
+        child: const RoadMateApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add Site'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Site name'), findsOneWidget);
+  });
+
   testWidgets('StateCard shows code, name, site count and blitz badge', (
     tester,
   ) async {

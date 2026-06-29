@@ -29,7 +29,9 @@ class HomeScreen extends ConsumerWidget {
             final recent = recentlyActive(sites);
             return CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(child: _header(counts, blitzSites(sites))),
+                SliverToBoxAdapter(
+                  child: _header(context, counts, blitzSites(sites)),
+                ),
                 if (recent.isNotEmpty)
                   SliverToBoxAdapter(child: _recentlyActive(context, recent)),
                 SliverPadding(
@@ -60,7 +62,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(StatusCounts counts, List<Site> blitz) {
+  Widget _header(BuildContext context, StatusCounts counts, List<Site> blitz) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
@@ -91,6 +93,21 @@ class HomeScreen extends ConsumerWidget {
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.textPrimary,
+                  side: const BorderSide(color: AppTheme.border),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+                label: const Text('Add Site'),
+                onPressed: () => context.go('/add'),
               ),
             ],
           ),
