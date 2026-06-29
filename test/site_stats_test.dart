@@ -39,26 +39,22 @@ void main() {
     expect(c.total, 4);
   });
 
-  test('groupByState includes visible states and omits WA/NT', () {
+  test('groupByState includes visible states, including zero-site states', () {
     final grouped = groupByState(sites);
     expect(grouped.keys.toList(), visibleStates);
-    expect(grouped.keys, isNot(contains(AusState.wa)));
-    expect(grouped.keys, isNot(contains(AusState.nt)));
+    expect(grouped.keys, contains(AusState.wa));
+    expect(grouped.keys, contains(AusState.nt));
     expect(grouped[AusState.nsw]!.length, 2);
     expect(grouped[AusState.vic]!.length, 2);
     expect(grouped[AusState.qld]!, isEmpty);
+    expect(grouped[AusState.wa]!, isEmpty);
+    expect(grouped[AusState.nt]!, isEmpty);
   });
 
-  test('visibleStates excludes jurisdictions with zero NHVR sites', () {
-    expect(visibleStates, [
-      AusState.nsw,
-      AusState.vic,
-      AusState.qld,
-      AusState.sa,
-      AusState.tas,
-    ]);
-    expect(visibleStates, isNot(contains(AusState.wa)));
-    expect(visibleStates, isNot(contains(AusState.nt)));
+  test('visibleStates includes all Australian regions', () {
+    expect(visibleStates, AusState.values);
+    expect(visibleStates, contains(AusState.wa));
+    expect(visibleStates, contains(AusState.nt));
   });
 
   test('blitzSites returns only blitz-status sites', () {

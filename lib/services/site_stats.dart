@@ -15,15 +15,8 @@ class StatusCounts {
   int get total => open + blitz + closed;
 }
 
-/// States shown in the app. WA and NT are omitted because the current NHVR
-/// dataset has no participating sites there.
-const visibleStates = [
-  AusState.nsw,
-  AusState.vic,
-  AusState.qld,
-  AusState.sa,
-  AusState.tas,
-];
+/// States shown in the app, preserving the enum order used by the UI.
+const visibleStates = AusState.values;
 
 StatusCounts countByStatus(Iterable<Site> sites) {
   var open = 0, blitz = 0, closed = 0;
