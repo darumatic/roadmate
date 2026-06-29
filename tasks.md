@@ -35,6 +35,16 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] **Repo housekeeping** — the 10 MB design video in `screens/` is committed;
       consider Git LFS or removing it from history if repo size matters.
 
+## Documentation & decisions
+- [ ] **LICENSE** — decide proprietary vs. open-source for `roadmate.club` and add
+      a `LICENSE` file (owner decision).
+- [ ] **In-app data disclaimer** — the README has a disclaimer; also surface a short
+      user-facing one in the app (e.g. on Home or a Profile/About screen):
+      "community-reported, may be inaccurate, not official NHVR data."
+- [ ] **Secrets policy (when server-side work starts)** — committed Firebase client
+      config is public/non-secret, but future Cloud Functions service-account keys
+      must never be committed; document the chosen secret store at that time.
+
 ## Done (this build)
 - [x] Flutter app (iOS/Android/web), Firebase (Firestore + anonymous auth)
 - [x] Home, Browse-by-State, state detail, voting, Report, BLITZ banner,
