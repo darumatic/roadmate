@@ -15,7 +15,7 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 - **Flutter** (Material 3, dark theme in `lib/theme/app_theme.dart`).
 - **Riverpod 3** for state (`flutter_riverpod`) — note 3.x API; `ConsumerWidget.build(context, ref)`, `Notifier`/`NotifierProvider`, non-generic `Ref`.
 - **go_router** with `StatefulShellRoute.indexedStack` for the Home/Nearby/Favourites bottom-nav shell; state detail (`/state/:code`) and `/add` are top-level routes. See `lib/router.dart`.
-- **Firebase** — project `roadmate-b1551`. Firestore (data), Firebase Auth **anonymous** (identity), Firebase Hosting (web **LIVE at https://roadmate-b1551.web.app**; custom domain **roadmate.club** via Namecheap — `A @ 199.36.158.100` + `TXT @ hosting-site=roadmate-b1551`). `main.dart` initialises Firebase, signs in anonymously, then seeds. FCM push and Cloud Functions are later phases.
+- **Firebase** — project `roadmate-b1551`. (web **LIVE at **https://roadmate.club**.
 
 **Repository abstraction (important):** all data access goes through `SiteRepository` (`lib/services/site_repository.dart`). Production uses **`FirestoreSiteRepository`**; `LocalSeedSiteRepository` (bundled asset) remains for offline/dev/tests. `lib/services/providers.dart` → `siteRepositoryProvider` is the single swap point. For unit tests, override that provider with a fake/local repo (see `test/site_card_test.dart`).
 
