@@ -51,7 +51,7 @@ class LocalSeedSiteRepository implements SiteRepository {
       siteId,
       () => StreamController<List<SiteReport>>.broadcast(),
     );
-    yield List.unmodifiable(_reports[siteId] ?? const []);
+    yield List.unmodifiable((_reports[siteId] ?? const []).take(20));
     yield* controller.stream;
   }
 
@@ -81,14 +81,25 @@ class LocalSeedSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> report(String siteId, String activityNote) async {
+  Future<void> report(
+    String siteId,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+  }) async {
     await _ensureLoaded();
     _addReport(
       SiteReport(
         id: 'r${_seq++}',
         siteId: siteId,
         createdAt: DateTime.now(),
-        activityNote: activityNote,
+        activityType: activityType,
+        activityNote: activityNote?.trim().isEmpty ?? true
+            ? null
+            : activityNote!.trim(),
+        reporterName: reporterName?.trim().isEmpty ?? true
+            ? null
+            : reporterName!.trim(),
       ),
     );
   }
@@ -115,7 +126,7 @@ class LocalSeedSiteRepository implements SiteRepository {
   void _addReport(SiteReport report) {
     final list = _reports.putIfAbsent(report.siteId, () => <SiteReport>[]);
     list.insert(0, report);
-    _reportControllers[report.siteId]?.add(List.unmodifiable(list));
+    _reportControllers[report.siteId]?.add(List.unmodifiable(list.take(20)));
   }
 
   void dispose() {

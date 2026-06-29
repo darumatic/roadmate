@@ -78,6 +78,22 @@ void main() {
       expect(restored.createdAt, report.createdAt);
       expect(restored.siteId, 's1');
     });
+
+    test('round-trips categorized activity reports', () {
+      final report = SiteReport(
+        id: 'r2',
+        siteId: 's1',
+        createdAt: DateTime(2026, 6, 29, 11),
+        activityType: ActivityReportType.longQueue,
+        activityNote: 'Queue back to the ramp',
+        reporterName: 'Sam',
+      );
+      final restored = SiteReport.fromMap(report.id, report.toMap());
+      expect(restored.activityType, ActivityReportType.longQueue);
+      expect(restored.activityNote, 'Queue back to the ramp');
+      expect(restored.reporterName, 'Sam');
+      expect(restored.isActivityReport, isTrue);
+    });
   });
 
   group('parseNhvrNationalData', () {

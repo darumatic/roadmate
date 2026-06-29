@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/enums.dart';
 import '../models/site.dart';
+import '../models/site_report.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
@@ -19,6 +20,7 @@ class SiteCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final favouriteIds = ref.watch(favouriteSiteIdsProvider).value ?? const {};
     final isFavourite = favouriteIds.contains(site.id);
+    final reportsAsync = ref.watch(siteReportsProvider(site.id));
     final repo = ref.read(siteRepositoryProvider);
 
     return Container(
@@ -125,15 +127,21 @@ class SiteCard extends ConsumerWidget {
             label: const Text('Report activity'),
             onPressed: () => _reportActivity(context, repo),
           ),
+          _RecentActivityReports(reportsAsync: reportsAsync),
         ],
       ),
     );
   }
 
   Future<void> _reportActivity(BuildContext context, repo) async {
-    final note = await showReportDialog(context);
-    if (note != null && note.trim().isNotEmpty) {
-      await repo.report(site.id, note.trim());
+    final report = await _showReportDialog(context);
+    if (report != null) {
+      await repo.report(
+        site.id,
+        report.activityType,
+        activityNote: report.activityNote,
+        reporterName: report.reporterName,
+      );
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
     }
   }
@@ -145,20 +153,93 @@ class SiteCard extends ConsumerWidget {
   }
 }
 
-/// Modal to capture a free-text activity report. Returns null if cancelled.
-Future<String?> showReportDialog(BuildContext context) {
-  final controller = TextEditingController();
-  return showDialog<String>(
+class _ActivityReportDraft {
+  const _ActivityReportDraft({
+    required this.activityType,
+    this.activityNote,
+    this.reporterName,
+  });
+
+  final ActivityReportType activityType;
+  final String? activityNote;
+  final String? reporterName;
+}
+
+/// Modal to capture an activity category plus optional note/name.
+Future<_ActivityReportDraft?> _showReportDialog(BuildContext context) {
+  return showDialog<_ActivityReportDraft>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => const _ReportDialog(),
+  );
+}
+
+class _ReportDialog extends StatefulWidget {
+  const _ReportDialog();
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  final _noteController = TextEditingController();
+  final _nameController = TextEditingController();
+  ActivityReportType _activityType = ActivityReportType.longQueue;
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
       backgroundColor: AppTheme.surface,
       title: const Text('Report activity'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        maxLines: 3,
-        decoration: const InputDecoration(
-          hintText: 'e.g. Trucks being pulled over, long queue...',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'What is happening?',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final type in ActivityReportType.values)
+                  ChoiceChip(
+                    label: Text(type.label),
+                    selected: _activityType == type,
+                    onSelected: (_) => setState(() => _activityType = type),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _noteController,
+              maxLines: 3,
+              decoration: const InputDecoration(hintText: 'Comment (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(hintText: 'Name (optional)'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Names and comments are public.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -168,12 +249,131 @@ Future<String?> showReportDialog(BuildContext context) {
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
-          onPressed: () => Navigator.pop(context, controller.text),
+          onPressed: () {
+            final note = _noteController.text.trim();
+            final name = _nameController.text.trim();
+            Navigator.pop(
+              context,
+              _ActivityReportDraft(
+                activityType: _activityType,
+                activityNote: note.isEmpty ? null : note,
+                reporterName: name.isEmpty ? null : name,
+              ),
+            );
+          },
           child: const Text('Submit'),
         ),
       ],
-    ),
-  );
+    );
+  }
+}
+
+class _RecentActivityReports extends StatelessWidget {
+  const _RecentActivityReports({required this.reportsAsync});
+
+  final AsyncValue<List<SiteReport>> reportsAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final reports = reportsAsync.value
+        ?.where((report) => report.activityType != null)
+        .take(3)
+        .toList();
+    if (reports == null || reports.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Recent reports',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final report in reports) ...[
+            _ActivityReportTile(report: report),
+            if (report != reports.last) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityReportTile extends StatelessWidget {
+  const _ActivityReportTile({required this.report});
+
+  final SiteReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final reporter = report.reporterName?.trim().isNotEmpty ?? false
+        ? report.reporterName!.trim()
+        : 'Anonymous';
+    final note = report.activityNote?.trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  report.activityType!.label,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                _relativeTime(report.createdAt),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          if (note != null && note.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(note, style: const TextStyle(color: AppTheme.textSecondary)),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            reporter,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _relativeTime(DateTime createdAt) {
+  final diff = DateTime.now().difference(createdAt);
+  if (diff.inMinutes < 1) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
 }
 
 class _VoteRow extends StatelessWidget {

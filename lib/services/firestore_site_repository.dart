@@ -52,6 +52,7 @@ class FirestoreSiteRepository implements SiteRepository {
         .doc(siteId)
         .collection('reports')
         .orderBy('createdAt', descending: true)
+        .limit(20)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -79,13 +80,24 @@ class FirestoreSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> report(String siteId, String activityNote) async {
-    await _sites.doc(siteId).collection('reports').add({
+  Future<void> report(
+    String siteId,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+  }) async {
+    final data = <String, dynamic>{
       'siteId': siteId,
-      'activityNote': activityNote,
+      'activityType': activityType.name,
       'uid': _uid,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
+    final note = activityNote?.trim();
+    final name = reporterName?.trim();
+    if (note != null && note.isNotEmpty) data['activityNote'] = note;
+    if (name != null && name.isNotEmpty) data['reporterName'] = name;
+
+    await _sites.doc(siteId).collection('reports').add(data);
     await _sites.doc(siteId).update({
       'lastReportAt': FieldValue.serverTimestamp(),
     });

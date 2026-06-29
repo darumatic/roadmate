@@ -9,14 +9,19 @@ abstract class SiteRepository {
   /// Live stream of all (approved) sites.
   Stream<List<Site>> watchSites();
 
-  /// Live stream of reports for a single site (most-recent first).
+  /// Live stream of recent reports for a single site (most-recent first).
   Stream<List<SiteReport>> watchReports(String siteId);
 
   /// Record a status vote for a site.
   Future<void> vote(String siteId, SiteStatus status);
 
-  /// Record a free-text activity report for a site.
-  Future<void> report(String siteId, String activityNote);
+  /// Record an activity report for a site.
+  Future<void> report(
+    String siteId,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+  });
 
   /// Submit a new (community-added) site.
   Future<void> addSite(Site site);

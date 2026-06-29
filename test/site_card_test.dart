@@ -12,6 +12,8 @@ import 'package:roadmate/widgets/site_card.dart';
 class FakeSiteRepository implements SiteRepository {
   final votes = <(String, SiteStatus)>[];
   final favourites = <String>[];
+  final reports = <(String, ActivityReportType, String?, String?)>[];
+  List<SiteReport> watchedReports = const [];
 
   @override
   Future<void> vote(String siteId, SiteStatus status) async =>
@@ -21,7 +23,12 @@ class FakeSiteRepository implements SiteRepository {
   Future<void> toggleFavourite(String siteId) async => favourites.add(siteId);
 
   @override
-  Future<void> report(String siteId, String note) async {}
+  Future<void> report(
+    String siteId,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+  }) async => reports.add((siteId, activityType, activityNote, reporterName));
 
   @override
   Future<void> addSite(Site site) async {}
@@ -31,7 +38,7 @@ class FakeSiteRepository implements SiteRepository {
 
   @override
   Stream<List<SiteReport>> watchReports(String siteId) =>
-      Stream.value(const []);
+      Stream.value(watchedReports);
 
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
@@ -79,5 +86,84 @@ void main() {
     await tester.pump();
 
     expect(repo.favourites, ['nsw-1']);
+  });
+
+  testWidgets('submitting an activity report records category, note and name', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Report activity'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delays'));
+    await tester.enterText(
+      find.byType(TextField).at(0),
+      'Northbound back to the ramp',
+    );
+    await tester.enterText(find.byType(TextField).at(1), 'Sam');
+    await tester.tap(find.text('Submit'));
+    await tester.pumpAndSettle();
+
+    expect(repo.reports, [
+      (
+        'nsw-1',
+        ActivityReportType.delays,
+        'Northbound back to the ramp',
+        'Sam',
+      ),
+    ]);
+  });
+
+  testWidgets('shows latest three categorized activity reports', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository()
+      ..watchedReports = [
+        SiteReport(
+          id: '1',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now(),
+          activityType: ActivityReportType.longQueue,
+          reporterName: 'Alex',
+        ),
+        SiteReport(
+          id: '2',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 10)),
+          activityType: ActivityReportType.policePresent,
+          activityNote: 'Two cars on site',
+        ),
+        SiteReport(
+          id: 'old',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 15)),
+          activityNote: 'Old report shape',
+        ),
+        SiteReport(
+          id: '3',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 20)),
+          activityType: ActivityReportType.noActivity,
+        ),
+        SiteReport(
+          id: '4',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
+          activityType: ActivityReportType.defectChecks,
+        ),
+      ];
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recent reports'), findsOneWidget);
+    expect(find.text('Long queue'), findsOneWidget);
+    expect(find.text('Police present'), findsOneWidget);
+    expect(find.text('No activity'), findsOneWidget);
+    expect(find.text('Defect checks'), findsNothing);
+    expect(find.text('Old report shape'), findsNothing);
+    expect(find.text('Alex'), findsOneWidget);
+    expect(find.text('Anonymous'), findsNWidgets(2));
   });
 }

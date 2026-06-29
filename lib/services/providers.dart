@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/site.dart';
+import '../models/site_report.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'site_repository.dart';
@@ -25,4 +26,11 @@ final sitesProvider = StreamProvider<List<Site>>((ref) {
 
 final favouriteSiteIdsProvider = StreamProvider<Set<String>>((ref) {
   return ref.watch(siteRepositoryProvider).watchFavourites();
+});
+
+final siteReportsProvider = StreamProvider.family<List<SiteReport>, String>((
+  ref,
+  siteId,
+) {
+  return ref.watch(siteRepositoryProvider).watchReports(siteId);
 });

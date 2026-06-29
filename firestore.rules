@@ -65,13 +65,38 @@ service cloud.firestore {
 
     function isValidReport(siteId) {
       let d = request.resource.data;
-      return d.uid == request.auth.uid
+      return d.keys().hasOnly([
+          'siteId', 'status', 'activityType', 'activityNote', 'reporterName',
+          'uid', 'createdAt'
+        ])
+        && d.uid == request.auth.uid
         && d.siteId == siteId
         && d.createdAt == request.time
-        && (
-             (d.status is string && d.status in ['open', 'blitz', 'closed'])
-             || (d.activityNote is string && d.activityNote.size() > 0)
-           );
+        && (isValidStatusReport(d) || isValidActivityReport(d));
+    }
+
+    function isValidStatusReport(d) {
+      return d.keys().hasOnly(['siteId', 'status', 'uid', 'createdAt'])
+        && d.status is string
+        && d.status in ['open', 'blitz', 'closed'];
+    }
+
+    function isValidActivityReport(d) {
+      return d.keys().hasOnly([
+          'siteId', 'activityType', 'activityNote', 'reporterName',
+          'uid', 'createdAt'
+        ])
+        && d.activityType is string
+        && d.activityType in [
+          'longQueue', 'delays', 'policePresent', 'defectChecks',
+          'noActivity', 'other'
+        ]
+        && (!('activityNote' in d.keys())
+          || (d.activityNote is string && d.activityNote.size() <= 500))
+        && (!('reporterName' in d.keys())
+          || (d.reporterName is string
+            && d.reporterName.size() > 0
+            && d.reporterName.size() <= 80));
     }
 
     function isValidNewSite() {

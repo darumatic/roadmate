@@ -1,5 +1,26 @@
 import 'enums.dart';
 
+enum ActivityReportType {
+  longQueue('Long queue'),
+  delays('Delays'),
+  policePresent('Police present'),
+  defectChecks('Defect checks'),
+  noActivity('No activity'),
+  other('Other');
+
+  const ActivityReportType(this.label);
+
+  final String label;
+
+  static ActivityReportType? fromName(String? name) {
+    if (name == null) return null;
+    for (final type in ActivityReportType.values) {
+      if (type.name == name) return type;
+    }
+    return null;
+  }
+}
+
 /// A single community report about a site: either a status vote
 /// (open/blitz/closed) and/or a free-text activity note.
 class SiteReport {
@@ -8,7 +29,9 @@ class SiteReport {
     required this.siteId,
     required this.createdAt,
     this.status,
+    this.activityType,
     this.activityNote,
+    this.reporterName,
     this.uid,
   });
 
@@ -16,8 +39,12 @@ class SiteReport {
   final String siteId;
   final DateTime createdAt;
   final SiteStatus? status;
+  final ActivityReportType? activityType;
   final String? activityNote;
+  final String? reporterName;
   final String? uid;
+
+  bool get isActivityReport => activityType != null;
 
   factory SiteReport.fromMap(String id, Map<String, dynamic> map) {
     return SiteReport(
@@ -29,7 +56,9 @@ class SiteReport {
       status: map['status'] != null
           ? SiteStatus.fromName(map['status'] as String?)
           : null,
+      activityType: ActivityReportType.fromName(map['activityType'] as String?),
       activityNote: map['activityNote'] as String?,
+      reporterName: map['reporterName'] as String?,
       uid: map['uid'] as String?,
     );
   }
@@ -39,7 +68,9 @@ class SiteReport {
       'siteId': siteId,
       'createdAt': createdAt.toIso8601String(),
       'status': status?.name,
+      'activityType': activityType?.name,
       'activityNote': activityNote,
+      'reporterName': reporterName,
       'uid': uid,
     };
   }
