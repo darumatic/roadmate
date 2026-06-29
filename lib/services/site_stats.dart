@@ -15,6 +15,16 @@ class StatusCounts {
   int get total => open + blitz + closed;
 }
 
+/// States shown in the app. WA and NT are omitted because the current NHVR
+/// dataset has no participating sites there.
+const visibleStates = [
+  AusState.nsw,
+  AusState.vic,
+  AusState.qld,
+  AusState.sa,
+  AusState.tas,
+];
+
 StatusCounts countByStatus(Iterable<Site> sites) {
   var open = 0, blitz = 0, closed = 0;
   for (final s in sites) {
@@ -30,12 +40,12 @@ StatusCounts countByStatus(Iterable<Site> sites) {
   return StatusCounts(open: open, blitz: blitz, closed: closed);
 }
 
-/// Group sites by their state, preserving the canonical [AusState] order and
-/// including states that currently have no sites.
+/// Group sites by their state, preserving the UI state order and including
+/// visible states that currently have no sites.
 Map<AusState, List<Site>> groupByState(Iterable<Site> sites) {
-  final map = {for (final state in AusState.values) state: <Site>[]};
+  final map = {for (final state in visibleStates) state: <Site>[]};
   for (final s in sites) {
-    map[s.state]!.add(s);
+    map[s.state]?.add(s);
   }
   return map;
 }

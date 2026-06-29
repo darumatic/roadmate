@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../models/enums.dart';
 import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
@@ -44,13 +43,13 @@ class HomeScreen extends ConsumerWidget {
                           childAspectRatio: 0.95,
                         ),
                     delegate: SliverChildBuilderDelegate((context, i) {
-                      final state = AusState.values[i];
+                      final state = visibleStates[i];
                       return StateCard(
                         state: state,
                         sites: byState[state] ?? const [],
                         onTap: () => context.go('/state/${state.code}'),
                       );
-                    }, childCount: AusState.values.length),
+                    }, childCount: visibleStates.length),
                   ),
                 ),
               ],
