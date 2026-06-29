@@ -45,7 +45,7 @@ class InfoScreen extends StatelessWidget {
                   _InfoBlock(
                     icon: Icons.support_agent_rounded,
                     title: 'Support',
-                    body: 'For support, email info@roadmate.club.',
+                    body: 'For support, please email: info@roadmate.club',
                   ),
                 ],
               ),
