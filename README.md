@@ -19,8 +19,7 @@ One **Flutter** codebase → **iOS, Android, web**. Backend is **Firebase**
 **go_router**. Firebase project: `roadmate-b1551`.
 
 See [`specs.md`](specs.md) for the full as-built record and **key decisions**, and
-[`CLAUDE.md`](CLAUDE.md) for architecture/agent guidance. Backlog in
-[`tasks.md`](tasks.md).
+[`CLAUDE.md`](CLAUDE.md) for architecture/agent guidance.
 
 ## Quickstart
 
@@ -78,7 +77,7 @@ New sites from **Add Site** are stored with `approved: false` and stay hidden
 2. Open the pending doc (it has `approved: false`, `createdBy: <uid>`).
 3. Set **`approved`** → `true`. It appears in the app immediately.
 
-(An in-app admin screen + rate-limiting are tracked in `tasks.md`.)
+(An in-app admin screen + rate-limiting are planned.)
 
 ### Inspect Firestore data quickly
 Sites are publicly readable, so you can read them via REST with the web apiKey:
