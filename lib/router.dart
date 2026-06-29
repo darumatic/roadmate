@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'features/add_site/add_site_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/nearby/nearby_screen.dart';
 import 'features/favourites/favourites_screen.dart';
@@ -44,11 +43,6 @@ final appRouter = GoRouter(
       builder: (context, state) => StateDetailScreen(
         state: stateFromRouteCode(state.pathParameters['code']),
       ),
-    ),
-    GoRoute(
-      path: '/add',
-      parentNavigatorKey: _rootKey,
-      builder: (_, _) => const AddSiteScreen(),
     ),
   ],
 );

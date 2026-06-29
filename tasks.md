@@ -10,8 +10,8 @@ decisions. Nothing below is blocking — these are next steps.
 
 ## Next
 - [x] We can change SAVED to FAVOURITE and should saved for different users
-- [ ] Initial loading is slow. We need some loading icon.
-- [ ] Add sites needs to go.
+- [x] Initial loading is slow. We need some loading icon.
+- [x] Add sites needs to go.
 - [ ] Money limits for Firebase. What happens if we consume more than the free tier plan? I want to fail gracefully and stop serving the app.
 - [ ] Add donations page.
 - [ ] Add about page mentioning Leandro.
@@ -48,4 +48,3 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] **Secrets policy (when server-side work starts)** — committed Firebase client
       config is public/non-secret, but future Cloud Functions service-account keys
       must never be committed; document the chosen secret store at that time.
-

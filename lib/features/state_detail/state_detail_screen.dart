@@ -70,16 +70,6 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
                 onPressed: () =>
                     context.canPop() ? context.pop() : context.go('/home'),
               ),
-              const Spacer(),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () => context.go('/add'),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Site'),
-              ),
             ],
           ),
           Padding(
@@ -127,7 +117,7 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
         padding: const EdgeInsets.all(32),
         child: Text(
           noSitesYet
-              ? 'No sites listed for ${widget.state.fullName} yet.\nBe the first to add one.'
+              ? 'No sites listed for ${widget.state.fullName} yet.'
               : 'No sites match your search.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: AppTheme.textSecondary),

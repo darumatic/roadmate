@@ -1,11 +1,33 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:roadmate/app.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
+import 'package:roadmate/services/startup_service.dart';
 import 'package:roadmate/widgets/state_card.dart';
 import 'package:roadmate/widgets/status_badge.dart';
 
 void main() {
+  testWidgets('RoadMateApp shows startup loading while initializing', (
+    tester,
+  ) async {
+    final startup = Completer<void>();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStartupProvider.overrideWith((ref) => startup.future)],
+        child: const RoadMateApp(),
+      ),
+    );
+
+    expect(find.text('RoadMate AU'), findsOneWidget);
+    expect(find.text('Know before you roll.'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
   testWidgets('StatusBadge renders its label', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: StatusBadge(SiteStatus.blitz))),
