@@ -21,6 +21,7 @@ class SiteCard extends ConsumerWidget {
     final favouriteIds = ref.watch(favouriteSiteIdsProvider).value ?? const {};
     final isFavourite = favouriteIds.contains(site.id);
     final reportsAsync = ref.watch(siteReportsProvider(site.id));
+    final lastReportAt = site.lastReportAt;
     final repo = ref.read(siteRepositoryProvider);
 
     return Container(
@@ -52,16 +53,34 @@ class SiteCard extends ConsumerWidget {
                   ),
                 ),
               ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  isFavourite ? Icons.star : Icons.star_border,
-                  color: isFavourite ? AppTheme.accent : AppTheme.textSecondary,
-                ),
-                onPressed: () => repo.toggleFavourite(site.id),
-                tooltip: isFavourite
-                    ? 'Remove from favourites'
-                    : 'Add to favourites',
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (lastReportAt != null) ...[
+                    Text(
+                      'reported ${_relativeTime(lastReportAt)}',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                  ],
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      isFavourite ? Icons.star : Icons.star_border,
+                      color: isFavourite
+                          ? AppTheme.accent
+                          : AppTheme.textSecondary,
+                    ),
+                    onPressed: () => repo.toggleFavourite(site.id),
+                    tooltip: isFavourite
+                        ? 'Remove from favourites'
+                        : 'Add to favourites',
+                  ),
+                ],
               ),
             ],
           ),

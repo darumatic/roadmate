@@ -54,13 +54,20 @@ const _site = Site(
   currentStatus: SiteStatus.closed, // so the OPEN vote button is unambiguous
 );
 
-Future<void> _pump(WidgetTester tester, FakeSiteRepository repo) {
+Site _siteWithLastReport(DateTime lastReportAt) =>
+    _site.copyWith(lastReportAt: lastReportAt);
+
+Future<void> _pump(
+  WidgetTester tester,
+  FakeSiteRepository repo, {
+  Site site = _site,
+}) {
   return tester.pumpWidget(
     ProviderScope(
       overrides: [siteRepositoryProvider.overrideWithValue(repo)],
-      child: const MaterialApp(
+      child: MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(child: SiteCard(site: _site)),
+          body: SingleChildScrollView(child: SiteCard(site: site)),
         ),
       ),
     ),
@@ -88,6 +95,27 @@ void main() {
     await tester.pump();
 
     expect(repo.favourites, ['nsw-1']);
+  });
+
+  testWidgets('shows recent report time in top-right when present', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    final site = _siteWithLastReport(
+      DateTime.now().subtract(const Duration(minutes: 20)),
+    );
+    await _pump(tester, repo, site: site);
+    await tester.pumpAndSettle();
+
+    expect(find.text('reported 20m ago'), findsOneWidget);
+  });
+
+  testWidgets('hides recent report time when no report exists', (tester) async {
+    final repo = FakeSiteRepository();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('reported '), findsNothing);
   });
 
   testWidgets('submitting an activity report records category, note and name', (
