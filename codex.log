@@ -1,0 +1,83 @@
+Firebase emulator tests for Firestore repository and rules
+
+What this implies
+
+The current unit/widget tests avoid Firebase. They use fake repositories and
+provider overrides, which is fast and reliable for UI and pure business logic.
+The missing fifth layer is an integration-style test suite that runs against the
+Firebase Emulator Suite, especially the Firestore emulator.
+
+That test layer would verify the real FirestoreSiteRepository and security rules
+together:
+
+- watchSites only returns approved sites.
+- vote creates a report, increments exactly one counter, updates currentStatus,
+  and updates lastReportAt.
+- report writes activityType, optional trimmed comment/name, and updates
+  lastReportAt.
+- addSite creates a pending site with approved == false.
+- watchFavourites and toggleFavourite read/write only the authenticated user's
+  favourites.
+- firestore.rules reject invalid writes, such as changing arbitrary site fields,
+  decrementing counters, creating approved community sites, writing another
+  user's favourites, or deleting protected data.
+
+Why this is different from current tests
+
+Widget tests can confirm that the app calls repository methods with the right
+payload. They cannot prove that Firebase accepts the intended writes, rejects
+bad writes, or that the deployed data model and rules still match the app. The
+emulator test suite covers that boundary without touching production Firebase.
+
+Can it run autonomously on a PC?
+
+Yes. A developer machine can run it autonomously if it has:
+
+- Java installed, because Firebase emulators run on the JVM.
+- Firebase CLI installed.
+- Flutter/Dart dependencies installed.
+- A test command that starts the emulators before running the integration tests.
+
+Typical local flow:
+
+1. Start the Firestore/Auth emulators.
+2. Run a dedicated test suite configured to point Firebase SDKs at localhost.
+3. Stop the emulators.
+
+Firebase CLI can also wrap this in one command, for example:
+
+firebase emulators:exec --only firestore,auth "flutter test test/firebase"
+
+Can it run in GitHub Actions?
+
+Yes. This is a good CI candidate. The workflow would install Java, Flutter, Node
+or the Firebase CLI, fetch dependencies, then run:
+
+firebase emulators:exec --only firestore,auth "flutter test test/firebase"
+
+That means every pull request can verify the repository writes and security
+rules without using production credentials or production data.
+
+Important caveats
+
+- Emulator tests are slower than unit/widget tests, so keep them in a separate
+  folder such as test/firebase and run them as a separate CI job.
+- They need deterministic setup/teardown. Each test should create its own
+  documents or clear the emulator state between tests.
+- Firebase client config is still public/non-secret, but CI should not use
+  production service-account keys for this. The emulator tests should use local
+  emulator endpoints.
+- The tests should cover both allowed and denied writes. The denied-write tests
+  are what prove the rules are doing useful work.
+
+Recommendation
+
+Keep the existing fast test suite as the default developer loop:
+
+flutter test
+
+Add a second explicit integration command for Firebase boundaries:
+
+firebase emulators:exec --only firestore,auth "flutter test test/firebase"
+
+Then wire that second command into GitHub Actions once the emulator tests exist.
