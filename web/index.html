@@ -18,7 +18,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="RoadMate AU helps Australian heavy-vehicle drivers see live NHVR site status.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,10 +29,100 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>roadmate</title>
+  <title>RoadMate AU</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: #000000;
+    }
+
+    body {
+      color: #f5f5f7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #loading {
+      align-items: center;
+      background: #000000;
+      display: flex;
+      inset: 0;
+      justify-content: center;
+      position: fixed;
+      z-index: 9999;
+    }
+
+    .loading-card {
+      align-items: center;
+      display: flex;
+      flex-direction: column;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .loading-mark {
+      align-items: center;
+      background: rgba(249, 115, 22, 0.14);
+      border: 1px solid rgba(249, 115, 22, 0.55);
+      border-radius: 14px;
+      color: #f97316;
+      display: flex;
+      font-size: 19px;
+      font-weight: 800;
+      height: 52px;
+      justify-content: center;
+      letter-spacing: 0;
+      margin-bottom: 18px;
+      width: 52px;
+    }
+
+    .loading-title {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .loading-subtitle {
+      color: #9a9aa2;
+      font-size: 15px;
+      margin-bottom: 28px;
+    }
+
+    .loading-spinner {
+      animation: spin 0.9s linear infinite;
+      border: 3px solid #2a2a2e;
+      border-top-color: #f97316;
+      border-radius: 50%;
+      height: 30px;
+      width: 30px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
 </head>
 <body>
+  <div id="loading" aria-label="Loading RoadMate AU">
+    <div class="loading-card">
+      <div class="loading-mark">RM</div>
+      <div class="loading-title">RoadMate AU</div>
+      <div class="loading-subtitle">Know before you roll.</div>
+      <div class="loading-spinner" aria-hidden="true"></div>
+    </div>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var loading = document.getElementById('loading');
+      if (loading) {
+        loading.remove();
+      }
+    });
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

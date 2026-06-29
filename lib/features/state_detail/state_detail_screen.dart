@@ -7,6 +7,7 @@ import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/load_error.dart';
 import '../../widgets/site_card.dart';
 
 class StateDetailScreen extends ConsumerStatefulWidget {
@@ -29,7 +30,7 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
       body: SafeArea(
         child: sitesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          error: (_, _) => const LoadError(),
           data: (allSites) {
             final stateSites = allSites
                 .where((s) => s.state == widget.state)
@@ -69,16 +70,6 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () =>
                     context.canPop() ? context.pop() : context.go('/home'),
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () => context.go('/add'),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Site'),
               ),
             ],
           ),
@@ -127,7 +118,7 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
         padding: const EdgeInsets.all(32),
         child: Text(
           noSitesYet
-              ? 'No sites listed for ${widget.state.fullName} yet.\nBe the first to add one.'
+              ? 'No sites listed for ${widget.state.fullName} yet.'
               : 'No sites match your search.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: AppTheme.textSecondary),

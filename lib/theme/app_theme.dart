@@ -6,7 +6,7 @@ class AppTheme {
   static const Color surface = Color(0xFF121214);
   static const Color surfaceAlt = Color(0xFF1C1C1F);
   static const Color border = Color(0xFF2A2A2E);
-  static const Color accent = Color(0xFFF97316); // orange (Add Site / brand)
+  static const Color accent = Color(0xFFF97316); // orange brand accent
   static const Color textPrimary = Color(0xFFF5F5F7);
   static const Color textSecondary = Color(0xFF9A9AA2);
 

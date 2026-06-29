@@ -9,8 +9,6 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] Answer in a document "codex-output.md": What happens with the data from "Report activity"?
 - [ ] Answer in a document "codex-output.md": plan backup / roll-backs. What happens with the database state if we need to roll-back to last week's version for example?
 - [ ] Answer in a document "codex-output.md": Firebase database is in "testing" what does this mean?
-- [ ] **Repo housekeeping** — the 10 MB design video in `screens/` is committed;
-      remove it from Git history.
 - [ ] Answer in a document "codex-output.md": **Secrets policy (when server-side work starts)** — committed Firebase client config is public/non-secret, but future Cloud Functions service-account keys must never be committed; document the chosen secret store at that time.
 
 
@@ -19,6 +17,8 @@ decisions. Nothing below is blocking — these are next steps.
         and add it as a custom domain in the console so SSL is issued).
 
 ## Next
+- [ ] **Repo housekeeping** — the 10 MB design video in `screens/` is committed;
+      remove it from Git history.
 - [ ] Also we can add a timer of how long ago each weightbridge being reported
 - [x] We can change SAVED to FAVOURITE and should saved for different users
 - [x] Initial loading is slow. We need some loading icon.
@@ -48,4 +48,5 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] **In-app data disclaimer** — the README has a disclaimer; also surface a short
       user-facing one in the app (e.g. on Home or a Profile/About screen):
       "community-reported, may be inaccurate, not official NHVR data."
+
 
