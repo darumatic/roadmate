@@ -51,7 +51,7 @@ const _site = Site(
   state: AusState.nsw,
   suburb: 'Marulan',
   address: 'Hume Hwy',
-  currentStatus: SiteStatus.closed, // so the OPEN vote button is unambiguous
+  currentStatus: SiteStatus.closed, // so the open vote button is unambiguous
 );
 
 Site _siteWithLastReport(DateTime lastReportAt) =>
@@ -80,7 +80,7 @@ void main() {
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('OPEN'));
+    await tester.tap(find.text('OPEN/WORKING'));
     await tester.pump();
 
     expect(repo.votes, [('nsw-1', SiteStatus.open)]);

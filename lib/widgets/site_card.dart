@@ -437,6 +437,11 @@ class _VoteButton extends StatelessWidget {
     SiteStatus.closed => Icons.cancel_outlined,
   };
 
+  String get _label => switch (status) {
+    SiteStatus.open => 'OPEN/WORKING',
+    _ => status.label.toUpperCase(),
+  };
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -461,12 +466,16 @@ class _VoteButton extends StatelessWidget {
               color: selected ? status.color : AppTheme.textSecondary,
             ),
             const SizedBox(height: 4),
-            Text(
-              status.label.toUpperCase(),
-              style: TextStyle(
-                color: selected ? status.color : AppTheme.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: selected ? status.color : AppTheme.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
