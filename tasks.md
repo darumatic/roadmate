@@ -17,6 +17,7 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] **Moderation UI** — Add Site submissions are created `approved: false` and
       currently approved **manually** in the Firebase console. Build an in-app
       admin/approval screen (or a lightweight review flow).
+- [ ] Money limits for Firebase. What happens if we consume more than the free tier plan? I want to fail gracefully and stop serving the app.
 
 ## Coordinates & Nearby
 - [ ] **Refine coordinates** — currently town/locality-level (geocoded via OSM
@@ -30,10 +31,19 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] **Android release** — build/sign (keystore) + Play Store listing.
 
 ## Optional / later
+- [ ] Database is in "testing" what does this mean?
+- [ ] Add sites needs to go.
+- [ ] Favourites at the beginning.
+- [ ] Reorganise state based on the location?
+- [ ] Initial loading is slow. We need some loading icon.
+- [ ] Add donations page.
+- [ ] Add about page mentioning Leandro.
+- [ ] What happens with the data from "Report activity"?
 - [ ] **FCM push notifications** for blitz alerts.
 - [ ] **Analytics** (Firebase Analytics already wired via the web config).
 - [ ] **Repo housekeeping** — the 10 MB design video in `screens/` is committed;
       consider Git LFS or removing it from history if repo size matters.
+
 
 ## Documentation & decisions
 - [ ] **LICENSE** — decide proprietary vs. open-source for `roadmate.club` and add
@@ -48,7 +58,7 @@ decisions. Nothing below is blocking — these are next steps.
 ## Done (this build)
 - [x] Flutter app (iOS/Android/web), Firebase (Firestore + anonymous auth)
 - [x] Home, Browse-by-State, state detail, voting, Report, BLITZ banner,
-      Recently Active, Saved, Add Site, Nearby
+      Recently Active, Favourites, Add Site, Nearby
 - [x] 24 real NHVR sites seeded; coordinates geocoded
 - [x] Hardened Firestore security rules (validated votes; pending-site moderation)
 - [x] Web deployed live to Firebase Hosting
