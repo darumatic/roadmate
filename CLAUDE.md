@@ -30,6 +30,8 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 - **Commit attribution: only the user.** Do NOT add `Co-Authored-By: Claude` (or any Claude/Anthropic attribution) to commits — overrides the default Claude Code trailer (per `specs.md`).
 - **Every feature ships with a unit test** (per `specs.md`).
 - Data lives in `sites/nhvr_national_inspection_sites.json` (authoritative, 24 sites). **Coordinates are geocoded (town-level, approximate)** via OSM Nominatim — verify exact positions before production.
+- TASKS.md is for the user to control what is next. Don't write this file but you can use it as a reference.
+- After each substantial change, commit and push the changes to git.
 
 ## Commands
 
