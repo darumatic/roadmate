@@ -5,12 +5,49 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/app.dart';
 import 'package:roadmate/features/info/info_screen.dart';
+import 'package:roadmate/features/home/home_screen.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
+import 'package:roadmate/models/site_report.dart';
+import 'package:roadmate/services/providers.dart';
+import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/startup_service.dart';
 import 'package:roadmate/widgets/load_error.dart';
 import 'package:roadmate/widgets/state_card.dart';
 import 'package:roadmate/widgets/status_badge.dart';
+
+class FakeSiteRepository implements SiteRepository {
+  FakeSiteRepository(this.sites);
+
+  final List<Site> sites;
+
+  @override
+  Stream<List<Site>> watchSites() => Stream.value(sites);
+
+  @override
+  Stream<List<SiteReport>> watchReports(String siteId) =>
+      Stream.value(const []);
+
+  @override
+  Future<void> vote(String siteId, SiteStatus status) async {}
+
+  @override
+  Future<void> report(
+    String siteId,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+  }) async {}
+
+  @override
+  Future<void> addSite(Site site) async {}
+
+  @override
+  Stream<Set<String>> watchFavourites() => Stream.value(const {});
+
+  @override
+  Future<void> toggleFavourite(String siteId) async {}
+}
 
 void main() {
   testWidgets('RoadMateApp shows startup loading while initializing', (
@@ -62,6 +99,36 @@ void main() {
 
     expect(find.text('RoadMate is temporarily unavailable'), findsOneWidget);
     expect(find.byIcon(Icons.cloud_off_outlined), findsOneWidget);
+  });
+
+  testWidgets('Home recently active cards show last activity timestamp', (
+    tester,
+  ) async {
+    final activeSite = Site(
+      id: 'active-1',
+      name: 'Marulan',
+      type: SiteType.checkingStation,
+      state: AusState.nsw,
+      suburb: 'Marulan',
+      address: 'Hume Hwy',
+      currentStatus: SiteStatus.open,
+      lastReportAt: DateTime.now().subtract(const Duration(minutes: 20)),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          siteRepositoryProvider.overrideWithValue(
+            FakeSiteRepository([activeSite]),
+          ),
+        ],
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recently Active'), findsOneWidget);
+    expect(find.text('20m ago'), findsOneWidget);
   });
 
   testWidgets('StateCard shows code, name, site count and blitz badge', (

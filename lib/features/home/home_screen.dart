@@ -142,7 +142,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 96,
+            height: 104,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: recent.length,
@@ -193,7 +193,19 @@ class HomeScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const Spacer(),
+                            Expanded(
+                              child: Text(
+                                _relativeTime(s.lastReportAt!),
+                                textAlign: TextAlign.end,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Text(
                               s.state.code,
                               style: const TextStyle(
@@ -214,4 +226,12 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _relativeTime(DateTime createdAt) {
+  final diff = DateTime.now().difference(createdAt);
+  if (diff.inMinutes < 1) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
 }
