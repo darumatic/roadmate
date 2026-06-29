@@ -37,20 +37,19 @@ void main() {
     expect(find.text('BLITZ'), findsOneWidget);
   });
 
-  testWidgets('InfoScreen explains support and report data', (tester) async {
+  testWidgets('InfoScreen shows disclaimer and about content', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: InfoScreen()));
 
     expect(find.text('Info'), findsOneWidget);
     expect(find.text('Use as a heads-up only'), findsOneWidget);
-    expect(find.text('Report activity data'), findsOneWidget);
-    expect(find.text('Donations'), findsOneWidget);
-    expect(find.text('Support'), findsOneWidget);
-    expect(find.text(InfoScreen.supportEmail), findsOneWidget);
-
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
-    await tester.pump();
-
     expect(find.text('About RoadMate'), findsOneWidget);
+    expect(
+      find.textContaining('Built by Leandro Pervieux and Adrian Deccico.'),
+      findsOneWidget,
+    );
+    expect(find.text('Report activity data'), findsNothing);
+    expect(find.text('Donations'), findsNothing);
+    expect(find.text('Support'), findsNothing);
   });
 
   testWidgets('LoadError shows a friendly temporary outage message', (

@@ -5,8 +5,6 @@ import '../../theme/app_theme.dart';
 class InfoScreen extends StatelessWidget {
   const InfoScreen({super.key});
 
-  static const supportEmail = 'support@roadmate.club';
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,32 +36,10 @@ class InfoScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 12),
                   _InfoBlock(
-                    icon: Icons.notes_rounded,
-                    title: 'Report activity data',
-                    body:
-                        'Activity reports are saved to the selected site in Firestore with the note, anonymous device user ID, and timestamp. They refresh the site activity time and can support future moderation or review tools.',
-                  ),
-                  SizedBox(height: 12),
-                  _InfoBlock(
-                    icon: Icons.volunteer_activism_rounded,
-                    title: 'Donations',
-                    body:
-                        'Donations are not enabled yet. A contribution link can be added here when RoadMate has a confirmed payment account.',
-                  ),
-                  SizedBox(height: 12),
-                  _InfoBlock(
-                    icon: Icons.support_agent_rounded,
-                    title: 'Support',
-                    body:
-                        'For feedback, corrections, or support, email support@roadmate.club.',
-                    selectableBody: supportEmail,
-                  ),
-                  SizedBox(height: 12),
-                  _InfoBlock(
                     icon: Icons.info_outline_rounded,
                     title: 'About RoadMate',
                     body:
-                        'RoadMate AU helps Australian heavy-vehicle drivers share live inspection-site status. Built for Leandro and the RoadMate community.',
+                        'RoadMate AU helps Australian heavy-vehicle drivers share live inspection-site status. Built by Leandro Pervieux and Adrian Deccico.',
                   ),
                 ],
               ),
@@ -80,13 +56,11 @@ class _InfoBlock extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
-    this.selectableBody,
   });
 
   final IconData icon;
   final String title;
   final String body;
-  final String? selectableBody;
 
   @override
   Widget build(BuildContext context) {
@@ -132,16 +106,6 @@ class _InfoBlock extends StatelessWidget {
                       height: 1.35,
                     ),
                   ),
-                  if (selectableBody != null) ...[
-                    const SizedBox(height: 10),
-                    SelectableText(
-                      selectableBody!,
-                      style: const TextStyle(
-                        color: AppTheme.accent,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
