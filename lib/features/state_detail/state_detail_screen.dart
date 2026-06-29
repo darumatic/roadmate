@@ -7,6 +7,7 @@ import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/load_error.dart';
 import '../../widgets/site_card.dart';
 
 class StateDetailScreen extends ConsumerStatefulWidget {
@@ -29,7 +30,7 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
       body: SafeArea(
         child: sitesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          error: (_, _) => const LoadError(),
           data: (allSites) {
             final stateSites = allSites
                 .where((s) => s.state == widget.state)

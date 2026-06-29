@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/load_error.dart';
 import '../../widgets/site_card.dart';
 
 /// Lists the sites the user has starred. Favourite IDs sync via the anonymous uid.
@@ -18,7 +19,7 @@ class FavouritesScreen extends ConsumerWidget {
       body: SafeArea(
         child: sitesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          error: (_, _) => const LoadError(),
           data: (sites) {
             final favourites = sites
                 .where((s) => favouriteIds.contains(s.id))

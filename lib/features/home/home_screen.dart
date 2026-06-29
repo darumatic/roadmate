@@ -8,6 +8,7 @@ import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/blitz_banner.dart';
+import '../../widgets/load_error.dart';
 import '../../widgets/state_card.dart';
 import '../../widgets/stats_bar.dart';
 
@@ -22,16 +23,7 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         child: sitesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Could not load sites:\n$e',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppTheme.textSecondary),
-              ),
-            ),
-          ),
+          error: (_, _) => const LoadError(),
           data: (sites) {
             final counts = countByStatus(sites);
             final byState = groupByState(sites);

@@ -13,11 +13,14 @@ decisions. Nothing below is blocking — these are next steps.
 - [x] Initial loading is slow. We need some loading icon.
 - [x] Add sites needs to go.
 - [ ] Money limits for Firebase. What happens if we consume more than the free tier plan? I want to fail gracefully and stop serving the app.
-- [ ] Add donations page.
-- [ ] Add about page mentioning Leandro.
-- [ ] What happens with the data from "Report activity"?
-- [ ] ci unit tests
-- [ ] add support option. (email reports. What email?)
+      App now shows a friendly temporary-unavailable state when site data cannot
+      load. Actual budget alerts / automatic shutdown still need Firebase owner
+      configuration.
+- [x] Add donations page.
+- [x] Add about page mentioning Leandro.
+- [x] What happens with the data from "Report activity"?
+- [x] ci unit tests
+- [x] add support option. (email reports. What email?)
 
 
 ## BAcklog
@@ -42,7 +45,7 @@ decisions. Nothing below is blocking — these are next steps.
       consider Git LFS or removing it from history if repo size matters.
 - [ ] **LICENSE** — decide proprietary vs. open-source for `roadmate.club` and add
       a `LICENSE` file (owner decision).
-- [ ] **In-app data disclaimer** — the README has a disclaimer; also surface a short
+- [x] **In-app data disclaimer** — the README has a disclaimer; also surface a short
       user-facing one in the app (e.g. on Home or a Profile/About screen):
       "community-reported, may be inaccurate, not official NHVR data."
 - [ ] **Secrets policy (when server-side work starts)** — committed Firebase client

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/home/home_screen.dart';
+import 'features/info/info_screen.dart';
 import 'features/nearby/nearby_screen.dart';
 import 'features/favourites/favourites_screen.dart';
 import 'features/state_detail/state_detail_screen.dart';
@@ -33,6 +34,11 @@ final appRouter = GoRouter(
               path: '/favourites',
               builder: (_, _) => const FavouritesScreen(),
             ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/info', builder: (_, _) => const InfoScreen()),
           ],
         ),
       ],

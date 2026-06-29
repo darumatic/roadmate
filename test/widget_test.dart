@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/app.dart';
+import 'package:roadmate/features/info/info_screen.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/services/startup_service.dart';
+import 'package:roadmate/widgets/load_error.dart';
 import 'package:roadmate/widgets/state_card.dart';
 import 'package:roadmate/widgets/status_badge.dart';
 
@@ -33,6 +35,33 @@ void main() {
       const MaterialApp(home: Scaffold(body: StatusBadge(SiteStatus.blitz))),
     );
     expect(find.text('BLITZ'), findsOneWidget);
+  });
+
+  testWidgets('InfoScreen explains support and report data', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: InfoScreen()));
+
+    expect(find.text('Info'), findsOneWidget);
+    expect(find.text('Use as a heads-up only'), findsOneWidget);
+    expect(find.text('Report activity data'), findsOneWidget);
+    expect(find.text('Donations'), findsOneWidget);
+    expect(find.text('Support'), findsOneWidget);
+    expect(find.text(InfoScreen.supportEmail), findsOneWidget);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pump();
+
+    expect(find.text('About RoadMate'), findsOneWidget);
+  });
+
+  testWidgets('LoadError shows a friendly temporary outage message', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: LoadError())),
+    );
+
+    expect(find.text('RoadMate is temporarily unavailable'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_off_outlined), findsOneWidget);
   });
 
   testWidgets('StateCard shows code, name, site count and blitz badge', (
