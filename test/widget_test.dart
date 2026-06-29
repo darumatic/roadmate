@@ -47,9 +47,10 @@ void main() {
       find.textContaining('Built by Leandro Pervieux and Adrian Deccico.'),
       findsOneWidget,
     );
+    expect(find.text('Support'), findsOneWidget);
+    expect(find.textContaining('info@roadmate.club'), findsOneWidget);
     expect(find.text('Report activity data'), findsNothing);
     expect(find.text('Donations'), findsNothing);
-    expect(find.text('Support'), findsNothing);
   });
 
   testWidgets('LoadError shows a friendly temporary outage message', (

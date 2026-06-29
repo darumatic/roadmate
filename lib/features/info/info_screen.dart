@@ -41,6 +41,12 @@ class InfoScreen extends StatelessWidget {
                     body:
                         'RoadMate AU helps Australian heavy-vehicle drivers share live inspection-site status. Built by Leandro Pervieux and Adrian Deccico.',
                   ),
+                  SizedBox(height: 12),
+                  _InfoBlock(
+                    icon: Icons.support_agent_rounded,
+                    title: 'Support',
+                    body: 'For support, email info@roadmate.club.',
+                  ),
                 ],
               ),
             ),
