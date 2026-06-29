@@ -34,8 +34,8 @@ service cloud.firestore {
       }
     }
 
-    // A user's saved sites live under their own uid and are private to them.
-    match /users/{uid}/saved/{siteId} {
+    // A user's favourite sites live under their own uid and are private to them.
+    match /users/{uid}/favourites/{siteId} {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 

@@ -8,7 +8,7 @@ import '../theme/app_theme.dart';
 import 'status_badge.dart';
 
 /// Card for a single site: shows details and the community actions — status
-/// voting (OPEN/BLITZ/CLOSE), Report activity, and save (star). All writes go
+/// voting (OPEN/BLITZ/CLOSE), Report activity, and favourite (star). All writes go
 /// through [siteRepositoryProvider].
 class SiteCard extends ConsumerWidget {
   const SiteCard({super.key, required this.site});
@@ -17,8 +17,8 @@ class SiteCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final savedIds = ref.watch(savedSiteIdsProvider).value ?? const {};
-    final isSaved = savedIds.contains(site.id);
+    final favouriteIds = ref.watch(favouriteSiteIdsProvider).value ?? const {};
+    final isFavourite = favouriteIds.contains(site.id);
     final repo = ref.read(siteRepositoryProvider);
 
     return Container(
@@ -53,11 +53,13 @@ class SiteCard extends ConsumerWidget {
               IconButton(
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
-                  isSaved ? Icons.star : Icons.star_border,
-                  color: isSaved ? AppTheme.accent : AppTheme.textSecondary,
+                  isFavourite ? Icons.star : Icons.star_border,
+                  color: isFavourite ? AppTheme.accent : AppTheme.textSecondary,
                 ),
-                onPressed: () => repo.toggleSaved(site.id),
-                tooltip: isSaved ? 'Remove from saved' : 'Save',
+                onPressed: () => repo.toggleFavourite(site.id),
+                tooltip: isFavourite
+                    ? 'Remove from favourites'
+                    : 'Add to favourites',
               ),
             ],
           ),

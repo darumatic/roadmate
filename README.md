@@ -43,7 +43,7 @@ lib/
   models/      enums, Site, SiteReport
   services/    SiteRepository (Firestore + local seed), auth, seed,
                status_logic / site_stats / geo (pure, unit-tested)
-  features/    home, state_detail, nearby, saved, add_site
+  features/    home, state_detail, nearby, favourites, add_site
   widgets/     shared UI (site card, state card, stats bar, blitz banner, ...)
 sites/         nhvr_national_inspection_sites.json  (authoritative data, 24 sites)
 firestore.rules

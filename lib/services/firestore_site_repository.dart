@@ -11,7 +11,7 @@ import 'site_repository.dart';
 /// Collections:
 ///   sites/{siteId}
 ///   sites/{siteId}/reports/{reportId}
-///   users/{uid}/saved/{siteId}
+///   users/{uid}/favourites/{siteId}
 class FirestoreSiteRepository implements SiteRepository {
   FirestoreSiteRepository({required this.firestore, required this.auth});
 
@@ -103,31 +103,31 @@ class FirestoreSiteRepository implements SiteRepository {
   }
 
   @override
-  Stream<Set<String>> watchSaved() {
+  Stream<Set<String>> watchFavourites() {
     final uid = _uid;
     if (uid == null) return Stream.value(const {});
     return firestore
         .collection('users')
         .doc(uid)
-        .collection('saved')
+        .collection('favourites')
         .snapshots()
         .map((snap) => snap.docs.map((d) => d.id).toSet());
   }
 
   @override
-  Future<void> toggleSaved(String siteId) async {
+  Future<void> toggleFavourite(String siteId) async {
     final uid = _uid;
     if (uid == null) return;
     final ref = firestore
         .collection('users')
         .doc(uid)
-        .collection('saved')
+        .collection('favourites')
         .doc(siteId);
     final snap = await ref.get();
     if (snap.exists) {
       await ref.delete();
     } else {
-      await ref.set({'savedAt': FieldValue.serverTimestamp()});
+      await ref.set({'favouritedAt': FieldValue.serverTimestamp()});
     }
   }
 }

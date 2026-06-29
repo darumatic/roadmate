@@ -23,6 +23,6 @@ final sitesProvider = StreamProvider<List<Site>>((ref) {
   return ref.watch(siteRepositoryProvider).watchSites();
 });
 
-final savedSiteIdsProvider = StreamProvider<Set<String>>((ref) {
-  return ref.watch(siteRepositoryProvider).watchSaved();
+final favouriteSiteIdsProvider = StreamProvider<Set<String>>((ref) {
+  return ref.watch(siteRepositoryProvider).watchFavourites();
 });

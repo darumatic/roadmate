@@ -5,14 +5,14 @@ import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/site_card.dart';
 
-/// Lists the sites the user has starred. Saved IDs sync via the anonymous uid.
-class SavedScreen extends ConsumerWidget {
-  const SavedScreen({super.key});
+/// Lists the sites the user has starred. Favourite IDs sync via the anonymous uid.
+class FavouritesScreen extends ConsumerWidget {
+  const FavouritesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sitesAsync = ref.watch(sitesProvider);
-    final savedIds = ref.watch(savedSiteIdsProvider).value ?? const {};
+    final favouriteIds = ref.watch(favouriteSiteIdsProvider).value ?? const {};
 
     return Scaffold(
       body: SafeArea(
@@ -20,14 +20,16 @@ class SavedScreen extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('$e')),
           data: (sites) {
-            final saved = sites.where((s) => savedIds.contains(s.id)).toList();
+            final favourites = sites
+                .where((s) => favouriteIds.contains(s.id))
+                .toList();
             return CustomScrollView(
               slivers: [
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
                     child: Text(
-                      'Saved',
+                      'Favourites',
                       style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
@@ -36,18 +38,18 @@ class SavedScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (saved.isEmpty)
+                if (favourites.isEmpty)
                   const SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _EmptySaved(),
+                    child: _EmptyFavourites(),
                   )
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                     sliver: SliverList.separated(
-                      itemCount: saved.length,
+                      itemCount: favourites.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (_, i) => SiteCard(site: saved[i]),
+                      itemBuilder: (_, i) => SiteCard(site: favourites[i]),
                     ),
                   ),
               ],
@@ -59,8 +61,8 @@ class SavedScreen extends ConsumerWidget {
   }
 }
 
-class _EmptySaved extends StatelessWidget {
-  const _EmptySaved();
+class _EmptyFavourites extends StatelessWidget {
+  const _EmptyFavourites();
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +75,7 @@ class _EmptySaved extends StatelessWidget {
             Icon(Icons.star_border, size: 48, color: AppTheme.textSecondary),
             SizedBox(height: 12),
             Text(
-              'No saved sites yet',
+              'No favourites yet',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             SizedBox(height: 6),

@@ -21,11 +21,11 @@ abstract class SiteRepository {
   /// Submit a new (community-added) site.
   Future<void> addSite(Site site);
 
-  /// IDs of sites the current user has saved.
-  Stream<Set<String>> watchSaved();
+  /// IDs of sites the current user has favourited.
+  Stream<Set<String>> watchFavourites();
 
-  /// Toggle a site in/out of the user's saved set.
-  Future<void> toggleSaved(String siteId);
+  /// Toggle a site in/out of the user's favourites set.
+  Future<void> toggleFavourite(String siteId);
 }
 
 /// Parse the authoritative NHVR national dataset

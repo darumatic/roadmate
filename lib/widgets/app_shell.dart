@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Bottom-navigation scaffold wrapping the Home / Nearby / Saved tabs. Uses
+/// Bottom-navigation scaffold wrapping the Home / Nearby / Favourites tabs. Uses
 /// go_router's [StatefulNavigationShell] so each tab keeps its own state.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.navigationShell});
@@ -32,7 +32,7 @@ class AppShell extends StatelessWidget {
           NavigationDestination(
             icon: Icon(Icons.star_border),
             selectedIcon: Icon(Icons.star),
-            label: 'Saved',
+            label: 'Favourites',
           ),
         ],
       ),

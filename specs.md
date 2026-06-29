@@ -64,14 +64,14 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   createdBy.
 - `sites/{siteId}/reports/{reportId}`: status vote and/or activityNote, uid,
   createdAt.
-- `users/{uid}/saved/{siteId}`: a user's saved sites (private to their uid).
+- `users/{uid}/favourites/{siteId}`: a user's favourite sites (private to their uid).
 
 ### Security rules (`firestore.rules` — DEPLOYED & HARDENED)
 Anonymous users may: read sites/reports; cast **validated** status votes (a vote
 must bump exactly one counter by +1, counters can't decrease, currentStatus must
 be a valid value, no other fields change); post activity reports (uid/createdAt
 validated); submit new sites **as pending** (`approved == false`, `createdBy` =
-own uid); manage their own saved list. Deletes disabled. **Test mode closed; all
+own uid); manage their own favourites list. Deletes disabled. **Test mode closed; all
 four write paths verified live under these rules.**
 
 **Moderation:** community-submitted sites are created pending and stay hidden
@@ -104,7 +104,7 @@ They are approximate — verify exact site positions before production.
 | Report activity (free-text) | ✅ Done |
 | "BLITZ DETECTED" banner | ✅ Done & verified |
 | Recently Active list | ✅ Done |
-| Saved (star) — synced per anon uid | ✅ Done & verified |
+| Favourites (star) — synced per anon uid | ✅ Done & verified |
 | Add Site (submission form) → pending moderation | ✅ Done & verified |
 | Nearby (distance-ranked) | ⚙️ Built + unit-tested; **coords geocoded & verified in-bounds**. End-to-end pending real-device geolocation permission (not grantable in automated browser) |
 | iOS build | ✅ **Done & verified** — builds via Swift Package Manager (Firebase), runs on the iOS 26.5 Simulator; Firebase anon auth + Firestore reads live. Deployment target 15.0; location permission in `Info.plist`. Real-device signing still needed for App Store. |

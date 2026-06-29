@@ -20,12 +20,12 @@ class LocalSeedSiteRepository implements SiteRepository {
 
   final _sites = <Site>[];
   final _reports = <String, List<SiteReport>>{};
-  final _saved = <String>{};
+  final _favourites = <String>{};
   bool _loaded = false;
   int _seq = 0;
 
   final _sitesController = StreamController<List<Site>>.broadcast();
-  final _savedController = StreamController<Set<String>>.broadcast();
+  final _favouritesController = StreamController<Set<String>>.broadcast();
   final _reportControllers = <String, StreamController<List<SiteReport>>>{};
 
   Future<void> _ensureLoaded() async {
@@ -101,15 +101,15 @@ class LocalSeedSiteRepository implements SiteRepository {
   }
 
   @override
-  Stream<Set<String>> watchSaved() async* {
-    yield Set.unmodifiable(_saved);
-    yield* _savedController.stream;
+  Stream<Set<String>> watchFavourites() async* {
+    yield Set.unmodifiable(_favourites);
+    yield* _favouritesController.stream;
   }
 
   @override
-  Future<void> toggleSaved(String siteId) async {
-    if (!_saved.add(siteId)) _saved.remove(siteId);
-    _savedController.add(Set.unmodifiable(_saved));
+  Future<void> toggleFavourite(String siteId) async {
+    if (!_favourites.add(siteId)) _favourites.remove(siteId);
+    _favouritesController.add(Set.unmodifiable(_favourites));
   }
 
   void _addReport(SiteReport report) {
@@ -120,7 +120,7 @@ class LocalSeedSiteRepository implements SiteRepository {
 
   void dispose() {
     _sitesController.close();
-    _savedController.close();
+    _favouritesController.close();
     for (final c in _reportControllers.values) {
       c.close();
     }

@@ -11,14 +11,14 @@ import 'package:roadmate/widgets/site_card.dart';
 /// Records calls so the widget's wiring can be asserted.
 class FakeSiteRepository implements SiteRepository {
   final votes = <(String, SiteStatus)>[];
-  final saves = <String>[];
+  final favourites = <String>[];
 
   @override
   Future<void> vote(String siteId, SiteStatus status) async =>
       votes.add((siteId, status));
 
   @override
-  Future<void> toggleSaved(String siteId) async => saves.add(siteId);
+  Future<void> toggleFavourite(String siteId) async => favourites.add(siteId);
 
   @override
   Future<void> report(String siteId, String note) async {}
@@ -34,7 +34,7 @@ class FakeSiteRepository implements SiteRepository {
       Stream.value(const []);
 
   @override
-  Stream<Set<String>> watchSaved() => Stream.value(const {});
+  Stream<Set<String>> watchFavourites() => Stream.value(const {});
 }
 
 const _site = Site(
@@ -70,7 +70,7 @@ void main() {
     expect(repo.votes, [('nsw-1', SiteStatus.open)]);
   });
 
-  testWidgets('tapping the star toggles saved', (tester) async {
+  testWidgets('tapping the star toggles favourite', (tester) async {
     final repo = FakeSiteRepository();
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -78,6 +78,6 @@ void main() {
     await tester.tap(find.byIcon(Icons.star_border));
     await tester.pump();
 
-    expect(repo.saves, ['nsw-1']);
+    expect(repo.favourites, ['nsw-1']);
   });
 }
