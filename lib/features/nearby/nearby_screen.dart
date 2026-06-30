@@ -33,57 +33,61 @@ class NearbyScreen extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'Nearby',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
+        child: RefreshIndicator(
+          onRefresh: () => _refreshNearby(ref),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    'Nearby',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
                   ),
                 ),
               ),
-            ),
-            ...switch ((posAsync, sitesAsync)) {
-              (AsyncLoading(), _) || (_, AsyncLoading()) => [
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ],
-              (AsyncData(value: final pos), AsyncData(value: final sites))
-                  when pos != null =>
-                _results(
-                  context,
-                  nearestSites(sites, pos.latitude, pos.longitude),
-                ),
-              (AsyncData(value: null), _) => [
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _Message(
-                    icon: Icons.location_off_outlined,
-                    title: 'Location unavailable',
-                    body:
-                        'Enable location access to see sites ranked by distance.',
+              ...switch ((posAsync, sitesAsync)) {
+                (AsyncLoading(), _) || (_, AsyncLoading()) => [
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
                   ),
-                ),
-              ],
-              _ => [
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _Message(
-                    icon: Icons.error_outline,
-                    title: 'Something went wrong',
-                    body: 'Could not determine nearby sites.',
+                ],
+                (AsyncData(value: final pos), AsyncData(value: final sites))
+                    when pos != null =>
+                  _results(
+                    context,
+                    nearestSites(sites, pos.latitude, pos.longitude),
                   ),
-                ),
-              ],
-            },
-          ],
+                (AsyncData(value: null), _) => [
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _Message(
+                      icon: Icons.location_off_outlined,
+                      title: 'Location unavailable',
+                      body:
+                          'Enable location access to see sites ranked by distance.',
+                    ),
+                  ),
+                ],
+                _ => [
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _Message(
+                      icon: Icons.error_outline,
+                      title: 'Something went wrong',
+                      body: 'Could not determine nearby sites.',
+                    ),
+                  ),
+                ],
+              },
+            ],
+          ),
         ),
       ),
     );
@@ -133,6 +137,15 @@ class NearbyScreen extends ConsumerWidget {
       ),
     ];
   }
+}
+
+Future<void> _refreshNearby(WidgetRef ref) async {
+  ref.invalidate(currentPositionProvider);
+  ref.invalidate(sitesProvider);
+  await Future.wait([
+    ref.read(currentPositionProvider.future),
+    ref.read(sitesProvider.future),
+  ]);
 }
 
 class _Message extends StatelessWidget {

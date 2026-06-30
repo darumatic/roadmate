@@ -129,6 +129,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(RefreshIndicator), findsOneWidget);
     expect(find.text('Recently Active'), findsOneWidget);
     expect(find.text('OPEN/WORKING'), findsNWidgets(2));
     expect(find.text('OPEN'), findsNothing);

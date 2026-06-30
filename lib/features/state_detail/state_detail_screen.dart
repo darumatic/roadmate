@@ -40,15 +40,27 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
               children: [
                 _topBar(context, stateSites.length),
                 Expanded(
-                  child: filtered.isEmpty
-                      ? _empty(stateSites.isEmpty)
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (_, i) => SiteCard(site: filtered[i]),
-                        ),
+                  child: RefreshIndicator(
+                    onRefresh: () => _refreshSites(ref),
+                    child: filtered.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: 320,
+                                child: _empty(stateSites.isEmpty),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (_, i) => SiteCard(site: filtered[i]),
+                          ),
+                  ),
                 ),
               ],
             );
@@ -134,3 +146,8 @@ AusState stateFromRouteCode(String? code) => AusState.fromCode(code ?? 'NSW');
 /// Exposed for tests: convenience accessor used by the screen.
 List<Site> sitesForState(List<Site> all, AusState state) =>
     all.where((s) => s.state == state).toList();
+
+Future<void> _refreshSites(WidgetRef ref) async {
+  ref.invalidate(sitesProvider);
+  await ref.read(sitesProvider.future);
+}

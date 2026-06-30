@@ -24,42 +24,55 @@ class FavouritesScreen extends ConsumerWidget {
             final favourites = sites
                 .where((s) => favouriteIds.contains(s.id))
                 .toList();
-            return CustomScrollView(
-              slivers: [
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                    child: Text(
-                      'Favourites',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
+            return RefreshIndicator(
+              onRefresh: () => _refreshFavourites(ref),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      child: Text(
+                        'Favourites',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (favourites.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyFavourites(),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                    sliver: SliverList.separated(
-                      itemCount: favourites.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (_, i) => SiteCard(site: favourites[i]),
+                  if (favourites.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyFavourites(),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      sliver: SliverList.separated(
+                        itemCount: favourites.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) => SiteCard(site: favourites[i]),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             );
           },
         ),
       ),
     );
   }
+}
+
+Future<void> _refreshFavourites(WidgetRef ref) async {
+  ref.invalidate(sitesProvider);
+  ref.invalidate(favouriteSiteIdsProvider);
+  await Future.wait([
+    ref.read(sitesProvider.future),
+    ref.read(favouriteSiteIdsProvider.future),
+  ]);
 }
 
 class _EmptyFavourites extends StatelessWidget {

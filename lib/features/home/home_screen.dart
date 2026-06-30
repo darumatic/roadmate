@@ -28,34 +28,38 @@ class HomeScreen extends ConsumerWidget {
             final counts = countByStatus(sites);
             final byState = groupByState(sites);
             final recent = recentlyActive(sites);
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: _header(context, counts, blitzSites(sites)),
-                ),
-                if (recent.isNotEmpty)
-                  SliverToBoxAdapter(child: _recentlyActive(context, recent)),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 260,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.95,
-                        ),
-                    delegate: SliverChildBuilderDelegate((context, i) {
-                      final state = visibleStates[i];
-                      return StateCard(
-                        state: state,
-                        sites: byState[state] ?? const [],
-                        onTap: () => context.go('/state/${state.code}'),
-                      );
-                    }, childCount: visibleStates.length),
+            return RefreshIndicator(
+              onRefresh: () => _refreshSites(ref),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _header(context, counts, blitzSites(sites)),
                   ),
-                ),
-              ],
+                  if (recent.isNotEmpty)
+                    SliverToBoxAdapter(child: _recentlyActive(context, recent)),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 260,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.95,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, i) {
+                        final state = visibleStates[i];
+                        return StateCard(
+                          state: state,
+                          sites: byState[state] ?? const [],
+                          onTap: () => context.go('/state/${state.code}'),
+                        );
+                      }, childCount: visibleStates.length),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -250,6 +254,11 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+Future<void> _refreshSites(WidgetRef ref) async {
+  ref.invalidate(sitesProvider);
+  await ref.read(sitesProvider.future);
 }
 
 String _relativeTime(DateTime createdAt) {

@@ -136,6 +136,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(find.text('Marulan'), findsOneWidget);
       expect(find.text('Eastern Creek'), findsOneWidget);
       expect(find.text('Euroa'), findsNothing);
@@ -161,6 +162,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(
         find.text('No sites listed for Western Australia yet.'),
         findsOneWidget,
@@ -249,6 +251,7 @@ void main() {
       await _pumpScreen(tester, const FavouritesScreen(), repo);
       await tester.pumpAndSettle();
 
+      expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(find.text('No favourites yet'), findsOneWidget);
       expect(find.text('Marulan'), findsNothing);
     });
@@ -265,6 +268,7 @@ void main() {
       await _pumpScreen(tester, const FavouritesScreen(), repo);
       await tester.pumpAndSettle();
 
+      expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(find.text('Euroa'), findsOneWidget);
       expect(find.text('Marulan'), findsNothing);
       expect(find.text('No favourites yet'), findsNothing);
@@ -278,6 +282,7 @@ void main() {
       await _pumpNearbyScreen(tester, repo, () async => null);
       await tester.pumpAndSettle();
 
+      expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(find.text('Location unavailable'), findsOneWidget);
     });
 

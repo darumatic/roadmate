@@ -70,6 +70,18 @@ firebase deploy --only firestore:rules --project roadmate-b1551  # security rule
 ```
 `flutterfire` lives at `~/.pub-cache/bin` (not on PATH by default).
 
+### Firebase emulator tests
+Repository/rules integration tests live under `test/firebase`. They are skipped
+by default so normal widget/unit tests stay fast and offline. Run them with the
+Firebase Emulator Suite:
+
+```bash
+FIREBASE_EMULATOR_TESTS=true firebase emulators:exec --only firestore,auth "flutter test test/firebase"
+```
+
+This requires Java and the Firebase CLI locally, and can also run in GitHub
+Actions with the same command.
+
 ### Approve a community-submitted site (moderation)
 New sites from **Add Site** are stored with `approved: false` and stay hidden
 (`watchSites` filters `approved == true`). To publish one:
