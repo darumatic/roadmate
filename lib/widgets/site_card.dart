@@ -7,10 +7,11 @@ import '../models/site_report.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
+import 'status_labels.dart';
 
 /// Card for a single site: shows details and the community actions — status
-/// voting (OPEN/BLITZ/CLOSE), Report activity, and favourite (star). All writes go
-/// through [siteRepositoryProvider].
+/// voting, Report activity, and favourite (star). All writes go through
+/// [siteRepositoryProvider].
 class SiteCard extends ConsumerWidget {
   const SiteCard({super.key, required this.site});
 
@@ -130,7 +131,7 @@ class SiteCard extends ConsumerWidget {
               if (context.mounted) {
                 _snack(
                   context,
-                  'Reported ${status.label.toUpperCase()} — thanks!',
+                  'Reported ${statusDisplayLabel(status)} — thanks!',
                 );
               }
             },
@@ -437,11 +438,6 @@ class _VoteButton extends StatelessWidget {
     SiteStatus.closed => Icons.cancel_outlined,
   };
 
-  String get _label => switch (status) {
-    SiteStatus.open => 'OPEN/WORKING',
-    _ => status.label.toUpperCase(),
-  };
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -469,7 +465,7 @@ class _VoteButton extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
-                _label,
+                statusDisplayLabel(status),
                 maxLines: 1,
                 style: TextStyle(
                   color: selected ? status.color : AppTheme.textSecondary,

@@ -71,7 +71,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: StatusBadge(SiteStatus.blitz))),
     );
-    expect(find.text('BLITZ'), findsOneWidget);
+    expect(find.text('Blitz'), findsOneWidget);
   });
 
   testWidgets('InfoScreen shows disclaimer and about content', (tester) async {
@@ -131,7 +131,7 @@ void main() {
 
     expect(find.byType(RefreshIndicator), findsOneWidget);
     expect(find.text('Recently Active'), findsOneWidget);
-    expect(find.text('OPEN/WORKING'), findsNWidgets(2));
+    expect(find.text('Open/Working'), findsNWidgets(2));
     expect(find.text('OPEN'), findsNothing);
     expect(find.text('20m ago'), findsOneWidget);
   });
@@ -182,6 +182,6 @@ void main() {
     expect(find.text('VIC'), findsOneWidget);
     expect(find.text('Victoria'), findsOneWidget);
     expect(find.text('1 sites'), findsOneWidget);
-    expect(find.text('BLITZ'), findsOneWidget);
+    expect(find.text('Blitz'), findsOneWidget);
   });
 }

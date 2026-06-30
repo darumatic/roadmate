@@ -80,7 +80,7 @@ void main() {
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('OPEN/WORKING'));
+    await tester.tap(find.text('Open/Working'));
     await tester.pump();
 
     expect(repo.votes, [('nsw-1', SiteStatus.open)]);

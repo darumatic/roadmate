@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/enums.dart';
+import 'status_labels.dart';
 
 /// Small pill showing a site's live [SiteStatus].
 class StatusBadge extends StatelessWidget {
@@ -30,12 +31,12 @@ class StatusBadge extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            status.label.toUpperCase(),
+            statusDisplayLabel(status),
             style: TextStyle(
               color: status.color,
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
+              letterSpacing: 0,
             ),
           ),
         ],

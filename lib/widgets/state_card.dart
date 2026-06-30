@@ -4,6 +4,7 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../services/site_stats.dart';
 import '../theme/app_theme.dart';
+import 'status_labels.dart';
 
 /// A "Browse by State" card showing the state, its site count and a status
 /// breakdown. Highlights when a blitz is active somewhere in the state.
@@ -65,7 +66,7 @@ class StateCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          'BLITZ',
+                          statusDisplayLabel(SiteStatus.blitz),
                           style: TextStyle(
                             color: SiteStatus.blitz.color,
                             fontSize: 10,

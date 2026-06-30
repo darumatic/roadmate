@@ -36,33 +36,30 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
                 .where((s) => s.state == widget.state)
                 .toList();
             final filtered = searchSites(stateSites, _query);
-            return Column(
-              children: [
-                _topBar(context, stateSites.length),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () => _refreshSites(ref),
-                    child: filtered.isEmpty
-                        ? ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              SizedBox(
-                                height: 320,
-                                child: _empty(stateSites.isEmpty),
-                              ),
-                            ],
-                          )
-                        : ListView.separated(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (_, i) => SiteCard(site: filtered[i]),
-                          ),
+            return RefreshIndicator(
+              onRefresh: () => _refreshSites(ref),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _topBar(context, stateSites.length),
                   ),
-                ),
-              ],
+                  if (filtered.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _empty(stateSites.isEmpty),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      sliver: SliverList.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) => SiteCard(site: filtered[i]),
+                      ),
+                    ),
+                ],
+              ),
             );
           },
         ),
