@@ -10,7 +10,9 @@ import '../../theme/app_theme.dart';
 /// Form for submitting a new community site. Validates required fields and
 /// writes through [siteRepositoryProvider].
 class AddSiteScreen extends ConsumerStatefulWidget {
-  const AddSiteScreen({super.key});
+  const AddSiteScreen({super.key, this.initialState = AusState.nsw});
+
+  final AusState initialState;
 
   @override
   ConsumerState<AddSiteScreen> createState() => _AddSiteScreenState();
@@ -21,10 +23,16 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
   final _name = TextEditingController();
   final _address = TextEditingController();
   final _suburb = TextEditingController();
-  AusState _state = AusState.nsw;
+  late AusState _state;
   SiteType _type = SiteType.checkingStation;
   String? _direction;
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _state = widget.initialState;
+  }
 
   @override
   void dispose() {

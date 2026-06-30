@@ -80,6 +80,22 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
                 onPressed: () =>
                     context.canPop() ? context.pop() : context.go('/home'),
               ),
+              const Spacer(),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.textPrimary,
+                  side: const BorderSide(color: AppTheme.border),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+                label: const Text('Add Site'),
+                onPressed: () =>
+                    context.push('/add?state=${widget.state.code}'),
+              ),
             ],
           ),
           Padding(

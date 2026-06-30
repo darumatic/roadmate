@@ -54,7 +54,9 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/add',
       parentNavigatorKey: _rootKey,
-      builder: (_, _) => const AddSiteScreen(),
+      builder: (_, state) => AddSiteScreen(
+        initialState: stateFromRouteCode(state.uri.queryParameters['state']),
+      ),
     ),
   ],
 );

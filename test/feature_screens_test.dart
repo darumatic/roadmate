@@ -179,6 +179,48 @@ void main() {
 
       expect(find.text('No sites match your search.'), findsOneWidget);
     });
+
+    testWidgets('Add Site action opens the submission form for the state', (
+      tester,
+    ) async {
+      final repo = FeatureFakeSiteRepository(
+        sites: [_site(id: 'wa-1', name: 'Northam', state: AusState.wa)],
+      );
+      final router = GoRouter(
+        initialLocation: '/state/WA',
+        routes: [
+          GoRoute(
+            path: '/state/:code',
+            builder: (_, state) => StateDetailScreen(
+              state: stateFromRouteCode(state.pathParameters['code']),
+            ),
+          ),
+          GoRoute(
+            path: '/add',
+            builder: (_, state) => AddSiteScreen(
+              initialState: stateFromRouteCode(
+                state.uri.queryParameters['state'],
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [siteRepositoryProvider.overrideWithValue(repo)],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Add Site'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Site name'), findsOneWidget);
+      expect(find.text('WA — Western Australia'), findsOneWidget);
+    });
   });
 
   group('AddSiteScreen', () {
