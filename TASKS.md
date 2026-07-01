@@ -33,3 +33,6 @@ decisions. Nothing below is blocking — these are next steps.
 - [ ] **LICENSE** — decide proprietary vs. open-source for `roadmate.club` and add
       a `LICENSE` file (owner decision).
 
+- [ ] add timer to assist with rests
+- [ ] page with important links
+
