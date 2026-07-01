@@ -14,6 +14,7 @@ import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/startup_service.dart';
+import 'package:roadmate/widgets/account_panel.dart';
 import 'package:roadmate/widgets/load_error.dart';
 import 'package:roadmate/widgets/state_card.dart';
 import 'package:roadmate/widgets/status_badge.dart';
@@ -77,10 +78,7 @@ void main() {
   });
 
   testWidgets('InfoScreen shows disclaimer and about content', (tester) async {
-    await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: InfoScreen())),
-    );
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(const MaterialApp(home: InfoScreen()));
 
     expect(find.text('Info'), findsOneWidget);
     expect(find.text('Use as a heads-up only'), findsOneWidget);
@@ -93,8 +91,6 @@ void main() {
     expect(find.text(InfoScreen.shareUrl), findsOneWidget);
     expect(find.text('Account'), findsOneWidget);
     expect(find.textContaining('Sign-in is unavailable'), findsOneWidget);
-    // Admin entry is hidden for non-admins.
-    expect(find.text('Open moderation'), findsNothing);
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
     await tester.pumpAndSettle();
@@ -105,23 +101,21 @@ void main() {
     expect(find.text('Donations'), findsNothing);
   });
 
-  testWidgets('InfoScreen shows the admin entry for admins', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          currentUserRoleProvider.overrideWith(
-            (ref) => Stream.value(AppUserRole.admin),
-          ),
-        ],
-        child: const MaterialApp(home: InfoScreen()),
-      ),
+  testWidgets('AdminEntryLink shows only for admins', (tester) async {
+    Widget harness(AppUserRole role) => ProviderScope(
+      key: ValueKey(role),
+      overrides: [
+        currentUserRoleProvider.overrideWith((ref) => Stream.value(role)),
+      ],
+      child: const MaterialApp(home: Scaffold(body: AdminEntryLink())),
     );
-    await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pumpWidget(harness(AppUserRole.truckie));
     await tester.pumpAndSettle();
+    expect(find.text('Open moderation'), findsNothing);
 
-    expect(find.text('Admin'), findsOneWidget);
+    await tester.pumpWidget(harness(AppUserRole.admin));
+    await tester.pumpAndSettle();
     expect(find.text('Open moderation'), findsOneWidget);
   });
 

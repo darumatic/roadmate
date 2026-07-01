@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
@@ -54,6 +55,7 @@ class _AccountPanelState extends ConsumerState<AccountPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _AccountSummary(user: user, role: roleAsync.value),
+            const AdminEntryLink(),
             const SizedBox(height: 12),
             if (user == null || user.isAnonymous)
               _ProviderButton(
@@ -201,6 +203,35 @@ class _AccountSummary extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Link to the moderation area, rendered only when the signed-in user resolves
+/// to the admin role. Self-gating (watches [currentUserRoleProvider]) so it can
+/// be dropped anywhere and unit-tested in isolation.
+class AdminEntryLink extends ConsumerWidget {
+  const AdminEntryLink({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin =
+        ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
+    if (!isAdmin) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.accent,
+            side: const BorderSide(color: AppTheme.border),
+          ),
+          icon: const Icon(Icons.shield_outlined, size: 18),
+          label: const Text('Open moderation'),
+          onPressed: () => context.push('/admin'),
+        ),
+      ),
     );
   }
 }

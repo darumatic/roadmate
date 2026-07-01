@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
 
-class InfoScreen extends ConsumerWidget {
+class InfoScreen extends StatelessWidget {
   const InfoScreen({super.key});
 
   static const shareUrl = 'https://roadmate.club';
@@ -19,9 +16,7 @@ class InfoScreen extends ConsumerWidget {
       '$shareUrl';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin =
-        ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
+  Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
@@ -58,14 +53,10 @@ class InfoScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: 12),
                   _ShareBlock(),
-                  const SizedBox(height: 12),
-                  const AccountPanel(),
-                  if (isAdmin) ...[
-                    const SizedBox(height: 12),
-                    const _AdminBlock(),
-                  ],
-                  const SizedBox(height: 12),
-                  const _InfoBlock(
+                  SizedBox(height: 12),
+                  AccountPanel(),
+                  SizedBox(height: 12),
+                  _InfoBlock(
                     icon: Icons.support_agent_rounded,
                     title: 'Support',
                     body: 'For support, please email: info@roadmate.club',
@@ -181,77 +172,6 @@ class _ShareBlock extends StatelessWidget {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('RoadMate link copied')));
-  }
-}
-
-class _AdminBlock extends StatelessWidget {
-  const _AdminBlock();
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.border),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.shield_outlined,
-                color: AppTheme.accent,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Admin',
-                    style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Review submitted sites and reports.',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.accent,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.fact_check_outlined, size: 18),
-                    label: const Text('Open moderation'),
-                    onPressed: () => context.push('/admin'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
