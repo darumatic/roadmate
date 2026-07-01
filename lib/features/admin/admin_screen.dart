@@ -54,17 +54,38 @@ class _AdminTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         children: [
           TabBar(
             tabs: [
               Tab(icon: Icon(Icons.fact_check_outlined), text: 'Sites'),
-              Tab(icon: Icon(Icons.flag_outlined), text: 'Reports'),
+              Tab(icon: Icon(Icons.how_to_vote_outlined), text: 'Reports'),
+              Tab(icon: Icon(Icons.bolt_outlined), text: 'Activity'),
             ],
           ),
           Expanded(
-            child: TabBarView(children: [_PendingSitesTab(), _ReportsTab()]),
+            child: TabBarView(
+              children: [
+                _PendingSitesTab(),
+                // Status votes (open/blitz/closed).
+                _ReportFeedTab(
+                  filter: _isStatusVote,
+                  emptyIcon: Icons.how_to_vote_outlined,
+                  emptyTitle: 'No status votes',
+                  emptyBody: 'Recent open/blitz/closed votes will appear here.',
+                ),
+                // Activity reports (long queue, delays, police present, etc.).
+                _ReportFeedTab(
+                  filter: _isActivityReport,
+                  emptyIcon: Icons.bolt_outlined,
+                  emptyTitle: 'No activity reports',
+                  emptyBody:
+                      'Recent long queue / delays / police reports will '
+                      'appear here.',
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -286,8 +307,25 @@ class _PendingSiteCardState extends ConsumerState<_PendingSiteCard> {
   }
 }
 
-class _ReportsTab extends ConsumerWidget {
-  const _ReportsTab();
+bool _isStatusVote(SiteReport report) => report.status != null;
+
+bool _isActivityReport(SiteReport report) => report.isActivityReport;
+
+/// A filtered view over [recentAdminReportsProvider]. Both the Reports (status
+/// votes) and Activity (activity reports) tabs share this — a report is one kind
+/// or the other, so each tab just keeps the matching subset.
+class _ReportFeedTab extends ConsumerWidget {
+  const _ReportFeedTab({
+    required this.filter,
+    required this.emptyIcon,
+    required this.emptyTitle,
+    required this.emptyBody,
+  });
+
+  final bool Function(SiteReport report) filter;
+  final IconData emptyIcon;
+  final String emptyTitle;
+  final String emptyBody;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -296,11 +334,14 @@ class _ReportsTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const LoadError(),
       data: (reports) {
-        if (reports.isEmpty) {
-          return const _EmptyAdminState(
-            icon: Icons.flag_outlined,
-            title: 'No reports',
-            body: 'Recent community reports will appear here.',
+        final matches = reports
+            .where((entry) => filter(entry.report))
+            .toList();
+        if (matches.isEmpty) {
+          return _EmptyAdminState(
+            icon: emptyIcon,
+            title: emptyTitle,
+            body: emptyBody,
           );
         }
         return RefreshIndicator(
@@ -308,10 +349,10 @@ class _ReportsTab extends ConsumerWidget {
           child: ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
-            itemCount: reports.length,
+            itemCount: matches.length,
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (_, index) =>
-                _ReportModerationCard(adminReport: reports[index]),
+                _ReportModerationCard(adminReport: matches[index]),
           ),
         );
       },

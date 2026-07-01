@@ -7,6 +7,7 @@ import 'package:roadmate/app.dart';
 import 'package:roadmate/features/admin/admin_screen.dart';
 import 'package:roadmate/features/info/info_screen.dart';
 import 'package:roadmate/features/home/home_screen.dart';
+import 'package:roadmate/models/admin_report.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
@@ -166,7 +167,60 @@ void main() {
 
     expect(find.text('Sites'), findsOneWidget);
     expect(find.text('Reports'), findsOneWidget);
+    expect(find.text('Activity'), findsOneWidget);
     expect(find.text('No pending sites'), findsOneWidget);
+  });
+
+  testWidgets('Admin Reports and Activity tabs split by report kind', (
+    tester,
+  ) async {
+    AdminReport entry(SiteReport report) =>
+        AdminReport(report: report, siteId: 'site-1', siteName: 'Marulan');
+    final now = DateTime.now();
+    final statusVote = entry(
+      SiteReport(
+        id: 'r-status',
+        siteId: 'site-1',
+        createdAt: now,
+        status: SiteStatus.open,
+      ),
+    );
+    final activity = entry(
+      SiteReport(
+        id: 'r-activity',
+        siteId: 'site-1',
+        createdAt: now,
+        activityType: ActivityReportType.longQueue,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserRoleProvider.overrideWith(
+            (ref) => Stream.value(AppUserRole.admin),
+          ),
+          pendingSitesProvider.overrideWith((ref) => Stream.value(const [])),
+          recentAdminReportsProvider.overrideWith(
+            (ref) => Stream.value([statusVote, activity]),
+          ),
+        ],
+        child: const MaterialApp(home: AdminScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Reports tab shows the status vote, not the activity report.
+    await tester.tap(find.text('Reports'));
+    await tester.pumpAndSettle();
+    expect(find.text('Status: Open'), findsOneWidget);
+    expect(find.text('Long queue'), findsNothing);
+
+    // Activity tab shows the activity report, not the status vote.
+    await tester.tap(find.text('Activity'));
+    await tester.pumpAndSettle();
+    expect(find.text('Long queue'), findsOneWidget);
+    expect(find.text('Status: Open'), findsNothing);
   });
 
   testWidgets('Home recently active cards show last activity timestamp', (
