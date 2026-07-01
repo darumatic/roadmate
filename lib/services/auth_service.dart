@@ -1,6 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Ensures the user is signed in anonymously and exposes their uid. Anonymous
@@ -76,21 +77,35 @@ class AuthController {
     UserCredential credential;
     if (current != null && current.isAnonymous) {
       try {
-        credential = await current.linkWithProvider(provider);
+        credential = await _linkCurrentUser(current, provider);
       } on FirebaseAuthException catch (e) {
         if (e.code != 'credential-already-in-use' &&
             e.code != 'provider-already-linked' &&
             e.code != 'email-already-in-use') {
           rethrow;
         }
-        credential = await auth.signInWithProvider(provider);
+        credential = await _signIn(provider);
       }
     } else {
-      credential = await auth.signInWithProvider(provider);
+      credential = await _signIn(provider);
     }
 
     await syncUser(credential.user);
     return credential;
+  }
+
+  // firebase_auth exposes the *Provider variants only on mobile/desktop; web
+  // must use the popup flow, otherwise it throws UnimplementedError.
+  Future<UserCredential> _signIn(AuthProvider provider) {
+    return kIsWeb
+        ? auth.signInWithPopup(provider)
+        : auth.signInWithProvider(provider);
+  }
+
+  Future<UserCredential> _linkCurrentUser(User user, AuthProvider provider) {
+    return kIsWeb
+        ? user.linkWithPopup(provider)
+        : user.linkWithProvider(provider);
   }
 
   Future<void> syncUser(User? user) async {
