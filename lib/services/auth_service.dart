@@ -19,9 +19,12 @@ const initialAdminEmails = {
 
 enum AppUserRole { anonymous, truckie, admin }
 
+// userChanges() (not authStateChanges()) so the UI reacts when an anonymous
+// account is *linked* to a provider — linking keeps the same uid, so
+// authStateChanges() never fires for it.
 final authStateProvider = StreamProvider<User?>((ref) {
   if (Firebase.apps.isEmpty) return Stream.value(null);
-  return ref.watch(firebaseAuthProvider).authStateChanges();
+  return ref.watch(firebaseAuthProvider).userChanges();
 });
 
 final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) async* {
@@ -32,7 +35,7 @@ final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) async* {
 
   final auth = ref.watch(firebaseAuthProvider);
   final firestore = FirebaseFirestore.instance;
-  await for (final user in auth.authStateChanges()) {
+  await for (final user in auth.userChanges()) {
     if (user == null) {
       yield AppUserRole.anonymous;
       continue;

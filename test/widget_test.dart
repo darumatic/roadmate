@@ -77,7 +77,10 @@ void main() {
   });
 
   testWidgets('InfoScreen shows disclaimer and about content', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: InfoScreen()));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: InfoScreen())),
+    );
+    await tester.pumpAndSettle();
 
     expect(find.text('Info'), findsOneWidget);
     expect(find.text('Use as a heads-up only'), findsOneWidget);
@@ -90,6 +93,8 @@ void main() {
     expect(find.text(InfoScreen.shareUrl), findsOneWidget);
     expect(find.text('Account'), findsOneWidget);
     expect(find.textContaining('Sign-in is unavailable'), findsOneWidget);
+    // Admin entry is hidden for non-admins.
+    expect(find.text('Open moderation'), findsNothing);
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
     await tester.pumpAndSettle();
@@ -98,6 +103,26 @@ void main() {
     expect(find.textContaining('info@roadmate.club'), findsOneWidget);
     expect(find.text('Report activity data'), findsNothing);
     expect(find.text('Donations'), findsNothing);
+  });
+
+  testWidgets('InfoScreen shows the admin entry for admins', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserRoleProvider.overrideWith(
+            (ref) => Stream.value(AppUserRole.admin),
+          ),
+        ],
+        child: const MaterialApp(home: InfoScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Admin'), findsOneWidget);
+    expect(find.text('Open moderation'), findsOneWidget);
   });
 
   testWidgets('LoadError shows a friendly temporary outage message', (
