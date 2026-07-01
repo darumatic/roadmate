@@ -38,6 +38,6 @@ Never commit signing keys, service account JSON, `android/key.properties`, or ge
 
 When requirements are not clear, ask questions first. Write pending tasks in a simple list in "AGENT-TODO.MD" 
 
-After implementing changes, test them with the available tests and then commit and push the code. Verify the results of the Github checks as well. After all of that is successful, the task is done. If there is any issue, please retry.
+After implementing changes, test them locally with the relevant available checks. If the local checks pass, commit the changes and push them to GitHub before reporting the task as complete. Verify the GitHub checks after the push; the task is only done when the local checks, push, and GitHub checks have all succeeded. If any step fails, fix the issue and retry.
 
 Anything you learn about the business rules and business logic must be written and kept-updated in specs.md
