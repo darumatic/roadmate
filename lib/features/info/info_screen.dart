@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/account_panel.dart';
 
 class InfoScreen extends StatelessWidget {
   const InfoScreen({super.key});
@@ -52,6 +53,8 @@ class InfoScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 12),
                   _ShareBlock(),
+                  SizedBox(height: 12),
+                  AccountPanel(),
                   SizedBox(height: 12),
                   _InfoBlock(
                     icon: Icons.support_agent_rounded,

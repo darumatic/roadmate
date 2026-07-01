@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/app.dart';
+import 'package:roadmate/features/admin/admin_screen.dart';
 import 'package:roadmate/features/info/info_screen.dart';
 import 'package:roadmate/features/home/home_screen.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/providers.dart';
+import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/startup_service.dart';
 import 'package:roadmate/widgets/load_error.dart';
@@ -86,6 +88,12 @@ void main() {
     );
     expect(find.text('Share RoadMate'), findsWidgets);
     expect(find.text(InfoScreen.shareUrl), findsOneWidget);
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.textContaining('Sign-in is unavailable'), findsOneWidget);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+
     expect(find.text('Support'), findsOneWidget);
     expect(find.textContaining('info@roadmate.club'), findsOneWidget);
     expect(find.text('Report activity data'), findsNothing);
@@ -101,6 +109,45 @@ void main() {
 
     expect(find.text('RoadMate is temporarily unavailable'), findsOneWidget);
     expect(find.byIcon(Icons.cloud_off_outlined), findsOneWidget);
+  });
+
+  testWidgets('AdminScreen prompts non-admin users', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserRoleProvider.overrideWith(
+            (ref) => Stream.value(AppUserRole.anonymous),
+          ),
+        ],
+        child: const MaterialApp(home: AdminScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Admin sign-in required'), findsOneWidget);
+    expect(find.text('Sites'), findsNothing);
+  });
+
+  testWidgets('AdminScreen shows admin tabs', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserRoleProvider.overrideWith(
+            (ref) => Stream.value(AppUserRole.admin),
+          ),
+          pendingSitesProvider.overrideWith((ref) => Stream.value(const [])),
+          recentAdminReportsProvider.overrideWith(
+            (ref) => Stream.value(const []),
+          ),
+        ],
+        child: const MaterialApp(home: AdminScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sites'), findsOneWidget);
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.text('No pending sites'), findsOneWidget);
   });
 
   testWidgets('Home recently active cards show last activity timestamp', (

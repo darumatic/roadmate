@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/site.dart';
 import '../models/site_report.dart';
+import '../models/admin_report.dart';
+import 'admin_repository.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
@@ -28,6 +30,13 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
 
 final statusLogicProvider = Provider<StatusLogic>((ref) => const StatusLogic());
 
+final adminRepositoryProvider = Provider<AdminRepository>((ref) {
+  return AdminRepository(
+    firestore: FirebaseFirestore.instance,
+    auth: ref.watch(firebaseAuthProvider),
+  );
+});
+
 final sitesProvider = StreamProvider<List<Site>>((ref) {
   return ref.watch(siteRepositoryProvider).watchSites();
 });
@@ -41,4 +50,12 @@ final siteReportsProvider = StreamProvider.family<List<SiteReport>, String>((
   siteId,
 ) {
   return ref.watch(siteRepositoryProvider).watchReports(siteId);
+});
+
+final pendingSitesProvider = StreamProvider<List<Site>>((ref) {
+  return ref.watch(adminRepositoryProvider).watchPendingSites();
+});
+
+final recentAdminReportsProvider = StreamProvider<List<AdminReport>>((ref) {
+  return ref.watch(adminRepositoryProvider).watchRecentReports();
 });

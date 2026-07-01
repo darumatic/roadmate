@@ -1,16 +1,32 @@
 rules_version = '2';
 
 // RoadMate AU security rules.
-// Identity is anonymous Firebase Auth (request.auth != null for any app user).
+// Identity may be anonymous Firebase Auth or optional social sign-in.
 // Posture: signed-in users may read sites/reports; cast status votes (validated
 // so a vote bumps exactly one counter by 1); post activity reports; save sites
 // under their own uid; and submit NEW sites as *pending* (approved == false).
-// Official seeded sites (approved == true) are admin-managed.
+// Official seeded sites (approved == true) and moderation actions are
+// admin-managed.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() {
       return request.auth != null;
+    }
+
+    function isInitialAdminEmail() {
+      return signedIn()
+        && request.auth.token.email in [
+          'r3procamel@gmail.com',
+          'hello@adrian2045.com',
+          'adrian@darumatic.com'
+        ];
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/userRoles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userRoles/$(request.auth.uid)).data.role == 'admin';
     }
 
     match /sites/{siteId} {
@@ -23,22 +39,47 @@ service cloud.firestore {
       // Two permitted update shapes:
       //  - a validated status vote (one counter +1, valid status), or
       //  - a bare lastReportAt touch (accompanies an activity report).
-      allow update: if signedIn() && (isValidVote() || isReportTouch());
+      allow update: if isAdmin()
+        || (signedIn() && (isValidVote() || isReportTouch()));
 
       allow delete: if false;
 
       match /reports/{reportId} {
         allow read: if true;
         allow create: if signedIn() && isValidReport(siteId);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isAdmin();
       }
     }
 
-    // A user's favourite sites live under their own uid and are private to them.
-    match /users/{uid}/favourites/{siteId} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+    match /userRoles/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && isInitialAdminEmail()
+        && request.resource.data.keys().hasOnly([
+          'role', 'email', 'bootstrappedAt'
+        ])
+        && request.resource.data.role == 'admin'
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.bootstrappedAt == request.time;
+      allow update, delete: if false;
     }
 
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          'email', 'displayName', 'photoUrl', 'isAnonymous', 'lastSeenAt'
+        ]);
+      allow delete: if false;
+
+      // A user's favourite sites live under their own uid and are private to them.
+      match /favourites/{siteId} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+    }
     function affectedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/admin/admin_screen.dart';
 import 'features/add_site/add_site_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/info/info_screen.dart';
@@ -72,6 +73,12 @@ final appRouter = GoRouter(
       builder: (_, state) => AddSiteScreen(
         initialState: stateFromRouteCode(state.uri.queryParameters['state']),
       ),
+    ),
+    GoRoute(
+      path: '/admin',
+      name: 'admin',
+      parentNavigatorKey: _rootKey,
+      builder: (_, _) => const AdminScreen(),
     ),
   ],
 );
