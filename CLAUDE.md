@@ -56,3 +56,8 @@ firebase deploy --only hosting --project roadmate-b1551           # publish web 
 - When re-verifying the web build in a browser, **bust the service-worker cache** (unregister SW + `caches.delete`, or load a `?cachebust` URL) or you'll see a stale build.
 - Flutter web uses CanvasKit; emoji/icon fonts load async (brief tofu on first paint is expected, not a bug).
 - Sites are publicly readable, so you can inspect Firestore data via the REST API with the web apiKey: `GET https://firestore.googleapis.com/v1/projects/roadmate-b1551/databases/(default)/documents/sites?key=<apiKey>`.
+
+
+## Release Information
+- Google Play Service Account: roadmate-play-uploader@roadmate-play-release-501004.iam.gserviceaccount.com
+
