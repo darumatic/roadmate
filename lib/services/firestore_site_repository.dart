@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
+import 'auth_service.dart';
 import 'site_repository.dart';
 
 /// Firestore-backed [SiteRepository].
@@ -20,8 +21,6 @@ class FirestoreSiteRepository implements SiteRepository {
 
   CollectionReference<Map<String, dynamic>> get _sites =>
       firestore.collection('sites');
-
-  String? get _uid => auth.currentUser?.uid;
 
   /// Firestore returns [Timestamp]s; convert them to ISO strings so the
   /// Firebase-agnostic model parsers can read them.
@@ -63,12 +62,13 @@ class FirestoreSiteRepository implements SiteRepository {
 
   @override
   Future<void> vote(String siteId, SiteStatus status) async {
+    final uid = await ensureSignedIn(auth);
     final reportRef = _sites.doc(siteId).collection('reports').doc();
     final batch = firestore.batch();
     batch.set(reportRef, {
       'siteId': siteId,
       'status': status.name,
-      'uid': _uid,
+      'uid': uid,
       'createdAt': FieldValue.serverTimestamp(),
     });
     batch.update(_sites.doc(siteId), {
@@ -86,10 +86,11 @@ class FirestoreSiteRepository implements SiteRepository {
     String? activityNote,
     String? reporterName,
   }) async {
+    final uid = await ensureSignedIn(auth);
     final data = <String, dynamic>{
       'siteId': siteId,
       'activityType': activityType.name,
-      'uid': _uid,
+      'uid': uid,
       'createdAt': FieldValue.serverTimestamp(),
     };
     final note = activityNote?.trim();
@@ -105,31 +106,33 @@ class FirestoreSiteRepository implements SiteRepository {
 
   @override
   Future<void> addSite(Site site) async {
+    final uid = await ensureSignedIn(auth);
     final ref = site.id.isEmpty ? _sites.doc() : _sites.doc(site.id);
     await ref.set({
       ...site.toMap(),
       'approved': false, // pending moderation before it becomes visible
-      'createdBy': _uid,
+      'createdBy': uid,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
   @override
   Stream<Set<String>> watchFavourites() {
-    final uid = _uid;
-    if (uid == null) return Stream.value(const {});
-    return firestore
-        .collection('users')
-        .doc(uid)
-        .collection('favourites')
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => d.id).toSet());
+    return auth.authStateChanges().asyncExpand((user) {
+      final uid = user?.uid;
+      if (uid == null) return Stream.value(const <String>{});
+      return firestore
+          .collection('users')
+          .doc(uid)
+          .collection('favourites')
+          .snapshots()
+          .map((snap) => snap.docs.map((d) => d.id).toSet());
+    });
   }
 
   @override
   Future<void> toggleFavourite(String siteId) async {
-    final uid = _uid;
-    if (uid == null) return;
+    final uid = await ensureSignedIn(auth);
     final ref = firestore
         .collection('users')
         .doc(uid)

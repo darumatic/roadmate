@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/site.dart';
 import '../models/site_report.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
+import 'local_seed_repository.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 
@@ -12,6 +14,12 @@ import 'status_logic.dart';
 /// concrete implementation. (The bundled-seed `LocalSeedSiteRepository` remains
 /// available for offline/dev use and tests.)
 final siteRepositoryProvider = Provider<SiteRepository>((ref) {
+  if (Firebase.apps.isEmpty) {
+    final repo = LocalSeedSiteRepository();
+    ref.onDispose(repo.dispose);
+    return repo;
+  }
+
   return FirestoreSiteRepository(
     firestore: FirebaseFirestore.instance,
     auth: ref.watch(firebaseAuthProvider),

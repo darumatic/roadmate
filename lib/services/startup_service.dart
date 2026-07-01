@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,17 +9,25 @@ import '../firebase_options.dart';
 import 'auth_service.dart';
 import 'seed_service.dart';
 
-/// Initializes Firebase and the anonymous user identity before the routed app
-/// reads Firestore-backed providers.
+/// Initializes Firebase before the routed app reads Firestore-backed providers.
+/// If Firebase is slow or unavailable, startup continues with the bundled seed
+/// repository so the app does not remain on the loading screen indefinitely.
 final appStartupProvider = FutureProvider<void>((ref) async {
+  var firebaseReady = Firebase.apps.isNotEmpty;
   if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).timeout(const Duration(seconds: 8));
+      firebaseReady = true;
+    } catch (_) {
+      firebaseReady = false;
+    }
   }
 
-  await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
-  await ensureSignedIn(FirebaseAuth.instance);
+  if (!firebaseReady) return;
+
+  unawaited(ensureSignedIn(FirebaseAuth.instance).catchError((_) => ''));
 
   unawaited(_runSeedMaintenance());
 });

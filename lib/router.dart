@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/add_site/add_site_screen.dart';
@@ -13,22 +11,15 @@ import 'widgets/app_shell.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
 
-List<NavigatorObserver> _analyticsObservers() {
-  if (Firebase.apps.isEmpty) return const [];
-  return [FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance)];
-}
-
 final appRouter = GoRouter(
   navigatorKey: _rootKey,
   initialLocation: '/home',
-  observers: _analyticsObservers(),
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           AppShell(navigationShell: navigationShell),
       branches: [
         StatefulShellBranch(
-          observers: _analyticsObservers(),
           routes: [
             GoRoute(
               path: '/home',
@@ -38,7 +29,6 @@ final appRouter = GoRouter(
           ],
         ),
         StatefulShellBranch(
-          observers: _analyticsObservers(),
           routes: [
             GoRoute(
               path: '/nearby',
@@ -48,7 +38,6 @@ final appRouter = GoRouter(
           ],
         ),
         StatefulShellBranch(
-          observers: _analyticsObservers(),
           routes: [
             GoRoute(
               path: '/favourites',
@@ -58,7 +47,6 @@ final appRouter = GoRouter(
           ],
         ),
         StatefulShellBranch(
-          observers: _analyticsObservers(),
           routes: [
             GoRoute(
               path: '/info',
