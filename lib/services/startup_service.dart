@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../firebase_options.dart';
 import 'auth_service.dart';
+import 'error_reporter.dart';
 import 'seed_service.dart';
 
 /// Initializes Firebase before the routed app reads Firestore-backed providers.
@@ -26,6 +28,10 @@ final appStartupProvider = FutureProvider<void>((ref) async {
   }
 
   if (!firebaseReady) return;
+
+  // Enable crash reporting now that Firebase is up (native only; no-op on web).
+  // Off in debug builds to avoid noisy uploads while developing.
+  const ErrorReporter().setCollectionEnabled(!kDebugMode);
 
   unawaited(ensureSignedIn(FirebaseAuth.instance).catchError((_) => ''));
 

@@ -109,6 +109,13 @@
         any time in your device settings; the rest of the app still works.
       </li>
       <li>
+        <strong>Crash diagnostics (mobile apps).</strong> If the app crashes on iOS or
+        Android, Firebase Crashlytics collects a crash report — the error and its stack
+        trace, plus device information such as model, operating-system version, and app
+        version — so we can diagnose and fix the problem. This is not collected on the
+        web app.
+      </li>
+      <li>
         <strong>Usage analytics (web only).</strong> Our website uses Google Analytics
         to understand aggregate usage (for example, page visits and general device
         and region information). This may set cookies and collect standard technical
@@ -131,8 +138,9 @@
 
     <h2>Service providers</h2>
     <p>
-      We use Google Firebase (Authentication, Cloud Firestore, and Hosting) and
-      Google Analytics to operate the app. Data is processed by Google on our behalf.
+      We use Google Firebase (Authentication, Cloud Firestore, Hosting, and — on the
+      mobile apps — Crashlytics crash reporting) and Google Analytics to operate the
+      app. Data is processed by Google on our behalf.
       For details of how Google handles data, see the
       <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google Privacy Policy</a>
       and
