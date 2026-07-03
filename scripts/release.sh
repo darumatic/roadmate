@@ -1,29 +1,46 @@
 #!/usr/bin/env bash
-# Release RoadMate: bump the patch version, rebuild web, deploy to Firebase, and
-# commit + push the version bump. One command per release.
+# Full release cycle for RoadMate. Runs the mandatory steps in order:
+#   local tests -> bump patch version -> commit & push -> GitHub CI check -> deploy to prod
 #
-#   ./scripts/release.sh
+#   ./scripts/release.sh                       # cuts a release of the committed tree
+#   ./scripts/release.sh "Fix blitz banner"    # bundles staged/working changes under that message
+#
+# Any working-tree changes are committed with the given message (or a default
+# "Release vX.Y.Z"). Deploy only happens after GitHub CI goes green.
 set -euo pipefail
 
-# This VPS's tool locations (flutter / flutterfire are not on the default PATH).
+# This VPS's tool locations (flutter / firebase are not on the default PATH).
 export PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"
 
 cd "$(dirname "$0")/.."
 
-echo "==> Bumping version"
-dart run tool/bump_version.dart
-new_version="$(grep -oE "appVersion = '[^']+'" lib/version.dart | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")"
-echo "    now v${new_version}"
+msg="${1:-}"
 
-echo "==> Building web"
+echo "==> Local checks (analyze + test)"
+flutter analyze
+flutter test
+
+echo "==> Bump patch version"
+dart run tool/bump_version.dart
+new_version="$(grep -oE "[0-9]+\.[0-9]+\.[0-9]+" lib/version.dart | head -1)"
+if [ -z "$msg" ]; then
+  msg="Release v${new_version}"
+fi
+echo "    ${msg}"
+
+echo "==> Commit & push"
+git add -A
+git commit -m "$msg"
+git push
+sha="$(git rev-parse HEAD)"
+
+echo "==> GitHub CI check (${sha})"
+./scripts/check_ci.sh "$sha"
+
+echo "==> Build web"
 flutter build web --no-tree-shake-icons
 
-echo "==> Deploying to Firebase"
+echo "==> Deploy to prod"
 firebase deploy --only hosting,firestore:rules,firestore:indexes
 
-echo "==> Committing version bump"
-git add pubspec.yaml lib/version.dart
-git commit -m "Release v${new_version}"
-git push
-
-echo "==> Released v${new_version}"
+echo "==> Released v${new_version} -> https://roadmate.club"

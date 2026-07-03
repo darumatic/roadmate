@@ -31,24 +31,32 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 - **Every feature ships with a unit test** (per `specs.md`).
 - Data lives in `sites/nhvr_national_inspection_sites.json` (authoritative, 24 sites). **Coordinates are geocoded (town-level, approximate)** via OSM Nominatim — verify exact positions before production.
 - TASKS.md is for the user to control what is next. Don't write this file but you can use it as a reference.
-- After each substantial change, commit and push the changes to git.
+- **Every change follows the full release cycle (the owner has standing authorization to deploy to prod):**
+  1. **Local tests** — `flutter test` + `flutter analyze` (both must be clean). When fixing a bug or adding a feature, **add/update unit tests** for it first.
+  2. **Commit & push** to `master` (commit attribution: only the user — see above).
+  3. **Remote checks on GitHub** — wait for the **Flutter CI** Actions run on that commit to go **green** before deploying (`scripts/check_ci.sh <sha>` polls the public API; no `gh`/token needed).
+  4. **Deploy to prod** — publish web + Firestore rules/indexes.
+  - `scripts/release.sh` runs all four in order (and bumps the patch version — see the version tooling); prefer it over doing the steps by hand. It **only deploys if CI is green**.
 
 ## Commands
 
-`flutter` is installed via Homebrew at `/opt/homebrew/bin` (Flutter 3.44.x).
-
-`firebase`/`flutterfire` are installed; `flutterfire` is at `~/.pub-cache/bin` (not on default PATH — call with full path or add it).
+Deploy runs on a Linux VPS. `flutter` lives at `/opt/flutter/bin` and `firebase`/`flutterfire` at `~/.pub-cache/bin` — **neither is on the default PATH**, so scripts export `PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"`. Firebase is authenticated (`firebase login`, headless via `--no-localhost`); `.firebaserc` sets the default project so `--project` is optional.
 
 ```bash
+./scripts/release.sh [msg]         # FULL CYCLE: test+analyze -> bump -> commit+push -> CI check -> deploy
+./scripts/check_ci.sh [sha]        # poll GitHub Flutter CI for a commit until green (0=pass)
+dart run tool/bump_version.dart    # bump patch in pubspec.yaml + regen lib/version.dart (used by release.sh)
+
 flutter run -d chrome              # run the web app
-flutter test                       # all unit tests (30)
+flutter test                       # all unit tests
 flutter test test/<file>_test.dart # a single test file
 flutter analyze                    # static analysis (keep clean)
 dart format .                      # format
 flutter build web --no-tree-shake-icons  # web release build
-firebase deploy --only firestore:rules --project roadmate-b1551   # deploy rules
-firebase deploy --only hosting --project roadmate-b1551           # publish web (NOT yet done — get owner OK)
+firebase deploy --only hosting,firestore:rules,firestore:indexes   # publish web + rules + indexes (LIVE)
 ```
+
+**Versioning:** `pubspec.yaml` `version:` is the source of truth; `lib/version.dart` (`appVersion`) is a **generated** display constant baked into the build and shown at the bottom of the Info tab. Each release bumps the patch (`1.0.0 → 1.0.1`) via `tool/bump_version.dart`; the bump logic is unit-tested in `lib/services/version_logic.dart`.
 
 ## Environment notes
 
