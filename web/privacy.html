@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Privacy Policy — RoadMate AU</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --card: #131316;
+      --border: #2a2a2e;
+      --text: #f5f5f7;
+      --muted: #9a9aa2;
+      --accent: #f97316;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); }
+    body {
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+      font-size: 16px;
+      -webkit-text-size-adjust: 100%;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .mark {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: rgba(249, 115, 22, 0.14);
+      border: 1px solid rgba(249, 115, 22, 0.55);
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 16px;
+    }
+    .brand-name { font-weight: 800; font-size: 18px; }
+    .brand-tag { color: var(--muted); font-size: 13px; }
+    h1 { font-size: 28px; font-weight: 800; margin: 8px 0 4px; }
+    .updated { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    h2 { font-size: 19px; font-weight: 700; margin: 32px 0 8px; }
+    p, li { color: var(--text); }
+    a { color: var(--accent); }
+    ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px 18px; margin-top: 24px;
+    }
+    .muted { color: var(--muted); }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">RM</div>
+      <div>
+        <div class="brand-name">RoadMate AU</div>
+        <div class="brand-tag">Know before you roll.</div>
+      </div>
+    </div>
+
+    <h1>Privacy Policy</h1>
+    <div class="updated">Last updated: 3 July 2026</div>
+
+    <p>
+      RoadMate AU ("RoadMate", "we", "us") is a community app for Australian
+      heavy-vehicle drivers to view and share the live status of NHVR (National
+      Heavy Vehicle Regulator) inspection and compliance sites. It is available as
+      a mobile app (iOS and Android) and a web app at
+      <a href="https://roadmate.club">roadmate.club</a>. This policy explains what
+      information the app handles and why.
+    </p>
+    <p>
+      RoadMate is designed to be low-friction and privacy-respecting: <strong>you do
+      not create an account, and we do not ask for your name, email address, or phone
+      number to use the app.</strong>
+    </p>
+
+    <h2>Information we handle</h2>
+    <ul>
+      <li>
+        <strong>Anonymous device identity.</strong> When you open the app, we sign
+        you in with Firebase Anonymous Authentication. This creates a random,
+        device-based identifier (an anonymous user ID) that lets the app remember
+        your favourites and attribute your contributions. It is not linked to your
+        real-world identity, and we cannot use it to personally identify you.
+      </li>
+      <li>
+        <strong>Contributions you make.</strong> Status votes (Open / Blitz / Closed),
+        activity reports (free text you type), and new sites you submit are stored in
+        our database (Google Cloud Firestore) alongside your anonymous ID and a
+        timestamp. Please do not include personal or sensitive information in
+        free-text reports, as this content is shared with other users of the app.
+      </li>
+      <li>
+        <strong>Favourites.</strong> Sites you star are stored against your anonymous
+        ID so they sync back to you.
+      </li>
+      <li>
+        <strong>Location.</strong> If you use the "Nearby" feature and grant location
+        permission, the app reads your device's current location to rank sites by
+        distance <em>on your device</em>. Your location is <strong>not</strong> sent
+        to us or stored on our servers. You can decline or revoke this permission at
+        any time in your device settings; the rest of the app still works.
+      </li>
+      <li>
+        <strong>Usage analytics (web only).</strong> Our website uses Google Analytics
+        to understand aggregate usage (for example, page visits and general device
+        and region information). This may set cookies and collect standard technical
+        data such as your IP address and browser type. See Google's practices below,
+        and note that browser controls and "Do Not Track" settings can limit this.
+      </li>
+    </ul>
+
+    <h2>How we use this information</h2>
+    <ul>
+      <li>To run the core service — showing live, community-sourced site status.</li>
+      <li>To remember your favourites and attribute your contributions to your device.</li>
+      <li>To moderate submissions (new sites are reviewed before appearing publicly).</li>
+      <li>To understand aggregate usage and improve the app.</li>
+    </ul>
+    <p class="muted">
+      We do <strong>not</strong> sell your data, and we do <strong>not</strong> use it
+      for advertising. RoadMate contains no third-party ad networks.
+    </p>
+
+    <h2>Service providers</h2>
+    <p>
+      We use Google Firebase (Authentication, Cloud Firestore, and Hosting) and
+      Google Analytics to operate the app. Data is processed by Google on our behalf.
+      For details of how Google handles data, see the
+      <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google Privacy Policy</a>
+      and
+      <a href="https://firebase.google.com/support/privacy" rel="noopener" target="_blank">Firebase Privacy and Security</a>.
+    </p>
+
+    <h2>Data sharing and retention</h2>
+    <p>
+      Your public contributions (votes, activity reports, and approved site
+      submissions) are visible to other users of the app — that is the purpose of the
+      service. We retain contributions for as long as they are useful to the community.
+      We do not otherwise share your information except as needed to operate the app or
+      where required by law.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      RoadMate is intended for heavy-vehicle drivers and is not directed at children
+      under 13. We do not knowingly collect personal information from children.
+    </p>
+
+    <h2>Your choices</h2>
+    <ul>
+      <li>Deny or revoke location permission at any time in your device settings.</li>
+      <li>Use browser privacy controls to limit web analytics.</li>
+      <li>
+        Contact us to request removal of a specific contribution you have made.
+        Because contributions are tied to an anonymous device ID, please include
+        enough detail for us to locate the content.
+      </li>
+    </ul>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      We may update this policy from time to time. Material changes will be reflected
+      here with a new "Last updated" date.
+    </p>
+
+    <div class="card">
+      <h2 style="margin-top:0">Contact</h2>
+      <p style="margin-bottom:0">
+        Questions about this policy or your data? Email
+        <a href="mailto:info@roadmate.club">info@roadmate.club</a>.
+      </p>
+    </div>
+
+    <hr>
+    <footer>
+      RoadMate AU · <a href="https://roadmate.club">roadmate.club</a>
+    </footer>
+  </div>
+</body>
+</html>
