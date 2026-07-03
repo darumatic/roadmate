@@ -24,7 +24,10 @@
       -webkit-text-size-adjust: 100%;
     }
     .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; }
-    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .brand {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
+      text-decoration: none; color: inherit;
+    }
     .mark {
       width: 44px; height: 44px; border-radius: 12px;
       background: rgba(249, 115, 22, 0.14);
@@ -53,13 +56,13 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="brand">
+    <a class="brand" href="https://roadmate.club">
       <div class="mark">RM</div>
       <div>
         <div class="brand-name">RoadMate AU</div>
         <div class="brand-tag">Know before you roll.</div>
       </div>
-    </div>
+    </a>
 
     <h1>Privacy Policy</h1>
     <div class="updated">Last updated: 3 July 2026</div>

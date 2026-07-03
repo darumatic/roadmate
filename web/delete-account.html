@@ -1,21 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Delete your account — RoadMate AU</title>
-<style>
-  body { background:#111; color:#e8e8e8; font-family:-apple-system, Roboto, "Segoe UI", sans-serif; line-height:1.6; max-width:760px; margin:0 auto; padding:2rem 1.25rem 4rem; }
-  h1 { color:#f97316; font-size:1.8rem; }
-  a { color:#f97316; }
-  .muted { color:#9a9a9a; font-size:.9rem; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Delete your account — RoadMate AU</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --card: #131316;
+      --border: #2a2a2e;
+      --text: #f5f5f7;
+      --muted: #9a9aa2;
+      --accent: #f97316;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); }
+    body {
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+      font-size: 16px;
+      -webkit-text-size-adjust: 100%;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; }
+    .brand {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
+      text-decoration: none; color: inherit;
+    }
+    .mark {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: rgba(249, 115, 22, 0.14);
+      border: 1px solid rgba(249, 115, 22, 0.55);
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 16px;
+    }
+    .brand-name { font-weight: 800; font-size: 18px; }
+    .brand-tag { color: var(--muted); font-size: 13px; }
+    h1 { font-size: 28px; font-weight: 800; margin: 8px 0 4px; }
+    h2 { font-size: 19px; font-weight: 700; margin: 32px 0 8px; }
+    p, li { color: var(--text); }
+    a { color: var(--accent); }
+    ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px 18px; margin-top: 24px;
+    }
+    .muted { color: var(--muted); }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  </style>
 </head>
 <body>
-<h1>Delete your RoadMate account</h1>
-<p>To delete your RoadMate AU account and associated data, email <a href="mailto:info@roadmate.club?subject=Account%20deletion%20request">info@roadmate.club</a> with the subject "Account deletion request", sent from the Google account email you use to sign in.</p>
-<p>We will delete your account and the personal data associated with it — your authentication record and account details (email, display name) — within 30 days. Site status reports you submitted may be retained as part of the anonymous community history, no longer linked to you.</p>
-<p>If you used RoadMate anonymously (without signing in), no personal account data is held against your name; uninstalling the app removes the anonymous identifier from your device.</p>
-<p class="muted">Questions? See our <a href="https://roadmate.club/privacy.html">Privacy Policy</a> or contact <a href="mailto:info@roadmate.club">info@roadmate.club</a>.</p>
+  <div class="wrap">
+    <a class="brand" href="https://roadmate.club">
+      <div class="mark">RM</div>
+      <div>
+        <div class="brand-name">RoadMate AU</div>
+        <div class="brand-tag">Know before you roll.</div>
+      </div>
+    </a>
+
+    <h1>Delete your RoadMate account</h1>
+
+    <p>
+      To delete your RoadMate AU account and associated data, email
+      <a href="mailto:info@roadmate.club?subject=Account%20deletion%20request">info@roadmate.club</a>
+      with the subject "Account deletion request", sent from the Google account
+      email you use to sign in.
+    </p>
+    <p>
+      We will delete your account and the personal data associated with it — your
+      authentication record and account details (email, display name) — within 30
+      days. Site status reports you submitted may be retained as part of the
+      anonymous community history, no longer linked to you.
+    </p>
+    <p>
+      If you used RoadMate anonymously (without signing in), no personal account
+      data is held against your name; uninstalling the app removes the anonymous
+      identifier from your device.
+    </p>
+
+    <div class="card">
+      <h2 style="margin-top:0">Questions?</h2>
+      <p style="margin-bottom:0">
+        See our <a href="https://roadmate.club/privacy.html">Privacy Policy</a> or
+        contact <a href="mailto:info@roadmate.club">info@roadmate.club</a>.
+      </p>
+    </div>
+
+    <hr>
+    <footer>
+      RoadMate AU · <a href="https://roadmate.club">roadmate.club</a>
+    </footer>
+  </div>
 </body>
 </html>
