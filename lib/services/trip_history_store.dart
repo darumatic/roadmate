@@ -9,7 +9,7 @@ import '../models/trip.dart';
 const int kDefaultSpeedLimit = 100;
 const int kMinSpeedLimit = 20;
 const int kMaxSpeedLimit = 130;
-const int kSpeedLimitStep = 10;
+const int kSpeedLimitStep = 1;
 
 /// On-device persistence for saved trips and the manual speed limit. Injectable
 /// (mirrors `LocationSource`) so tests use an in-memory fake. Nothing here

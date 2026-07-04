@@ -262,7 +262,7 @@ void main() {
     await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
     await tester.pump();
 
-    expect(find.text('110'), findsOneWidget);
-    expect(store.savedLimit, 110);
+    expect(find.text('101'), findsOneWidget);
+    expect(store.savedLimit, 101);
   });
 }
