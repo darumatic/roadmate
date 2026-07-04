@@ -79,9 +79,15 @@ void main() {
   });
 
   testWidgets('InfoScreen shows disclaimer and about content', (tester) async {
+    // Tall surface so all Info cards build at first paint (the Useful Links
+    // card at the top pushes later blocks down).
+    await tester.binding.setSurfaceSize(const Size(1200, 2600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(const MaterialApp(home: InfoScreen()));
 
     expect(find.text('Info'), findsOneWidget);
+    expect(find.text('Useful Links'), findsOneWidget);
     expect(find.text('Use as a heads-up only'), findsOneWidget);
     expect(find.text('About RoadMate'), findsOneWidget);
     expect(

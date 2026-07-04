@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
@@ -10,6 +11,7 @@ class InfoScreen extends StatelessWidget {
   const InfoScreen({super.key});
 
   static const shareUrl = 'https://roadmate.club';
+  static const usefulLinksUrl = 'https://roadmate.club/useful-links.html';
   static const shareText =
       'RoadMate AU\n'
       'Know before you roll.\n'
@@ -39,6 +41,14 @@ class InfoScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               sliver: SliverList.list(
                 children: [
+                  _InfoBlock(
+                    icon: Icons.link_rounded,
+                    title: 'Useful Links',
+                    body:
+                        'Official road-access & live-traffic sites — NHVR and each state.',
+                    onTap: () => _openUsefulLinks(context),
+                  ),
+                  const SizedBox(height: 12),
                   _InfoBlock(
                     icon: Icons.warning_amber_rounded,
                     title: 'Use as a heads-up only',
@@ -70,6 +80,24 @@ class InfoScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _openUsefulLinks(BuildContext context) async {
+    try {
+      final ok = await launchUrl(
+        Uri.parse(usefulLinksUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (ok) return;
+    } catch (_) {
+      // Fall through to clipboard fallback.
+    }
+
+    await Clipboard.setData(const ClipboardData(text: usefulLinksUrl));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link copied — open it in your browser')),
     );
   }
 }
@@ -183,62 +211,86 @@ class _InfoBlock extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String body;
 
+  /// When set, the card becomes tappable and shows a trailing "open externally"
+  /// affordance.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
+    final content = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppTheme.accent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.open_in_new_rounded,
+              color: AppTheme.accent,
+              size: 18,
+            ),
+          ],
+        ],
+      ),
+    );
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppTheme.surface,
         border: Border.all(color: AppTheme.border),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: AppTheme.accent, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    body,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
+      child: onTap == null
+          ? content
+          : Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: onTap,
+                child: content,
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
