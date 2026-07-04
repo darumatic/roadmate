@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -100,6 +101,24 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
               const Spacer(),
+              // GPS speedometer — mobile only (no reliable browser GPS speed).
+              if (!kIsWeb) ...[
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.textPrimary,
+                    side: const BorderSide(color: AppTheme.border),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () => context.pushNamed('speedometer'),
+                  child: const Icon(Icons.speed, size: 18),
+                ),
+                const SizedBox(width: 8),
+              ],
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.textPrimary,

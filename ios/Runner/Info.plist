@@ -67,6 +67,6 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>RoadMate uses your location to show nearby inspection and compliance sites.</string>
+	<string>RoadMate uses your location to show nearby inspection and compliance sites and to track your speed and distance during a trip.</string>
 </dict>
 </plist>

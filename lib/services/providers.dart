@@ -9,6 +9,7 @@ import 'admin_repository.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
+import 'location_source.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 
@@ -29,6 +30,12 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
 });
 
 final statusLogicProvider = Provider<StatusLogic>((ref) => const StatusLogic());
+
+/// Device-location source for the trip speedometer. The single swap point;
+/// tests override this with a fake that emits a controlled position stream.
+final locationSourceProvider = Provider<LocationSource>(
+  (ref) => const GeolocatorLocationSource(),
+);
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {
   return AdminRepository(
