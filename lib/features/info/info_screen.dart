@@ -85,9 +85,11 @@ class InfoScreen extends StatelessWidget {
 
   Future<void> _openUsefulLinks(BuildContext context) async {
     try {
+      // In-app browser (Custom Tabs on Android / SafariViewController on iOS)
+      // so the page opens within the app rather than the external browser.
       final ok = await launchUrl(
         Uri.parse(usefulLinksUrl),
-        mode: LaunchMode.externalApplication,
+        mode: LaunchMode.inAppBrowserView,
       );
       if (ok) return;
     } catch (_) {
