@@ -1,23 +1,32 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/enums.dart';
 import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
+import '../speedometer/speedometer_panel.dart';
+import '../speedometer/trip_logger_card.dart';
 import '../../widgets/blitz_banner.dart';
 import '../../widgets/load_error.dart';
 import '../../widgets/state_card.dart';
 import '../../widgets/status_labels.dart';
 import '../../widgets/stats_bar.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
     final sitesAsync = ref.watch(sitesProvider);
 
     return Scaffold(
@@ -29,16 +38,18 @@ class HomeScreen extends ConsumerWidget {
             final counts = countByStatus(sites);
             final byState = groupByState(sites);
             final recent = recentlyActive(sites);
+            final states = _filteredStates(_query);
             return RefreshIndicator(
               onRefresh: () => _refreshSites(ref),
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
-                    child: _header(context, counts, blitzSites(sites)),
+                    child: _topSection(context, counts, blitzSites(sites)),
                   ),
                   if (recent.isNotEmpty)
                     SliverToBoxAdapter(child: _recentlyActive(context, recent)),
+                  SliverToBoxAdapter(child: _browseHeader(context)),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     sliver: SliverGrid(
@@ -50,13 +61,13 @@ class HomeScreen extends ConsumerWidget {
                             childAspectRatio: 0.95,
                           ),
                       delegate: SliverChildBuilderDelegate((context, i) {
-                        final state = visibleStates[i];
+                        final state = states[i];
                         return StateCard(
                           state: state,
                           sites: byState[state] ?? const [],
                           onTap: () => context.go('/state/${state.code}'),
                         );
-                      }, childCount: visibleStates.length),
+                      }, childCount: states.length),
                     ),
                   ),
                 ],
@@ -68,9 +79,25 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(BuildContext context, StatusCounts counts, List<Site> blitz) {
+  List<AusState> _filteredStates(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return visibleStates;
+    return visibleStates
+        .where(
+          (s) =>
+              s.code.toLowerCase().contains(q) ||
+              s.fullName.toLowerCase().contains(q),
+        )
+        .toList();
+  }
+
+  Widget _topSection(
+    BuildContext context,
+    StatusCounts counts,
+    List<Site> blitz,
+  ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -95,65 +122,50 @@ class HomeScreen extends ConsumerWidget {
               const Text(
                 'NHVR Sites',
                 style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const Spacer(),
-              // GPS speedometer — mobile only (no reliable browser GPS speed).
-              if (!kIsWeb) ...[
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.textPrimary,
-                    side: const BorderSide(color: AppTheme.border),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              const Flexible(
+                child: Text(
+                  'Know before you roll',
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 14,
                   ),
-                  onPressed: () => context.pushNamed('speedometer'),
-                  child: const Icon(Icons.speed, size: 18),
                 ),
-                const SizedBox(width: 8),
-              ],
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.textPrimary,
-                  side: const BorderSide(color: AppTheme.border),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: const Icon(Icons.add_location_alt_outlined, size: 18),
-                label: const Text('Add Site'),
-                onPressed: () => context.go('/add'),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const Text(
-            'Know before\nyou roll.',
-            style: TextStyle(
-              fontSize: 38,
-              height: 1.05,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Community-powered heavy vehicle intel across Australia',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
-          ),
+          const SizedBox(height: 12),
+          const SpeedometerPanel(),
           const SizedBox(height: 20),
           BlitzBanner(blitzSites: blitz),
           StatsBar(counts: counts),
           const SizedBox(height: 24),
+          const TripLoggerCard(),
+          const SizedBox(height: 20),
+          TextField(
+            onChanged: (v) => setState(() => _query = v),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
+              hintText: 'Search states...',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _browseHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Row(
+        children: [
           const Text(
             'Browse by State',
             style: TextStyle(
@@ -162,6 +174,18 @@ class HomeScreen extends ConsumerWidget {
               color: AppTheme.textPrimary,
             ),
           ),
+          const Spacer(),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textPrimary,
+              side: const BorderSide(color: AppTheme.border),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+            label: const Text('Add Site'),
+            onPressed: () => context.go('/add'),
+          ),
         ],
       ),
     );
@@ -169,7 +193,7 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _recentlyActive(BuildContext context, List<Site> recent) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

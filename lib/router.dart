@@ -7,7 +7,6 @@ import 'features/home/home_screen.dart';
 import 'features/info/info_screen.dart';
 import 'features/nearby/nearby_screen.dart';
 import 'features/favourites/favourites_screen.dart';
-import 'features/speedometer/speedometer_screen.dart';
 import 'features/state_detail/state_detail_screen.dart';
 import 'widgets/app_shell.dart';
 
@@ -80,12 +79,6 @@ final appRouter = GoRouter(
       name: 'admin',
       parentNavigatorKey: _rootKey,
       builder: (_, _) => const AdminScreen(),
-    ),
-    GoRoute(
-      path: '/speedometer',
-      name: 'speedometer',
-      parentNavigatorKey: _rootKey,
-      builder: (_, _) => const SpeedometerScreen(),
     ),
   ],
 );

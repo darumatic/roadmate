@@ -6,12 +6,14 @@ import '../models/site.dart';
 import '../models/site_report.dart';
 import '../models/admin_report.dart';
 import 'admin_repository.dart';
+import 'alert_player.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
+import 'trip_history_store.dart';
 
 /// The active site backend. Firestore-backed; the single place that names a
 /// concrete implementation. (The bundled-seed `LocalSeedSiteRepository` remains
@@ -35,6 +37,14 @@ final statusLogicProvider = Provider<StatusLogic>((ref) => const StatusLogic());
 /// tests override this with a fake that emits a controlled position stream.
 final locationSourceProvider = Provider<LocationSource>(
   (ref) => const GeolocatorLocationSource(),
+);
+
+/// Plays the over-limit warning (beep + haptic). Overridden with a fake in tests.
+final alertPlayerProvider = Provider<AlertPlayer>((ref) => BeepAlertPlayer());
+
+/// On-device store for saved trips and the manual speed limit.
+final tripHistoryStoreProvider = Provider<TripHistoryStore>(
+  (ref) => const PrefsTripHistoryStore(),
 );
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {

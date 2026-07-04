@@ -226,6 +226,11 @@ void main() {
   testWidgets('Home recently active cards show last activity timestamp', (
     tester,
   ) async {
+    // Tall surface so the whole Home (speedometer panel pushes content down)
+    // lays out without scrolling.
+    await tester.binding.setSurfaceSize(const Size(1200, 3600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final activeSite = Site(
       id: 'active-1',
       name: 'Marulan',
@@ -257,6 +262,9 @@ void main() {
   });
 
   testWidgets('Home Add Site action opens the submission form', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 3600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
