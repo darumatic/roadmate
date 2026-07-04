@@ -5,7 +5,7 @@ drivers to see and share the **live status** of NHVR (National Heavy Vehicle
 Regulator) inspection / compliance sites — weighbridges, checking stations, HV
 safety stations and inspection sites.
 
-🌐 **Live:** https://roadmate-b1551.web.app — custom domain **roadmate.club**
+🌐 **Live:** https://roadmate.club — custom domain **roadmate.club**
 
 > ⚠️ **Data disclaimer.** Site information is **community-reported and
 > provisional**. Locations are approximate (geocoded at town level), statuses are
