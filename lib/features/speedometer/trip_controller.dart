@@ -62,8 +62,10 @@ class TripController extends Notifier<TripState> {
     _lastAlertAt = null;
     state = TripState(phase: TripPhase.running, startedAt: DateTime.now());
     _setWakelock(true);
-    await _sub?.cancel();
-    _sub = source.positions().listen(_onPosition);
+    unawaited(_sub?.cancel().catchError((_) {}));
+    // A stream error (GPS dropout, service toggled) must not become an
+    // unhandled exception; the subscription stays live and recovers.
+    _sub = source.positions().listen(_onPosition, onError: (Object _) {});
   }
 
   /// Re-baselines the running trip (zeroes avg/max/distance/elapsed) without
@@ -74,14 +76,22 @@ class TripController extends Notifier<TripState> {
     state = TripState(phase: TripPhase.running, startedAt: DateTime.now());
   }
 
-  /// Saves the current trip to on-device history, then returns to idle.
+  /// Ends the trip and saves it to on-device history. The UI returns to idle
+  /// synchronously, before any platform call: a hung GPS-stream cancel or a
+  /// failing storage write must never leave the card stuck on
+  /// "Trip in progress" (the stop button looking dead).
   Future<void> stopAndSave() async {
-    await _sub?.cancel();
-    _sub = null;
-    _setWakelock(false);
-
     final s = state.stats;
     final startedAt = state.startedAt;
+    final sub = _sub;
+    _sub = null;
+    _lastAlertAt = null;
+    state = const TripState();
+    _setWakelock(false);
+    // Fire-and-forget: cancel stops event delivery immediately even if the
+    // platform never completes the returned future.
+    unawaited(sub?.cancel().catchError((_) {}));
+
     if (startedAt != null && s.hasStarted) {
       final trip = Trip(
         id: startedAt.microsecondsSinceEpoch.toString(),
@@ -91,13 +101,17 @@ class TripController extends Notifier<TripState> {
         maxSpeedKmh: s.maxSpeedKmh,
         avgSpeedKmh: s.avgSpeedKmh,
       );
-      await ref.read(tripHistoryStoreProvider).save(trip);
+      try {
+        await ref.read(tripHistoryStoreProvider).save(trip);
+      } catch (_) {
+        // History is a nicety — a storage failure must not surface here.
+      }
     }
-    _lastAlertAt = null;
-    state = const TripState();
   }
 
   void _onPosition(Position pos) {
+    // A fix delivered after stop must not flip the UI back to running.
+    if (_sub == null) return;
     final stats = state.stats.addSample(
       TripSample(
         lat: pos.latitude,

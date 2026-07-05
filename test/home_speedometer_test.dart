@@ -33,6 +33,30 @@ class FakeLocationSource implements LocationSource {
   void emit(Position p) => controller.add(p);
 }
 
+/// A [LocationSource] whose stream-cancel future never completes — mirrors a
+/// platform where the geolocator plugin hangs on cancel (the "stop button
+/// does nothing" bug).
+class HangingCancelLocationSource implements LocationSource {
+  // Single-subscription so onCancel's never-completing future is honoured.
+  final controller = StreamController<Position>(
+    onCancel: () => Completer<void>().future,
+  );
+
+  @override
+  Future<bool> ensurePermission() async => true;
+
+  @override
+  Stream<Position> positions() => controller.stream;
+
+  void emit(Position p) => controller.add(p);
+}
+
+/// A [TripHistoryStore] whose writes always fail.
+class ThrowingTripStore extends FakeTripStore {
+  @override
+  Future<void> save(Trip trip) async => throw Exception('storage unavailable');
+}
+
 class FakeAlertPlayer implements AlertPlayer {
   int calls = 0;
   @override
@@ -229,6 +253,61 @@ void main() {
     expect(store.saved, hasLength(1));
     expect(store.saved.first.distanceKm, greaterThan(1.0));
     expect(store.saved.first.maxSpeedKmh, greaterThan(80));
+    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+  });
+
+  test('stop returns to idle and saves even if the GPS cancel hangs', () async {
+    final loc = HangingCancelLocationSource();
+    final store = FakeTripStore();
+    final container = ProviderContainer(
+      overrides: [
+        locationSourceProvider.overrideWithValue(loc),
+        alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+        tripHistoryStoreProvider.overrideWithValue(store),
+        siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(tripControllerProvider.notifier);
+    await controller.start();
+    loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+    await Future<void>.delayed(Duration.zero);
+    loc.emit(
+      _pos(-33.01, 151.0, since: const Duration(seconds: 60), speed: 25),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await controller.stopAndSave().timeout(const Duration(seconds: 1));
+
+    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    expect(store.saved, hasLength(1));
+  });
+
+  test('stop returns to idle even when saving the trip fails', () async {
+    final loc = FakeLocationSource();
+    final container = ProviderContainer(
+      overrides: [
+        locationSourceProvider.overrideWithValue(loc),
+        alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+        tripHistoryStoreProvider.overrideWithValue(ThrowingTripStore()),
+        siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+      ],
+    );
+    addTearDown(container.dispose);
+    addTearDown(loc.controller.close);
+
+    final controller = container.read(tripControllerProvider.notifier);
+    await controller.start();
+    loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+    await Future<void>.delayed(Duration.zero);
+    loc.emit(
+      _pos(-33.01, 151.0, since: const Duration(seconds: 60), speed: 25),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await controller.stopAndSave();
+
     expect(container.read(tripControllerProvider).phase, TripPhase.idle);
   });
 
