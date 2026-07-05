@@ -187,8 +187,8 @@ void main() {
     final loc = FakeLocationSource();
     await _pump(tester, location: loc);
 
-    expect(find.text('Start Trip'), findsOneWidget);
-    await tester.tap(find.text('Start Trip'));
+    expect(find.text('Start New Trip'), findsOneWidget);
+    await tester.tap(find.text('Start New Trip'));
     await tester.pumpAndSettle();
 
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
@@ -215,7 +215,7 @@ void main() {
       store: FakeTripStore(initialLimit: 60),
     );
 
-    await tester.tap(find.text('Start Trip'));
+    await tester.tap(find.text('Start New Trip'));
     await tester.pumpAndSettle();
 
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
@@ -375,11 +375,30 @@ void main() {
     expect(find.text('92 km/h'), findsOneWidget);
     expect(find.text('avg 61 km/h'), findsOneWidget);
 
+    // Deleting asks for confirmation first; cancelling keeps the trip.
     await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete Trip'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 saved trips'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
     expect(find.text('1 saved trip'), findsOneWidget);
     expect(store.saved.map((t) => t.id), ['b']);
+  });
+
+  testWidgets('idle with no trips shows the empty state', (tester) async {
+    await _pump(tester, location: FakeLocationSource());
+
+    expect(find.text('Start New Trip'), findsOneWidget);
+    expect(find.text('Records distance, speed & duration'), findsOneWidget);
+    expect(find.text('No trips yet — start one above'), findsOneWidget);
+    expect(find.text('Clear all'), findsNothing);
   });
 
   testWidgets('Clear all deletes every trip only after confirmation', (

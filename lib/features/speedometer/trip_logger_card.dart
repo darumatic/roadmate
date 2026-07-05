@@ -8,7 +8,7 @@ import 'trip_controller.dart';
 
 const _tripGreen = Color(0xFF4ADE80);
 const _stopRed = Color(0xFFEF4444);
-const _maxOrange = Color(0xFFF59E0B);
+const _amber = Color(0xFFF59E0B);
 
 /// The "Trip Logger" section: a live in-progress card while a trip runs, a
 /// permission-denied prompt, or a Start button when idle.
@@ -59,6 +59,7 @@ class TripLoggerCard extends ConsumerWidget {
           TripPhase.denied => _Denied(onRetry: controller.start),
           TripPhase.idle => _Idle(onStart: controller.start),
         },
+        if (trips.isEmpty && state.phase == TripPhase.idle) const _EmptyTrips(),
         if (trips.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
@@ -75,13 +76,38 @@ class TripLoggerCard extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: _TripTile(
                 trip: trip,
-                onDelete: () =>
-                    ref.read(tripHistoryProvider.notifier).remove(trip.id),
+                onDelete: () => _confirmDelete(context, ref, trip.id),
               ),
             ),
         ],
       ],
     );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    String tripId,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Trip'),
+        content: const Text('Remove this trip from your log?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: _stopRed),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await ref.read(tripHistoryProvider.notifier).remove(tripId);
   }
 
   Future<void> _confirmClearAll(BuildContext context, WidgetRef ref) async {
@@ -124,34 +150,37 @@ class _TripTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  DateFormat('EEE, d MMM').format(trip.startedAt),
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${_clock(trip.startedAt)} → '
+                  '${_clock(trip.startedAt.add(trip.duration))}',
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    DateFormat('EEE, d MMM').format(trip.startedAt),
-                    style: const TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${_clock(trip.startedAt)} → '
-                    '${_clock(trip.startedAt.add(trip.duration))}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       _TripChip(
                         icon: Icons.place_outlined,
@@ -164,8 +193,19 @@ class _TripTile extends StatelessWidget {
                       _TripChip(
                         icon: Icons.trending_up,
                         label: '${trip.maxSpeedKmh.toStringAsFixed(0)} km/h',
-                        color: _maxOrange,
+                        color: _amber,
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.show_chart,
+                        size: 13,
+                        color: AppTheme.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
                       Text(
                         'avg ${trip.avgSpeedKmh.toStringAsFixed(0)} km/h',
                         style: const TextStyle(
@@ -180,14 +220,21 @@ class _TripTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            IconButton(
-              onPressed: onDelete,
-              tooltip: 'Delete trip',
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(
-                Icons.close,
-                size: 18,
-                color: AppTheme.textSecondary,
+            InkWell(
+              onTap: onDelete,
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: const Icon(
+                  Icons.close,
+                  size: 16,
+                  color: AppTheme.textSecondary,
+                ),
               ),
             ),
           ],
@@ -320,6 +367,7 @@ class _InProgress extends StatelessWidget {
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _stopRed,
+                  backgroundColor: _stopRed.withValues(alpha: 0.14),
                   side: BorderSide(color: _stopRed.withValues(alpha: 0.6)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -344,20 +392,75 @@ class _Idle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        style: FilledButton.styleFrom(
-          backgroundColor: AppTheme.accent,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
+    return Material(
+      color: _amber.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: _amber.withValues(alpha: 0.55)),
+      ),
+      child: InkWell(
+        onTap: onStart,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.near_me_outlined,
+                size: 22,
+                color: AppTheme.textPrimary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Start New Trip',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Records distance, speed & duration',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        icon: const Icon(Icons.play_arrow_rounded, size: 22),
-        label: const Text(
-          'Start Trip',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+/// Shown when idle with no saved trips — mirrors the design's empty state.
+class _EmptyTrips extends StatelessWidget {
+  const _EmptyTrips();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Center(
+        child: Column(
+          children: const [
+            Icon(Icons.map_outlined, size: 34, color: AppTheme.textSecondary),
+            SizedBox(height: 10),
+            Text(
+              'No trips yet — start one above',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+          ],
         ),
-        onPressed: onStart,
       ),
     );
   }
