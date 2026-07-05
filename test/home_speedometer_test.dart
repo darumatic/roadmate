@@ -397,12 +397,13 @@ void main() {
     expect(find.text('2 saved trips'), findsOneWidget);
     expect(find.text('Sun, 5 Jul'), findsOneWidget);
     expect(find.text('Sat, 4 Jul'), findsOneWidget);
+    // Each saved trip shows distance, average speed and elapsed time.
     expect(find.text('2:27 pm → 2:35 pm'), findsOneWidget);
     expect(find.text('12.50 km'), findsOneWidget);
+    expect(find.text('avg 61 km/h'), findsOneWidget);
     expect(find.text('8m 30s'), findsOneWidget);
     expect(find.text('45s'), findsOneWidget);
-    expect(find.text('92 km/h'), findsOneWidget);
-    expect(find.text('avg 61 km/h'), findsOneWidget);
+    expect(find.text('92 km/h'), findsNothing); // top speed no longer shown
 
     // Deleting asks for confirmation first; cancelling keeps the trip.
     await tester.tap(find.byIcon(Icons.close).first);

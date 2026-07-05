@@ -175,46 +175,22 @@ class _TripTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
                 children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      _TripChip(
-                        icon: Icons.place_outlined,
-                        label: '${trip.distanceKm.toStringAsFixed(2)} km',
-                      ),
-                      _TripChip(
-                        icon: Icons.schedule,
-                        label: formatTripDuration(trip.duration),
-                      ),
-                      _TripChip(
-                        icon: Icons.trending_up,
-                        label: '${trip.maxSpeedKmh.toStringAsFixed(0)} km/h',
-                        color: _amber,
-                      ),
-                    ],
+                  _TripChip(
+                    icon: Icons.place_outlined,
+                    label: '${trip.distanceKm.toStringAsFixed(2)} km',
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.show_chart,
-                        size: 13,
-                        color: AppTheme.textSecondary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'avg ${trip.avgSpeedKmh.toStringAsFixed(0)} km/h',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                  _TripChip(
+                    icon: Icons.show_chart,
+                    label: 'avg ${trip.avgSpeedKmh.toStringAsFixed(0)} km/h',
+                    color: _amber,
+                  ),
+                  _TripChip(
+                    icon: Icons.schedule,
+                    label: formatTripDuration(trip.duration),
                   ),
                 ],
               ),
