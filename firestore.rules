@@ -138,7 +138,7 @@ service cloud.firestore {
         && d.activityType is string
         && d.activityType in [
           'longQueue', 'delays', 'policePresent', 'BGD',
-          'Camera Only', 'other'
+          'CameraOnly', 'other'
         ]
         && (!('activityNote' in d.keys())
           || (d.activityNote is string && d.activityNote.size() <= 500))
