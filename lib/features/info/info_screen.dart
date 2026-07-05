@@ -60,7 +60,20 @@ class InfoScreen extends StatelessWidget {
                     icon: Icons.info_outline_rounded,
                     title: 'About RoadMate',
                     body:
-                        'RoadMate AU helps Australian heavy-vehicle drivers share live inspection-site status. Built by Leandro Pervieux and Adrian Deccico.',
+                        'RoadMate AU is built by truck drivers, for truck drivers. It brings together essential tools to help make every trip easier, safer, and more efficient.
+
+                        With RoadMate AU, you can:
+
+                        View community-reported NHVR inspection site activity.
+                        Find nearby inspection sites and save your favourites.
+                        Submit new inspection sites to help grow the community database.
+                        Use the built-in GPS Speedometer with average speed tracking, speed limit checking, custom maximum speed warnings, and a trip logger to record your journeys.
+
+                        All inspection site information is contributed by the trucking community and is provided as a guide only. Conditions and site activity may change at any time, so always drive safely, obey road rules, and follow the directions of authorised officers.
+
+                        Developed by Leandro Pervieux and Adrian Deccico.
+
+                        RoadMate AU – Built by truckies, for truckies. Helping keep Australia's roads connected, informed, and safer.',
                   ),
                   SizedBox(height: 12),
                   _ShareBlock(),
