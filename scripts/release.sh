@@ -40,6 +40,27 @@ echo "==> GitHub CI check (${sha})"
 echo "==> Build web"
 flutter build web --no-tree-shake-icons
 
+echo "==> Verify web plugin registrant"
+# Guard against a stale generated registrant (bit us in v1.0.9-v1.0.18: the
+# cached web_plugin_registrant.dart predated shared_preferences being added,
+# so SharedPreferences silently threw MissingPluginException on web and trips
+# never saved). Every *_web plugin package resolved in package_config.json
+# must be imported by the registrant compiled into the build.
+registrant="$(ls -t .dart_tool/flutter_build/*/web_plugin_registrant.dart 2>/dev/null | head -1)"
+if [ -z "$registrant" ]; then
+  echo "ERROR: no web_plugin_registrant.dart found after build" >&2
+  exit 1
+fi
+missing=0
+for pkg in $(grep -oE '"name": *"[a-z0-9_]+_web"' .dart_tool/package_config.json | grep -oE '[a-z0-9_]+_web'); do
+  if ! grep -q "package:${pkg}/" "$registrant"; then
+    echo "ERROR: ${pkg} is resolved but not registered in ${registrant}" >&2
+    echo "       Stale build cache — run 'flutter clean' and rebuild." >&2
+    missing=1
+  fi
+done
+[ "$missing" -eq 0 ] || exit 1
+
 echo "==> Deploy to prod"
 firebase deploy --only hosting,firestore:rules,firestore:indexes
 

@@ -324,7 +324,14 @@ void main() {
     expect(store.saved, hasLength(1));
   });
 
-  test('stop returns to idle even when saving the trip fails', () async {
+  test('stop returns to idle and logs when saving the trip fails', () async {
+    final logs = <String>[];
+    final originalDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) logs.add(message);
+    };
+    addTearDown(() => debugPrint = originalDebugPrint);
+
     final loc = FakeLocationSource();
     final container = ProviderContainer(
       overrides: [
@@ -349,6 +356,12 @@ void main() {
     await controller.stopAndSave();
 
     expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    // The failure must not be swallowed invisibly (a silent catch hid a
+    // broken web build): it leaves a console trace.
+    expect(
+      logs.where((m) => m.contains('failed to save trip')),
+      isNotEmpty,
+    );
   });
 
   testWidgets('nearest site card shows the closest site and status', (

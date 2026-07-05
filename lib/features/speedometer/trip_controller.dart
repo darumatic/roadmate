@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -109,8 +109,11 @@ class TripController extends Notifier<TripState> {
       try {
         await ref.read(tripHistoryStoreProvider).save(trip);
         ref.invalidate(tripHistoryProvider);
-      } catch (_) {
-        // History is a nicety — a storage failure must not surface here.
+      } catch (e) {
+        // History is a nicety — a storage failure must not break stop. But
+        // never swallow it invisibly (a silent catch masked a broken web
+        // build for days): leave a trace in the console.
+        debugPrint('RoadMate: failed to save trip: $e');
       }
     }
   }
@@ -180,8 +183,9 @@ class TripHistoryController extends AsyncNotifier<List<Trip>> {
     try {
       await store.delete(id);
       state = AsyncData(await store.all());
-    } catch (_) {
+    } catch (e) {
       // Keep whatever the list showed; storage is best-effort.
+      debugPrint('RoadMate: failed to delete trip: $e');
     }
   }
 
@@ -190,8 +194,9 @@ class TripHistoryController extends AsyncNotifier<List<Trip>> {
     try {
       await ref.read(tripHistoryStoreProvider).clear();
       state = const AsyncData([]);
-    } catch (_) {
+    } catch (e) {
       // Keep whatever the list showed; storage is best-effort.
+      debugPrint('RoadMate: failed to clear trips: $e');
     }
   }
 }
@@ -213,8 +218,9 @@ class SpeedLimitController extends Notifier<int> {
   Future<void> _load() async {
     try {
       state = await ref.read(tripHistoryStoreProvider).loadLimit();
-    } catch (_) {
+    } catch (e) {
       // Storage unavailable (e.g. first launch or test harness) — keep default.
+      debugPrint('RoadMate: failed to load speed limit: $e');
     }
   }
 
