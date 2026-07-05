@@ -103,6 +103,7 @@ class TripController extends Notifier<TripState> {
       );
       try {
         await ref.read(tripHistoryStoreProvider).save(trip);
+        ref.invalidate(tripHistoryProvider);
       } catch (_) {
         // History is a nicety — a storage failure must not surface here.
       }
@@ -160,6 +161,40 @@ class TripController extends Notifier<TripState> {
 final tripControllerProvider = NotifierProvider<TripController, TripState>(
   TripController.new,
 );
+
+/// Saved trips, newest first, for the list under the Trip Logger. Storage
+/// failures collapse to an error state the UI renders as "no trips" — the
+/// list is a nicety, never a blocker.
+class TripHistoryController extends AsyncNotifier<List<Trip>> {
+  @override
+  Future<List<Trip>> build() => ref.read(tripHistoryStoreProvider).all();
+
+  /// Deletes one saved trip by id.
+  Future<void> remove(String id) async {
+    final store = ref.read(tripHistoryStoreProvider);
+    try {
+      await store.delete(id);
+      state = AsyncData(await store.all());
+    } catch (_) {
+      // Keep whatever the list showed; storage is best-effort.
+    }
+  }
+
+  /// Deletes every saved trip.
+  Future<void> clear() async {
+    try {
+      await ref.read(tripHistoryStoreProvider).clear();
+      state = const AsyncData([]);
+    } catch (_) {
+      // Keep whatever the list showed; storage is best-effort.
+    }
+  }
+}
+
+final tripHistoryProvider =
+    AsyncNotifierProvider<TripHistoryController, List<Trip>>(
+      TripHistoryController.new,
+    );
 
 /// The manually-set speed limit (km/h), persisted on device. Loaded from the
 /// store on build; `increment`/`decrement` step and persist within bounds.

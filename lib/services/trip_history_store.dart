@@ -17,6 +17,8 @@ const int kSpeedLimitStep = 1;
 abstract class TripHistoryStore {
   Future<void> save(Trip trip);
   Future<List<Trip>> all();
+  Future<void> delete(String id);
+  Future<void> clear();
   Future<int> loadLimit();
   Future<void> saveLimit(int limitKmh);
 }
@@ -45,6 +47,22 @@ class PrefsTripHistoryStore implements TripHistoryStore {
         .map((s) => Trip.fromMap(jsonDecode(s) as Map<String, dynamic>))
         .toList()
       ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_tripsKey) ?? <String>[];
+    raw.removeWhere(
+      (s) => (jsonDecode(s) as Map<String, dynamic>)['id'] == id,
+    );
+    await prefs.setStringList(_tripsKey, raw);
+  }
+
+  @override
+  Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tripsKey);
   }
 
   @override

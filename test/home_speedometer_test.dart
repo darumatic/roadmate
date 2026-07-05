@@ -73,7 +73,14 @@ class FakeTripStore implements TripHistoryStore {
   Future<void> save(Trip trip) async => saved.add(trip);
 
   @override
-  Future<List<Trip>> all() async => saved;
+  Future<List<Trip>> all() async => List.of(saved);
+
+  @override
+  Future<void> delete(String id) async =>
+      saved.removeWhere((t) => t.id == id);
+
+  @override
+  Future<void> clear() async => saved.clear();
 
   @override
   Future<int> loadLimit() async => savedLimit ?? initialLimit;
@@ -239,6 +246,9 @@ void main() {
     addTearDown(container.dispose);
     addTearDown(loc.controller.close);
 
+    // The history list starts empty and refreshes once the trip is saved.
+    expect(await container.read(tripHistoryProvider.future), isEmpty);
+
     final controller = container.read(tripControllerProvider.notifier);
     await controller.start();
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
@@ -254,6 +264,7 @@ void main() {
     expect(store.saved.first.distanceKm, greaterThan(1.0));
     expect(store.saved.first.maxSpeedKmh, greaterThan(80));
     expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    expect(await container.read(tripHistoryProvider.future), hasLength(1));
   });
 
   test('stop returns to idle and saves even if the GPS cancel hangs', () async {
@@ -328,6 +339,90 @@ void main() {
     expect(find.text('Marulan Checking Station North'), findsOneWidget);
     expect(find.textContaining('km away'), findsOneWidget);
     expect(find.text('OPEN'), findsOneWidget);
+  });
+
+  testWidgets('saved trips render under the Trip Logger and delete works', (
+    tester,
+  ) async {
+    final store = FakeTripStore()
+      ..saved.addAll([
+        Trip(
+          id: 'a',
+          startedAt: DateTime(2026, 7, 5, 14, 27),
+          duration: const Duration(minutes: 8, seconds: 30),
+          distanceKm: 12.5,
+          maxSpeedKmh: 92,
+          avgSpeedKmh: 61,
+        ),
+        Trip(
+          id: 'b',
+          startedAt: DateTime(2026, 7, 4, 9, 0),
+          duration: const Duration(seconds: 45),
+          distanceKm: 0.4,
+          maxSpeedKmh: 38,
+          avgSpeedKmh: 20,
+        ),
+      ]);
+    await _pump(tester, location: FakeLocationSource(), store: store);
+
+    expect(find.text('2 saved trips'), findsOneWidget);
+    expect(find.text('Sun, 5 Jul'), findsOneWidget);
+    expect(find.text('Sat, 4 Jul'), findsOneWidget);
+    expect(find.text('2:27 pm → 2:35 pm'), findsOneWidget);
+    expect(find.text('12.50 km'), findsOneWidget);
+    expect(find.text('8m 30s'), findsOneWidget);
+    expect(find.text('45s'), findsOneWidget);
+    expect(find.text('92 km/h'), findsOneWidget);
+    expect(find.text('avg 61 km/h'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 saved trip'), findsOneWidget);
+    expect(store.saved.map((t) => t.id), ['b']);
+  });
+
+  testWidgets('Clear all deletes every trip only after confirmation', (
+    tester,
+  ) async {
+    final store = FakeTripStore()
+      ..saved.addAll([
+        Trip(
+          id: 'a',
+          startedAt: DateTime(2026, 7, 5, 14, 27),
+          duration: const Duration(minutes: 8),
+          distanceKm: 12.5,
+          maxSpeedKmh: 92,
+          avgSpeedKmh: 61,
+        ),
+        Trip(
+          id: 'b',
+          startedAt: DateTime(2026, 7, 4, 9, 0),
+          duration: const Duration(minutes: 2),
+          distanceKm: 0.4,
+          maxSpeedKmh: 38,
+          avgSpeedKmh: 20,
+        ),
+      ]);
+    await _pump(tester, location: FakeLocationSource(), store: store);
+
+    // Cancelling keeps everything.
+    await tester.tap(find.text('Clear all'));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear all trips?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 saved trips'), findsOneWidget);
+    expect(store.saved, hasLength(2));
+
+    // Confirming clears the list and hides the trip-history UI.
+    await tester.tap(find.text('Clear all'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete all'));
+    await tester.pumpAndSettle();
+    expect(store.saved, isEmpty);
+    expect(find.textContaining('saved trip'), findsNothing);
+    expect(find.text('Clear all'), findsNothing);
   });
 
   testWidgets('limit steppers adjust and persist the speed limit', (
