@@ -14,6 +14,7 @@ import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/site_repository.dart';
+import 'package:roadmate/services/site_stats.dart';
 import 'package:roadmate/services/startup_service.dart';
 import 'package:roadmate/widgets/account_panel.dart';
 import 'package:roadmate/widgets/load_error.dart';
@@ -265,6 +266,12 @@ void main() {
     expect(find.text('Open/Working'), findsNWidgets(2));
     expect(find.text('OPEN'), findsNothing);
     expect(find.text('20m ago'), findsOneWidget);
+
+    // The state search box was removed; the full grid always shows.
+    expect(find.text('Search states...'), findsNothing);
+    for (final state in visibleStates) {
+      expect(find.text(state.code), findsWidgets);
+    }
   });
 
   testWidgets('Home Add Site action opens the submission form', (tester) async {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../models/enums.dart';
 import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
@@ -15,18 +14,11 @@ import '../../widgets/state_card.dart';
 import '../../widgets/status_labels.dart';
 import '../../widgets/stats_bar.dart';
 
-class HomeScreen extends ConsumerStatefulWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final sitesAsync = ref.watch(sitesProvider);
 
     return Scaffold(
@@ -38,7 +30,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             final counts = countByStatus(sites);
             final byState = groupByState(sites);
             final recent = recentlyActive(sites);
-            final states = _filteredStates(_query);
+            final states = visibleStates;
             return RefreshIndicator(
               onRefresh: () => _refreshSites(ref),
               child: CustomScrollView(
@@ -77,18 +69,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
-  }
-
-  List<AusState> _filteredStates(String query) {
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return visibleStates;
-    return visibleStates
-        .where(
-          (s) =>
-              s.code.toLowerCase().contains(q) ||
-              s.fullName.toLowerCase().contains(q),
-        )
-        .toList();
   }
 
   Widget _topSection(
@@ -148,14 +128,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           StatsBar(counts: counts),
           const SizedBox(height: 24),
           const TripLoggerCard(),
-          const SizedBox(height: 20),
-          TextField(
-            onChanged: (v) => setState(() => _query = v),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
-              hintText: 'Search states...',
-            ),
-          ),
         ],
       ),
     );
