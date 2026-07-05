@@ -92,11 +92,16 @@ class TripController extends Notifier<TripState> {
     // platform never completes the returned future.
     unawaited(sub?.cancel().catchError((_) {}));
 
-    if (startedAt != null && s.hasStarted) {
+    // Save even if no GPS fix ever arrived (the design keeps zero-stat trips;
+    // gating on samples silently dropped trips stopped before the first fix).
+    // Without samples the GPS duration is zero, so fall back to wall clock.
+    if (startedAt != null) {
       final trip = Trip(
         id: startedAt.microsecondsSinceEpoch.toString(),
         startedAt: startedAt,
-        duration: s.duration,
+        duration: s.hasStarted
+            ? s.duration
+            : DateTime.now().difference(startedAt),
         distanceKm: s.distanceKm,
         maxSpeedKmh: s.maxSpeedKmh,
         avgSpeedKmh: s.avgSpeedKmh,

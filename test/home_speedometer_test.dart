@@ -267,6 +267,35 @@ void main() {
     expect(await container.read(tripHistoryProvider.future), hasLength(1));
   });
 
+  test('a trip stopped before any GPS fix is still saved', () async {
+    final loc = FakeLocationSource();
+    final store = FakeTripStore();
+    final container = ProviderContainer(
+      overrides: [
+        locationSourceProvider.overrideWithValue(loc),
+        alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+        tripHistoryStoreProvider.overrideWithValue(store),
+        siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+      ],
+    );
+    addTearDown(container.dispose);
+    addTearDown(loc.controller.close);
+
+    final controller = container.read(tripControllerProvider.notifier);
+    await controller.start();
+    // No fixes emitted — e.g. stopped indoors before the first GPS fix.
+    await controller.stopAndSave();
+
+    expect(store.saved, hasLength(1));
+    expect(store.saved.first.distanceKm, 0);
+    expect(store.saved.first.maxSpeedKmh, 0);
+    expect(
+      store.saved.first.duration,
+      greaterThanOrEqualTo(Duration.zero),
+    ); // wall-clock fallback
+    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+  });
+
   test('stop returns to idle and saves even if the GPS cancel hangs', () async {
     final loc = HangingCancelLocationSource();
     final store = FakeTripStore();
