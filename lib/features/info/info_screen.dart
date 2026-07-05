@@ -5,7 +5,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
-import '../../widgets/app_version_label.dart';
 
 class InfoScreen extends StatelessWidget {
   const InfoScreen({super.key});
@@ -80,8 +79,6 @@ class InfoScreen extends StatelessWidget {
                     title: 'Support',
                     body: 'For support, please email: info@roadmate.club',
                   ),
-                  SizedBox(height: 16),
-                  AppVersionLabel(),
                 ],
               ),
             ),

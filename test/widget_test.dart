@@ -8,6 +8,7 @@ import 'package:roadmate/features/admin/admin_screen.dart';
 import 'package:roadmate/features/info/info_screen.dart';
 import 'package:roadmate/features/home/home_screen.dart';
 import 'package:roadmate/models/admin_report.dart';
+import 'package:roadmate/router.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
@@ -16,6 +17,7 @@ import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/site_stats.dart';
 import 'package:roadmate/services/startup_service.dart';
+import 'package:roadmate/version.dart';
 import 'package:roadmate/widgets/account_panel.dart';
 import 'package:roadmate/widgets/load_error.dart';
 import 'package:roadmate/widgets/state_card.dart';
@@ -295,6 +297,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Site name'), findsOneWidget);
+  });
+
+  testWidgets('app version renders once, in the footer under the nav bar', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 3600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStartupProvider.overrideWith((ref) => Future.value()),
+          siteRepositoryProvider.overrideWithValue(
+            FakeSiteRepository(const []),
+          ),
+        ],
+        child: const RoadMateApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The router is a global; an earlier test may have left it off-shell.
+    appRouter.go('/home');
+    await tester.pumpAndSettle();
+
+    // Footer is part of the shell, so it shows on Home…
+    expect(find.text('RoadMate v$appVersion'), findsOneWidget);
+
+    // …and stays a single copy on the Info tab (removed from the tab body).
+    await tester.tap(find.text('Info'));
+    await tester.pumpAndSettle();
+    expect(find.text('RoadMate v$appVersion'), findsOneWidget);
   });
 
   testWidgets('StateCard shows code, name, site count and blitz badge', (

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../version.dart';
 
-/// Muted, centered app-version footer shown at the bottom of the Info tab.
+/// Muted, centered app-version line shown in the app's footer (under the
+/// bottom navigation bar in `AppShell`).
 ///
 /// Firebase-free so it can be pumped in isolation in widget tests.
 class AppVersionLabel extends StatelessWidget {
