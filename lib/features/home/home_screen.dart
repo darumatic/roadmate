@@ -7,12 +7,12 @@ import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
 import '../speedometer/speedometer_panel.dart';
+import 'closest_sites_card.dart';
 import '../speedometer/trip_logger_card.dart';
 import '../../widgets/blitz_banner.dart';
 import '../../widgets/load_error.dart';
 import '../../widgets/state_card.dart';
 import '../../widgets/status_labels.dart';
-import '../../widgets/stats_bar.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -27,7 +27,6 @@ class HomeScreen extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, _) => const LoadError(),
           data: (sites) {
-            final counts = countByStatus(sites);
             final byState = groupByState(sites);
             final recent = recentlyActive(sites);
             final states = visibleStates;
@@ -37,7 +36,7 @@ class HomeScreen extends ConsumerWidget {
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
-                    child: _topSection(context, counts, blitzSites(sites)),
+                    child: _topSection(context, sites, blitzSites(sites)),
                   ),
                   if (recent.isNotEmpty)
                     SliverToBoxAdapter(child: _recentlyActive(context, recent)),
@@ -73,7 +72,7 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _topSection(
     BuildContext context,
-    StatusCounts counts,
+    List<Site> sites,
     List<Site> blitz,
   ) {
     return Padding(
@@ -120,7 +119,8 @@ class HomeScreen extends ConsumerWidget {
           const SpeedometerPanel(),
           const SizedBox(height: 20),
           BlitzBanner(blitzSites: blitz),
-          StatsBar(counts: counts),
+          // Issue #7: the two closest sites live where the stats bar was.
+          ClosestSitesCard(sites: sites),
           const SizedBox(height: 24),
           const TripLoggerCard(),
         ],

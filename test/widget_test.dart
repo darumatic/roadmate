@@ -271,7 +271,11 @@ void main() {
     expect(find.text('Know before you roll'), findsNothing);
 
     expect(find.text('Recently Active'), findsOneWidget);
-    expect(find.text('Open/Working'), findsNWidgets(2));
+    // Only the recently-active card shows a status label now — the
+    // Open/Blitz/Closed stats bar was replaced by the closest-sites card (#7),
+    // which stays hidden here (no position available).
+    expect(find.text('Open/Working'), findsOneWidget);
+    expect(find.text('CLOSEST SITES'), findsNothing);
     expect(find.text('OPEN'), findsNothing);
     expect(find.text('20m ago'), findsOneWidget);
 

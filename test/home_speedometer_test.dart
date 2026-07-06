@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:roadmate/features/nearby/nearby_screen.dart'
     show currentPositionProvider;
+import 'package:roadmate/features/home/closest_sites_card.dart';
 import 'package:roadmate/features/speedometer/speedometer_panel.dart';
 import 'package:roadmate/features/speedometer/trip_controller.dart';
 import 'package:roadmate/features/speedometer/trip_logger_card.dart';
@@ -419,23 +420,49 @@ void main() {
     );
   });
 
-  testWidgets('nearest site card shows the closest site and status', (
+  testWidgets('closest-sites card ranks the two nearest sites (issue #7)', (
     tester,
   ) async {
-    final loc = FakeLocationSource();
-    await _pump(
-      tester,
-      location: loc,
-      sites: [
-        _site('near', 'Marulan Checking Station North', lat: -34.72, lng: 150.0),
-        _site('far', 'Euroa', lat: -36.75, lng: 145.57),
-      ],
-      nearestPosition: _pos(-34.70, 150.0, since: Duration.zero),
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          locationSourceProvider.overrideWithValue(FakeLocationSource()),
+          alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+          tripHistoryStoreProvider.overrideWithValue(FakeTripStore()),
+          currentPositionProvider.overrideWith(
+            (ref) async => _pos(-34.70, 150.0, since: Duration.zero),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: ClosestSitesCard(
+              sites: [
+                _site('far', 'Euroa', lat: -36.75, lng: 145.57),
+                _site(
+                  'near',
+                  'Marulan Checking Station North',
+                  lat: -34.72,
+                  lng: 150.0,
+                ),
+                _site('mid', 'Mount White', lat: -33.4, lng: 151.2),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
+    await tester.pumpAndSettle();
 
+    expect(find.text('CLOSEST SITES'), findsOneWidget);
+    // Two nearest shown; the farthest of the three is dropped.
     expect(find.text('Marulan Checking Station North'), findsOneWidget);
-    expect(find.textContaining('km away'), findsOneWidget);
-    expect(find.text('OPEN'), findsOneWidget);
+    expect(find.text('Mount White'), findsOneWidget);
+    expect(find.text('Euroa'), findsNothing);
+    expect(find.textContaining('km away'), findsNWidgets(2));
+    expect(find.text('OPEN'), findsNWidgets(2));
+
+    // Dispose to cancel the 1-minute fallback refresh timer.
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('saved trips render under the Trip Logger and delete works', (

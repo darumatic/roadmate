@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../services/geo.dart';
-import '../../services/providers.dart';
 import '../../services/speed_alert.dart';
 import '../../theme/app_theme.dart';
-import '../nearby/nearby_screen.dart' show currentPositionProvider;
 import 'trip_controller.dart';
 
 const _speedGreen = Color(0xFF4ADE80);
@@ -59,8 +55,6 @@ class _SpeedometerPanelState extends ConsumerState<SpeedometerPanel> {
         ),
         const SizedBox(height: 2),
         const _Label('km  /  h'),
-        const SizedBox(height: 16),
-        const NearestSiteCard(),
         const SizedBox(height: 16),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -277,109 +271,6 @@ class _StatusLine extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// The nearest NHVR site to the driver, with distance and status. Hidden until a
-/// device position and located sites are available.
-class NearestSiteCard extends ConsumerWidget {
-  const NearestSiteCard({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final posAsync = ref.watch(currentPositionProvider);
-    final sitesAsync = ref.watch(sitesProvider);
-
-    final pos = posAsync.asData?.value;
-    final sites = sitesAsync.asData?.value;
-    if (pos == null || sites == null) return const SizedBox.shrink();
-
-    final ranked = nearestSites(sites, pos.latitude, pos.longitude);
-    if (ranked.isEmpty) return const SizedBox.shrink();
-
-    final nearest = ranked.first;
-    final site = nearest.site;
-    final more = ranked.length - 1;
-    final km = nearest.km;
-
-    return GestureDetector(
-      onTap: () => context.go('/state/${site.state.code}'),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          border: Border.all(color: AppTheme.border),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.location_on_outlined,
-                size: 20,
-                color: AppTheme.accent,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      site.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${km.toStringAsFixed(km < 10 ? 1 : 0)} km away'
-                      '${more > 0 ? '  ·  +$more more' : ''}',
-                      style: const TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _StatusPill(color: site.currentStatus.color, label: site.currentStatus.label),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.color, required this.label});
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.6)),
-      ),
-      child: Text(
-        label.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.5,
-        ),
-      ),
     );
   }
 }
