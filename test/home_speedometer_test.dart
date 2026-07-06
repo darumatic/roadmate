@@ -9,6 +9,7 @@ import 'package:roadmate/features/nearby/nearby_screen.dart'
 import 'package:roadmate/features/speedometer/speedometer_panel.dart';
 import 'package:roadmate/features/speedometer/trip_controller.dart';
 import 'package:roadmate/features/speedometer/trip_logger_card.dart';
+import 'package:roadmate/features/speedometer/trip_tile.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
@@ -496,6 +497,28 @@ void main() {
     expect(find.text('Records distance, speed & duration'), findsOneWidget);
     expect(find.text('No trips yet — start one above'), findsOneWidget);
     expect(find.text('Clear all'), findsNothing);
+  });
+
+  testWidgets('Home shows only the 3 newest trips with a View all link', (
+    tester,
+  ) async {
+    final store = FakeTripStore()
+      ..saved.addAll([
+        for (var i = 0; i < 5; i++)
+          Trip(
+            id: 'trip-$i',
+            startedAt: DateTime(2026, 7, 5 - i, 9),
+            duration: const Duration(minutes: 5),
+            distanceKm: 1.0 + i,
+            maxSpeedKmh: 80,
+            avgSpeedKmh: 60,
+          ),
+      ]);
+    await _pump(tester, location: FakeLocationSource(), store: store);
+
+    expect(find.text('5 saved trips'), findsOneWidget);
+    expect(find.byType(TripTile), findsNWidgets(3));
+    expect(find.text('View all (5)'), findsOneWidget);
   });
 
   testWidgets('Clear all deletes every trip only after confirmation', (

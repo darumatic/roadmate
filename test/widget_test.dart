@@ -337,6 +337,39 @@ void main() {
     expect(find.text('RoadMate v$appVersion'), findsOneWidget);
   });
 
+  testWidgets('Trips tab sits in the shell and opens the trips list', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 3600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStartupProvider.overrideWith((ref) => Future.value()),
+          siteRepositoryProvider.overrideWithValue(
+            FakeSiteRepository(const []),
+          ),
+        ],
+        child: const RoadMateApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    appRouter.go('/home');
+    await tester.pumpAndSettle();
+
+    // 5 tabs, Trips between Favourites and Info.
+    final labels = tester
+        .widgetList<NavigationDestination>(find.byType(NavigationDestination))
+        .map((d) => d.label)
+        .toList();
+    expect(labels, ['Home', 'Nearby', 'Favourites', 'Trips', 'Info']);
+
+    await tester.tap(find.text('Trips'));
+    await tester.pumpAndSettle();
+    expect(find.text('No trips yet'), findsOneWidget);
+  });
+
   testWidgets('StateCard shows code, name, site count and blitz badge', (
     tester,
   ) async {
