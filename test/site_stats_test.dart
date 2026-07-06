@@ -94,4 +94,17 @@ void main() {
       expect(searchSites(sites, 'vic').length, 2);
     });
   });
+
+  group('pinSiteFirst', () {
+    test('moves the matching site to the front, keeping the rest in order', () {
+      final pinned = pinSiteFirst(sites, '3');
+      expect(pinned.map((s) => s.id), ['3', '1', '2', '4']);
+    });
+
+    test('no-op when id is null, unknown, or already first', () {
+      expect(pinSiteFirst(sites, null), same(sites));
+      expect(pinSiteFirst(sites, 'nope').map((s) => s.id), ['1', '2', '3', '4']);
+      expect(pinSiteFirst(sites, '1').map((s) => s.id), ['1', '2', '3', '4']);
+    });
+  });
 }

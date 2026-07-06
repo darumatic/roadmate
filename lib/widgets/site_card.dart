@@ -13,9 +13,12 @@ import 'status_labels.dart';
 /// voting, Report activity, and favourite (star). All writes go through
 /// [siteRepositoryProvider].
 class SiteCard extends ConsumerWidget {
-  const SiteCard({super.key, required this.site});
+  const SiteCard({super.key, required this.site, this.highlighted = false});
 
   final Site site;
+
+  /// Accent border marking the card the user tapped to get here (issue #10).
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,7 +34,10 @@ class SiteCard extends ConsumerWidget {
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: site.currentStatus.color.withValues(alpha: 0.4),
+          color: highlighted
+              ? AppTheme.accent
+              : site.currentStatus.color.withValues(alpha: 0.4),
+          width: highlighted ? 1.5 : 1,
         ),
       ),
       child: Column(

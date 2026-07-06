@@ -43,6 +43,19 @@ Map<AusState, List<Site>> groupByState(Iterable<Site> sites) {
   return map;
 }
 
+/// Moves the site with [id] to the front of [sites] (issue #10: the tapped
+/// card shows on top of the state list). No-op when [id] is null or absent.
+List<Site> pinSiteFirst(List<Site> sites, String? id) {
+  if (id == null) return sites;
+  final index = sites.indexWhere((s) => s.id == id);
+  if (index <= 0) return sites;
+  return [
+    sites[index],
+    ...sites.sublist(0, index),
+    ...sites.sublist(index + 1),
+  ];
+}
+
 /// Sites currently flagged as a blitz.
 List<Site> blitzSites(Iterable<Site> sites) =>
     sites.where((s) => s.currentStatus == SiteStatus.blitz).toList();

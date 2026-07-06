@@ -11,9 +11,13 @@ import '../../widgets/load_error.dart';
 import '../../widgets/site_card.dart';
 
 class StateDetailScreen extends ConsumerStatefulWidget {
-  const StateDetailScreen({super.key, required this.state});
+  const StateDetailScreen({super.key, required this.state, this.highlightSiteId});
 
   final AusState state;
+
+  /// Site the user tapped to get here — pinned to the top of the list and
+  /// highlighted so it needs no scrolling to find (issue #10).
+  final String? highlightSiteId;
 
   @override
   ConsumerState<StateDetailScreen> createState() => _StateDetailScreenState();
@@ -35,7 +39,10 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
             final stateSites = allSites
                 .where((s) => s.state == widget.state)
                 .toList();
-            final filtered = searchSites(stateSites, _query);
+            final filtered = pinSiteFirst(
+              searchSites(stateSites, _query),
+              widget.highlightSiteId,
+            );
             return RefreshIndicator(
               onRefresh: () => _refreshSites(ref),
               child: CustomScrollView(
@@ -55,7 +62,11 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
                       sliver: SliverList.separated(
                         itemCount: filtered.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (_, i) => SiteCard(site: filtered[i]),
+                        itemBuilder: (_, i) => SiteCard(
+                          site: filtered[i],
+                          highlighted:
+                              filtered[i].id == widget.highlightSiteId,
+                        ),
                       ),
                     ),
                 ],

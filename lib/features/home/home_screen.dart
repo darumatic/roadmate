@@ -182,7 +182,7 @@ class HomeScreen extends ConsumerWidget {
               itemBuilder: (_, i) {
                 final s = recent[i];
                 return GestureDetector(
-                  onTap: () => context.go('/state/${s.state.code}'),
+                  onTap: () => context.go('/state/${s.state.code}?site=${s.id}'),
                   child: Container(
                     width: 200,
                     padding: const EdgeInsets.all(12),

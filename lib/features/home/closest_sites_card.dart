@@ -85,7 +85,7 @@ class _SiteRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.go('/state/${site.state.code}'),
+      onTap: () => context.go('/state/${site.state.code}?site=${site.id}'),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppTheme.surface,

@@ -74,6 +74,7 @@ final appRouter = GoRouter(
       parentNavigatorKey: _rootKey,
       builder: (context, state) => StateDetailScreen(
         state: stateFromRouteCode(state.pathParameters['code']),
+        highlightSiteId: state.uri.queryParameters['site'],
       ),
     ),
     GoRoute(

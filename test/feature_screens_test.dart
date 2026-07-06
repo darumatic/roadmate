@@ -12,6 +12,7 @@ import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/site_repository.dart';
+import 'package:roadmate/widgets/site_card.dart';
 
 class FeatureFakeSiteRepository implements SiteRepository {
   FeatureFakeSiteRepository({
@@ -146,6 +147,33 @@ void main() {
 
       expect(find.text('Eastern Creek'), findsOneWidget);
       expect(find.text('Marulan'), findsNothing);
+    });
+
+    testWidgets('pins and highlights the tapped site (issue #10)', (
+      tester,
+    ) async {
+      final repo = FeatureFakeSiteRepository(
+        sites: [
+          _site(id: 'nsw-1', name: 'Marulan', state: AusState.nsw),
+          _site(id: 'nsw-2', name: 'Eastern Creek', state: AusState.nsw),
+          _site(id: 'nsw-3', name: 'Mount White', state: AusState.nsw),
+        ],
+      );
+
+      await _pumpScreen(
+        tester,
+        const StateDetailScreen(state: AusState.nsw, highlightSiteId: 'nsw-3'),
+        repo,
+      );
+      await tester.pumpAndSettle();
+
+      // The tapped site renders first and is the highlighted card.
+      final cards = tester
+          .widgetList<SiteCard>(find.byType(SiteCard))
+          .toList();
+      expect(cards.first.site.id, 'nsw-3');
+      expect(cards.first.highlighted, isTrue);
+      expect(cards.where((c) => c.highlighted), hasLength(1));
     });
 
     testWidgets('shows empty messages for no sites and no search matches', (

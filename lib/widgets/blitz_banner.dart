@@ -22,7 +22,7 @@ class BlitzBanner extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => context.go('/state/${first.state.code}'),
+        onTap: () => context.go('/state/${first.state.code}?site=${first.id}'),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
