@@ -23,13 +23,24 @@ void main() {
       expect(SiteStatus.fromName('garbage'), SiteStatus.open);
     });
 
-    test('activity labels renamed per issue #4, stored names unchanged', () {
+    test('activity labels and wire values renamed per issue #4', () {
       expect(ActivityReportType.defectChecks.label, 'BGD');
       expect(ActivityReportType.noActivity.label, 'Camera Only');
+      // Wire values must match the firestore.rules activityType allow-list.
+      expect(ActivityReportType.defectChecks.wire, 'BGD');
+      expect(ActivityReportType.noActivity.wire, 'Camera Only');
+      expect(ActivityReportType.longQueue.wire, 'longQueue');
+      // New wire values, legacy enum names and the rules-era typo all parse.
+      expect(ActivityReportType.fromName('BGD'),
+          ActivityReportType.defectChecks);
+      expect(ActivityReportType.fromName('Camera Only'),
+          ActivityReportType.noActivity);
       expect(ActivityReportType.fromName('defectChecks'),
           ActivityReportType.defectChecks);
-      expect(
-          ActivityReportType.fromName('noActivity'), ActivityReportType.noActivity);
+      expect(ActivityReportType.fromName('noActivity'),
+          ActivityReportType.noActivity);
+      expect(ActivityReportType.fromName('CameraOnly'),
+          ActivityReportType.noActivity);
     });
   });
 

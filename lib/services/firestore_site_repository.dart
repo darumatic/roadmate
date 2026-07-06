@@ -89,7 +89,7 @@ class FirestoreSiteRepository implements SiteRepository {
     final uid = await ensureSignedIn(auth);
     final data = <String, dynamic>{
       'siteId': siteId,
-      'activityType': activityType.name,
+      'activityType': activityType.wire,
       'uid': uid,
       'createdAt': FieldValue.serverTimestamp(),
     };

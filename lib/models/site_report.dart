@@ -1,24 +1,29 @@
 import 'enums.dart';
 
 enum ActivityReportType {
-  longQueue('Long queue'),
-  delays('Delays'),
-  policePresent('Police present'),
-  // Display labels renamed (issue #4); stored enum names are unchanged so
-  // existing Firestore reports and rules keep working.
-  defectChecks('BGD'),
-  noActivity('Camera Only'),
-  other('Other');
+  longQueue('Long queue', 'longQueue'),
+  delays('Delays', 'delays'),
+  policePresent('Police present', 'policePresent'),
+  defectChecks('BGD', 'BGD'),
+  noActivity('Camera Only', 'Camera Only'),
+  other('Other', 'other');
 
-  const ActivityReportType(this.label);
+  const ActivityReportType(this.label, this.wire);
 
   final String label;
+
+  /// Value written to Firestore — must be in the `activityType` allow-list in
+  /// firestore.rules ('BGD'/'Camera Only' there per issue #4).
+  final String wire;
 
   static ActivityReportType? fromName(String? name) {
     if (name == null) return null;
     for (final type in ActivityReportType.values) {
-      if (type.name == name) return type;
+      // Accept the wire value and the Dart enum name (documents written
+      // before the issue-#4 rename stored 'defectChecks'/'noActivity').
+      if (type.wire == name || type.name == name) return type;
     }
+    if (name == 'CameraOnly') return ActivityReportType.noActivity;
     return null;
   }
 }
@@ -70,7 +75,7 @@ class SiteReport {
       'siteId': siteId,
       'createdAt': createdAt.toIso8601String(),
       'status': status?.name,
-      'activityType': activityType?.name,
+      'activityType': activityType?.wire,
       'activityNote': activityNote,
       'reporterName': reporterName,
       'uid': uid,
