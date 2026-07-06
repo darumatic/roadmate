@@ -10,10 +10,11 @@ void main() {
       expect(shouldAlert(speedKmh: 120, limitKmh: 0, now: _now), isFalse);
     });
 
-    test('no alert within tolerance of the limit', () {
-      // limit 100, tolerance 2 -> 101 is fine, 103 is over.
+    test('alerts 1 km/h past the limit (issue #11)', () {
+      // limit 100, tolerance 1 -> exactly 101 is fine, past 101 is over.
       expect(shouldAlert(speedKmh: 101, limitKmh: 100, now: _now), isFalse);
-      expect(shouldAlert(speedKmh: 103, limitKmh: 100, now: _now), isTrue);
+      expect(shouldAlert(speedKmh: 101.5, limitKmh: 100, now: _now), isTrue);
+      expect(shouldAlert(speedKmh: 102, limitKmh: 100, now: _now), isTrue);
     });
 
     test('fires on the first reading over the limit (rising edge)', () {
@@ -51,7 +52,8 @@ void main() {
   group('isOverLimit', () {
     test('respects the limit and tolerance', () {
       expect(isOverLimit(101, 100), isFalse);
-      expect(isOverLimit(103, 100), isTrue);
+      expect(isOverLimit(101.5, 100), isTrue);
+      expect(isOverLimit(102, 100), isTrue);
       expect(isOverLimit(200, null), isFalse);
     });
   });

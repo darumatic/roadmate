@@ -12,7 +12,8 @@ bool shouldAlert({
   required int? limitKmh,
   required DateTime now,
   DateTime? lastAlertAt,
-  double tolerance = 2.0,
+  // Warn once the driver is 1 km/h past the limit (issue #11).
+  double tolerance = 1.0,
   // Beep every second while the driver stays over the limit (issue #6).
   Duration repeat = const Duration(seconds: 1),
 }) {
@@ -23,7 +24,7 @@ bool shouldAlert({
 }
 
 /// Whether [speedKmh] is over [limitKmh] (used to colour the speed readout).
-bool isOverLimit(double speedKmh, int? limitKmh, {double tolerance = 2.0}) {
+bool isOverLimit(double speedKmh, int? limitKmh, {double tolerance = 1.0}) {
   if (limitKmh == null || limitKmh <= 0) return false;
   return speedKmh > limitKmh + tolerance;
 }
