@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../services/geo.dart';
+import '../../services/location_source.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/site_card.dart';
@@ -18,7 +19,11 @@ final currentPositionProvider = FutureProvider<Position?>((ref) async {
       perm == LocationPermission.deniedForever) {
     return null;
   }
-  return Geolocator.getCurrentPosition();
+  // Web: accept a recent cached fix (returns instantly) instead of blocking
+  // on a cold one — see quickFixLocationSettings.
+  return Geolocator.getCurrentPosition(
+    locationSettings: quickFixLocationSettings(),
+  );
 });
 
 /// Nearby tab: sites ranked by distance from the user. Requires sites to have

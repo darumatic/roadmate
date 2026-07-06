@@ -1,4 +1,31 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
+
+/// Stream settings for the trip speedometer. On web, [WebSettings.maximumAge]
+/// lets the browser serve a recent cached fix as the first event instead of
+/// blocking several seconds on a cold one (the browser default is
+/// maximumAge: 0 — cache forbidden). Trips normally start parked, so a
+/// ≤10 s-old first fix adds no meaningful distance error.
+LocationSettings tripLocationSettings({bool isWeb = kIsWeb}) => isWeb
+    ? WebSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        maximumAge: const Duration(seconds: 10),
+      )
+    : const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+      );
+
+/// One-shot settings for "where am I, roughly" lookups (Nearby tab, the
+/// nearest-site card). A cached fix up to 2 minutes old is fine there and
+/// returns instantly on web.
+LocationSettings quickFixLocationSettings({bool isWeb = kIsWeb}) => isWeb
+    ? WebSettings(
+        accuracy: LocationAccuracy.high,
+        maximumAge: const Duration(minutes: 2),
+      )
+    : const LocationSettings(accuracy: LocationAccuracy.high);
 
 /// Injectable device-location dependency for the trip speedometer. Behind this
 /// abstraction (mirroring the `SiteRepository` pattern) so screens and the trip
@@ -31,10 +58,6 @@ class GeolocatorLocationSource implements LocationSource {
   }
 
   @override
-  Stream<Position> positions() => Geolocator.getPositionStream(
-    locationSettings: const LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
-    ),
-  );
+  Stream<Position> positions() =>
+      Geolocator.getPositionStream(locationSettings: tripLocationSettings());
 }
