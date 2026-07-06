@@ -22,6 +22,15 @@ void main() {
       expect(SiteStatus.fromName(null), SiteStatus.open);
       expect(SiteStatus.fromName('garbage'), SiteStatus.open);
     });
+
+    test('activity labels renamed per issue #4, stored names unchanged', () {
+      expect(ActivityReportType.defectChecks.label, 'BGD');
+      expect(ActivityReportType.noActivity.label, 'Camera Only');
+      expect(ActivityReportType.fromName('defectChecks'),
+          ActivityReportType.defectChecks);
+      expect(
+          ActivityReportType.fromName('noActivity'), ActivityReportType.noActivity);
+    });
   });
 
   group('Site serialization', () {

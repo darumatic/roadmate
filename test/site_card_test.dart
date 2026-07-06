@@ -200,8 +200,8 @@ void main() {
     expect(find.text('Recent reports'), findsOneWidget);
     expect(find.text('Long queue'), findsOneWidget);
     expect(find.text('Police present'), findsOneWidget);
-    expect(find.text('No activity'), findsOneWidget);
-    expect(find.text('Defect checks'), findsOneWidget);
+    expect(find.text('Camera Only'), findsOneWidget);
+    expect(find.text('BGD'), findsOneWidget);
     expect(find.text('Delays'), findsOneWidget);
     expect(find.text('Other'), findsNothing);
     expect(find.text('Old report shape'), findsNothing);

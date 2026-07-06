@@ -4,8 +4,10 @@ enum ActivityReportType {
   longQueue('Long queue'),
   delays('Delays'),
   policePresent('Police present'),
-  defectChecks('Defect checks'),
-  noActivity('No activity'),
+  // Display labels renamed (issue #4); stored enum names are unchanged so
+  // existing Firestore reports and rules keep working.
+  defectChecks('BGD'),
+  noActivity('Camera Only'),
   other('Other');
 
   const ActivityReportType(this.label);
