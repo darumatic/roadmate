@@ -13,7 +13,8 @@ bool shouldAlert({
   required DateTime now,
   DateTime? lastAlertAt,
   double tolerance = 2.0,
-  Duration repeat = const Duration(seconds: 10),
+  // Beep every second while the driver stays over the limit (issue #6).
+  Duration repeat = const Duration(seconds: 1),
 }) {
   if (limitKmh == null || limitKmh <= 0) return false;
   if (speedKmh <= limitKmh + tolerance) return false;

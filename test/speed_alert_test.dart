@@ -23,8 +23,8 @@ void main() {
       );
     });
 
-    test('throttles repeats until the repeat interval elapses', () {
-      final justAlerted = _now.subtract(const Duration(seconds: 3));
+    test('repeats every second while still over the limit (issue #6)', () {
+      final justAlerted = _now.subtract(const Duration(milliseconds: 500));
       expect(
         shouldAlert(
           speedKmh: 110,
@@ -35,7 +35,7 @@ void main() {
         isFalse,
       );
 
-      final longAgo = _now.subtract(const Duration(seconds: 11));
+      final longAgo = _now.subtract(const Duration(milliseconds: 1100));
       expect(
         shouldAlert(
           speedKmh: 110,

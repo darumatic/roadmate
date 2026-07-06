@@ -15,14 +15,28 @@ const _avgOrange = Color(0xFFF59E0B);
 
 /// The live speedometer block at the top of Home: current speed, nearest site,
 /// average speed + reset, manual limit + steppers, and GPS/tracking status.
-class SpeedometerPanel extends ConsumerWidget {
+class SpeedometerPanel extends ConsumerStatefulWidget {
   const SpeedometerPanel({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SpeedometerPanel> createState() => _SpeedometerPanelState();
+}
+
+class _SpeedometerPanelState extends ConsumerState<SpeedometerPanel> {
+  @override
+  void initState() {
+    super.initState();
+    // GPS is always on from app open (issue #9); the trip logger only records.
+    Future.microtask(
+      () => ref.read(tripControllerProvider.notifier).ensureStarted(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(tripControllerProvider);
     final limit = ref.watch(speedLimitProvider);
-    final stats = state.stats;
+    final stats = state.avgStats;
     final over = isOverLimit(stats.currentSpeedKmh, limit);
     final speedColor = over ? _speedOver : _speedGreen;
 
@@ -54,8 +68,9 @@ class SpeedometerPanel extends ConsumerWidget {
             Expanded(
               child: _AvgColumn(
                 avgKmh: stats.avgSpeedKmh,
-                onReset: state.isRunning
-                    ? ref.read(tripControllerProvider.notifier).reset
+                // RESET re-baselines the average only — never the trip (#9).
+                onReset: state.gps == GpsStatus.active
+                    ? ref.read(tripControllerProvider.notifier).resetAvg
                     : null,
               ),
             ),
@@ -70,7 +85,10 @@ class SpeedometerPanel extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 14),
-        _StatusLine(running: state.isRunning),
+        _StatusLine(
+          gpsActive: state.gps == GpsStatus.active,
+          recording: state.isRecording,
+        ),
       ],
     );
   }
@@ -215,12 +233,13 @@ class _StepButton extends StatelessWidget {
 }
 
 class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.running});
-  final bool running;
+  const _StatusLine({required this.gpsActive, required this.recording});
+  final bool gpsActive;
+  final bool recording;
 
   @override
   Widget build(BuildContext context) {
-    if (!running) {
+    if (!gpsActive) {
       return const Text(
         'GPS idle',
         style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
@@ -242,19 +261,21 @@ class _StatusLine extends StatelessWidget {
           'GPS active',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
         ),
-        const SizedBox(width: 10),
-        const Text('|', style: TextStyle(color: AppTheme.border)),
-        const SizedBox(width: 10),
-        const Icon(Icons.navigation, size: 14, color: AppTheme.accent),
-        const SizedBox(width: 4),
-        const Text(
-          'Tracking',
-          style: TextStyle(
-            color: AppTheme.accent,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
+        if (recording) ...[
+          const SizedBox(width: 10),
+          const Text('|', style: TextStyle(color: AppTheme.border)),
+          const SizedBox(width: 10),
+          const Icon(Icons.navigation, size: 14, color: AppTheme.accent),
+          const SizedBox(width: 4),
+          const Text(
+            'Tracking',
+            style: TextStyle(
+              color: AppTheme.accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

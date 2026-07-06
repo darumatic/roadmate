@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/trip.dart';
+import '../../services/trip_stats.dart';
 import '../../theme/app_theme.dart';
 import 'trip_controller.dart';
 
@@ -54,12 +55,17 @@ class TripLoggerCard extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 12),
-        switch (state.phase) {
-          TripPhase.running => _InProgress(state: state, controller: controller),
-          TripPhase.denied => _Denied(onRetry: controller.start),
-          TripPhase.idle => _Idle(onStart: controller.start),
-        },
-        if (trips.isEmpty && state.phase == TripPhase.idle) const _EmptyTrips(),
+        if (state.isRecording)
+          _InProgress(
+            stats: state.tripStats!,
+            startedAt: state.tripStartedAt,
+            controller: controller,
+          )
+        else if (state.gps == GpsStatus.denied)
+          _Denied(onRetry: controller.retry)
+        else
+          _Idle(onStart: controller.startTrip),
+        if (trips.isEmpty && !state.isRecording) const _EmptyTrips(),
         if (trips.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
@@ -264,14 +270,18 @@ String formatTripDuration(Duration d) {
 }
 
 class _InProgress extends StatelessWidget {
-  const _InProgress({required this.state, required this.controller});
-  final TripState state;
+  const _InProgress({
+    required this.stats,
+    required this.startedAt,
+    required this.controller,
+  });
+  final TripStats stats;
+  final DateTime? startedAt;
   final TripController controller;
 
   @override
   Widget build(BuildContext context) {
-    final stats = state.stats;
-    final started = state.startedAt;
+    final started = startedAt;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: _tripGreen.withValues(alpha: 0.06),

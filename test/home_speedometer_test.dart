@@ -181,16 +181,13 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('starting a trip shows live speed and the in-progress card', (
+  testWidgets('speedo is live from app open; a trip only adds recording', (
     tester,
   ) async {
     final loc = FakeLocationSource();
     await _pump(tester, location: loc);
 
-    expect(find.text('Start New Trip'), findsOneWidget);
-    await tester.tap(find.text('Start New Trip'));
-    await tester.pumpAndSettle();
-
+    // GPS starts with the app (issue #9): speed shows before any trip.
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
     await tester.pump();
     loc.emit(
@@ -199,11 +196,30 @@ void main() {
     await tester.pump();
 
     expect(find.text('090'), findsOneWidget); // live speed, zero-padded
+    expect(find.text('GPS active'), findsOneWidget);
+    expect(find.text('Start New Trip'), findsOneWidget);
+    expect(find.text('Trip in progress'), findsNothing);
+    expect(find.text('Tracking'), findsNothing);
+
+    await tester.tap(find.text('Start New Trip'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Trip in progress'), findsOneWidget);
     expect(find.text('Stop & Save Trip'), findsOneWidget);
+    expect(find.text('Tracking'), findsOneWidget);
   });
 
-  testWidgets('exceeding the limit sounds the alert and reddens the speed', (
+  testWidgets('denied location shows the retry card and GPS idle', (
+    tester,
+  ) async {
+    await _pump(tester, location: FakeLocationSource(granted: false));
+
+    expect(find.textContaining('Location access is needed'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('GPS idle'), findsOneWidget);
+  });
+
+  testWidgets('exceeding the limit alerts even without a recording trip', (
     tester,
   ) async {
     final loc = FakeLocationSource();
@@ -215,9 +231,7 @@ void main() {
       store: FakeTripStore(initialLimit: 60),
     );
 
-    await tester.tap(find.text('Start New Trip'));
-    await tester.pumpAndSettle();
-
+    // No trip started — the warning still fires (issue #6).
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
     await tester.pump();
     loc.emit(
@@ -228,6 +242,46 @@ void main() {
     expect(alert.calls, greaterThanOrEqualTo(1));
     final speedText = tester.widget<Text>(find.text('108'));
     expect(speedText.style?.color, const Color(0xFFEF4444)); // over-limit red
+  });
+
+  // Plain test: reset must re-baseline only the average, never the trip (#9).
+  test('resetAvg re-baselines the average without touching the trip', () async {
+    final loc = FakeLocationSource();
+    final store = FakeTripStore();
+    final container = ProviderContainer(
+      overrides: [
+        locationSourceProvider.overrideWithValue(loc),
+        alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+        tripHistoryStoreProvider.overrideWithValue(store),
+        siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+      ],
+    );
+    addTearDown(container.dispose);
+    addTearDown(loc.controller.close);
+
+    final controller = container.read(tripControllerProvider.notifier);
+    await controller.startTrip();
+    loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+    await Future<void>.delayed(Duration.zero);
+    loc.emit(
+      _pos(-33.01, 151.0, since: const Duration(seconds: 60), speed: 25),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    var s = container.read(tripControllerProvider);
+    expect(s.avgStats.distanceKm, greaterThan(1.0));
+    expect(s.tripStats!.distanceKm, greaterThan(1.0));
+
+    controller.resetAvg();
+    s = container.read(tripControllerProvider);
+    expect(s.avgStats.hasStarted, isFalse); // average re-baselined
+    expect(s.isRecording, isTrue); // trip untouched
+    expect(s.tripStats!.distanceKm, greaterThan(1.0));
+
+    await controller.stopAndSave();
+    expect(store.saved.single.distanceKm, greaterThan(1.0));
+    // GPS keeps running after the trip ends.
+    expect(container.read(tripControllerProvider).gps, GpsStatus.active);
   });
 
   // Plain test (not testWidgets): drives the controller directly so stream
@@ -250,7 +304,7 @@ void main() {
     expect(await container.read(tripHistoryProvider.future), isEmpty);
 
     final controller = container.read(tripControllerProvider.notifier);
-    await controller.start();
+    await controller.startTrip();
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
     await Future<void>.delayed(Duration.zero);
     loc.emit(
@@ -263,7 +317,7 @@ void main() {
     expect(store.saved, hasLength(1));
     expect(store.saved.first.distanceKm, greaterThan(1.0));
     expect(store.saved.first.maxSpeedKmh, greaterThan(80));
-    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    expect(container.read(tripControllerProvider).isRecording, isFalse);
     expect(await container.read(tripHistoryProvider.future), hasLength(1));
   });
 
@@ -282,7 +336,7 @@ void main() {
     addTearDown(loc.controller.close);
 
     final controller = container.read(tripControllerProvider.notifier);
-    await controller.start();
+    await controller.startTrip();
     // No fixes emitted — e.g. stopped indoors before the first GPS fix.
     await controller.stopAndSave();
 
@@ -293,7 +347,7 @@ void main() {
       store.saved.first.duration,
       greaterThanOrEqualTo(Duration.zero),
     ); // wall-clock fallback
-    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    expect(container.read(tripControllerProvider).isRecording, isFalse);
   });
 
   test('stop returns to idle and saves even if the GPS cancel hangs', () async {
@@ -310,7 +364,7 @@ void main() {
     addTearDown(container.dispose);
 
     final controller = container.read(tripControllerProvider.notifier);
-    await controller.start();
+    await controller.startTrip();
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
     await Future<void>.delayed(Duration.zero);
     loc.emit(
@@ -320,7 +374,7 @@ void main() {
 
     await controller.stopAndSave().timeout(const Duration(seconds: 1));
 
-    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    expect(container.read(tripControllerProvider).isRecording, isFalse);
     expect(store.saved, hasLength(1));
   });
 
@@ -345,7 +399,7 @@ void main() {
     addTearDown(loc.controller.close);
 
     final controller = container.read(tripControllerProvider.notifier);
-    await controller.start();
+    await controller.startTrip();
     loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
     await Future<void>.delayed(Duration.zero);
     loc.emit(
@@ -355,7 +409,7 @@ void main() {
 
     await controller.stopAndSave();
 
-    expect(container.read(tripControllerProvider).phase, TripPhase.idle);
+    expect(container.read(tripControllerProvider).isRecording, isFalse);
     // The failure must not be swallowed invisibly (a silent catch hid a
     // broken web build): it leaves a console trace.
     expect(

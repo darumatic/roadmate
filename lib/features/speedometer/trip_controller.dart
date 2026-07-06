@@ -11,24 +11,55 @@ import '../../services/speed_alert.dart';
 import '../../services/trip_history_store.dart';
 import '../../services/trip_stats.dart';
 
-/// Lifecycle of the trip / live speedo.
-enum TripPhase { idle, denied, running }
+/// Whether the always-on GPS stream is feeding the speedometer.
+enum GpsStatus { off, denied, active }
 
-/// Immutable state for the Home speedometer + Trip Logger.
+/// Immutable state for the Home speedometer + Trip Logger. The speedometer
+/// (live speed + AVG) and the trip recording are independent (issues #6/#9):
+/// GPS runs from app open, RESET re-baselines only [avgStats], and
+/// Start/Stop only controls [tripStats].
 class TripState {
   const TripState({
-    this.phase = TripPhase.idle,
-    this.stats = const TripStats.initial(),
-    this.startedAt,
+    this.gps = GpsStatus.off,
+    this.avgStats = const TripStats.initial(),
+    this.tripStats,
+    this.tripStartedAt,
   });
 
-  final TripPhase phase;
-  final TripStats stats;
+  final GpsStatus gps;
 
-  /// Wall-clock time the current trip started (or was last reset).
-  final DateTime? startedAt;
+  /// Drives the live speed readout and AVG SPEED; reset by the RESET button
+  /// without touching a recording trip.
+  final TripStats avgStats;
 
-  bool get isRunning => phase == TripPhase.running;
+  /// Accumulates the trip being recorded; null when no trip is running.
+  final TripStats? tripStats;
+
+  /// Wall-clock time the recording trip started.
+  final DateTime? tripStartedAt;
+
+  bool get isRecording => tripStats != null;
+  double get currentSpeedKmh => avgStats.currentSpeedKmh;
+
+  static const _unset = Object();
+
+  TripState copyWith({
+    GpsStatus? gps,
+    TripStats? avgStats,
+    Object? tripStats = _unset,
+    Object? tripStartedAt = _unset,
+  }) {
+    return TripState(
+      gps: gps ?? this.gps,
+      avgStats: avgStats ?? this.avgStats,
+      tripStats: identical(tripStats, _unset)
+          ? this.tripStats
+          : tripStats as TripStats?,
+      tripStartedAt: identical(tripStartedAt, _unset)
+          ? this.tripStartedAt
+          : tripStartedAt as DateTime?,
+    );
+  }
 }
 
 /// Drives one GPS stream feeding the live speedo and the Trip Logger: gates
@@ -39,6 +70,7 @@ class TripState {
 class TripController extends Notifier<TripState> {
   StreamSubscription<Position>? _sub;
   DateTime? _lastAlertAt;
+  Future<void>? _starting;
 
   @override
   TripState build() {
@@ -49,51 +81,71 @@ class TripController extends Notifier<TripState> {
     return const TripState();
   }
 
-  /// Requests permission (if needed) and starts a fresh trip.
-  Future<void> start() async {
+  /// Starts the always-on GPS stream (idempotent). The speedometer calls this
+  /// once when it first builds so live speed runs from app open (issue #9).
+  /// A previous denial is sticky — use [retry] to re-prompt.
+  Future<void> ensureStarted() {
+    if (_sub != null || state.gps == GpsStatus.denied) return Future.value();
+    return _starting ??= _start().whenComplete(() => _starting = null);
+  }
+
+  /// Re-prompts for permission after a denial (the Denied card's button).
+  Future<void> retry() {
+    if (_sub != null) return Future.value();
+    state = state.copyWith(gps: GpsStatus.off);
+    return ensureStarted();
+  }
+
+  Future<void> _start() async {
     final source = ref.read(locationSourceProvider);
-    if (!await source.ensurePermission()) {
-      await _sub?.cancel();
-      _sub = null;
-      _setWakelock(false);
-      state = const TripState(phase: TripPhase.denied);
+    bool granted;
+    try {
+      granted = await source.ensurePermission();
+    } catch (e) {
+      // Plugin unavailable (or test harness) — treat as denied, never throw.
+      debugPrint('RoadMate: location permission check failed: $e');
+      granted = false;
+    }
+    if (!granted) {
+      state = state.copyWith(gps: GpsStatus.denied);
       return;
     }
     _lastAlertAt = null;
-    state = TripState(phase: TripPhase.running, startedAt: DateTime.now());
-    _setWakelock(true);
-    unawaited(_sub?.cancel().catchError((_) {}));
     // A stream error (GPS dropout, service toggled) must not become an
     // unhandled exception; the subscription stays live and recovers.
     _sub = source.positions().listen(_onPosition, onError: (Object _) {});
+    state = state.copyWith(gps: GpsStatus.active);
   }
 
-  /// Re-baselines the running trip (zeroes avg/max/distance/elapsed) without
-  /// ending it — the RESET control under AVG SPEED.
-  void reset() {
-    if (!state.isRunning) return;
-    _lastAlertAt = null;
-    state = TripState(phase: TripPhase.running, startedAt: DateTime.now());
+  /// Re-baselines the average speed (and the live max) — the RESET control
+  /// under AVG SPEED. Independent of trip recording (issue #9): a running
+  /// trip's distance/elapsed are untouched.
+  void resetAvg() {
+    state = state.copyWith(avgStats: const TripStats.initial());
   }
 
-  /// Ends the trip and saves it to on-device history. The UI returns to idle
-  /// synchronously, before any platform call: a hung GPS-stream cancel or a
-  /// failing storage write must never leave the card stuck on
-  /// "Trip in progress" (the stop button looking dead).
+  /// Begins recording a trip. GPS keeps running regardless.
+  Future<void> startTrip() async {
+    await ensureStarted();
+    if (state.gps != GpsStatus.active || state.isRecording) return;
+    _setWakelock(true);
+    state = state.copyWith(
+      tripStats: const TripStats.initial(),
+      tripStartedAt: DateTime.now(),
+    );
+  }
+
+  /// Ends the recording and saves it to on-device history. The UI leaves the
+  /// in-progress card synchronously, before any platform call: a failing
+  /// storage write must never leave the stop button looking dead. The GPS
+  /// stream is NOT stopped — the speedometer stays live (issue #9).
   Future<void> stopAndSave() async {
-    final s = state.stats;
-    final startedAt = state.startedAt;
-    final sub = _sub;
-    _sub = null;
-    _lastAlertAt = null;
-    state = const TripState();
+    final s = state.tripStats ?? const TripStats.initial();
+    final startedAt = state.tripStartedAt;
+    state = state.copyWith(tripStats: null, tripStartedAt: null);
     _setWakelock(false);
-    // Fire-and-forget: cancel stops event delivery immediately even if the
-    // platform never completes the returned future.
-    unawaited(sub?.cancel().catchError((_) {}));
 
-    // Save even if no GPS fix ever arrived (the design keeps zero-stat trips;
-    // gating on samples silently dropped trips stopped before the first fix).
+    // Save even if no GPS fix ever arrived (the design keeps zero-stat trips).
     // Without samples the GPS duration is zero, so fall back to wall clock.
     if (startedAt != null) {
       final trip = Trip(
@@ -119,22 +171,22 @@ class TripController extends Notifier<TripState> {
   }
 
   void _onPosition(Position pos) {
-    // A fix delivered after stop must not flip the UI back to running.
+    // A fix delivered after dispose must not resurrect state.
     if (_sub == null) return;
-    final stats = state.stats.addSample(
-      TripSample(
-        lat: pos.latitude,
-        lng: pos.longitude,
-        timestamp: pos.timestamp,
-        speedMps: pos.speed,
-      ),
+    final sample = TripSample(
+      lat: pos.latitude,
+      lng: pos.longitude,
+      timestamp: pos.timestamp,
+      speedMps: pos.speed,
     );
-    state = TripState(
-      phase: TripPhase.running,
-      stats: stats,
-      startedAt: state.startedAt,
+    final avg = state.avgStats.addSample(sample);
+    state = state.copyWith(
+      gps: GpsStatus.active,
+      avgStats: avg,
+      tripStats: state.tripStats?.addSample(sample),
     );
-    _maybeAlert(stats.currentSpeedKmh);
+    // Over-limit warning runs whenever GPS is live, trip or no trip (#6).
+    _maybeAlert(avg.currentSpeedKmh);
   }
 
   void _maybeAlert(double speedKmh) {
