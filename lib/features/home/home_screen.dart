@@ -99,23 +99,18 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
-                'NHVR Sites',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              const Flexible(
-                child: Text(
-                  'Know before you roll',
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 14,
+              const Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'RoadMate - Know before you roll',
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),

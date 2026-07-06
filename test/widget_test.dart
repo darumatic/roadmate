@@ -264,6 +264,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(RefreshIndicator), findsOneWidget);
+
+    // Issue #8: single header title, old texts gone.
+    expect(find.text('RoadMate - Know before you roll'), findsOneWidget);
+    expect(find.text('NHVR Sites'), findsNothing);
+    expect(find.text('Know before you roll'), findsNothing);
+
     expect(find.text('Recently Active'), findsOneWidget);
     expect(find.text('Open/Working'), findsNWidgets(2));
     expect(find.text('OPEN'), findsNothing);
