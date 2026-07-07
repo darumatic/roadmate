@@ -5,7 +5,6 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import '../services/auth_service.dart';
-import '../services/cooldown_controller.dart';
 import '../services/providers.dart';
 import '../services/rate_limit.dart';
 import '../services/site_repository.dart';
@@ -33,12 +32,6 @@ class SiteCard extends ConsumerWidget {
     final repo = ref.read(siteRepositoryProvider);
     final isAdmin =
         ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
-    // Cooldown UX (issue #15): grey out actions this device used recently on
-    // this site. The Firestore rules ledger is the real enforcement.
-    final cooldowns = ref.watch(cooldownProvider);
-    final now = DateTime.now();
-    final onVoteCooldown = cooldowns.remainingVote(site.id, now) != null;
-    final onReportCooldown = cooldowns.remainingReport(site.id, now) != null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -161,22 +154,18 @@ class SiteCard extends ConsumerWidget {
           const SizedBox(height: 12),
           _VoteRow(
             current: site.currentStatus,
-            dimmed: onVoteCooldown,
-            onVote: (status) => _vote(context, ref, repo, status),
+            onVote: (status) => _vote(context, repo, status),
           ),
           const SizedBox(height: 8),
-          Opacity(
-            opacity: onReportCooldown ? 0.5 : 1,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(40),
-                foregroundColor: AppTheme.textSecondary,
-                side: const BorderSide(color: AppTheme.border),
-              ),
-              icon: const Icon(Icons.flag_outlined, size: 16),
-              label: const Text('Report activity'),
-              onPressed: () => _reportActivity(context, ref, repo),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(40),
+              foregroundColor: AppTheme.textSecondary,
+              side: const BorderSide(color: AppTheme.border),
             ),
+            icon: const Icon(Icons.flag_outlined, size: 16),
+            label: const Text('Report activity'),
+            onPressed: () => _reportActivity(context, repo),
           ),
           _RecentActivityReports(reportsAsync: reportsAsync),
         ],
@@ -184,25 +173,16 @@ class SiteCard extends ConsumerWidget {
     );
   }
 
-  /// Casts a status vote unless this device is inside the vote cooldown; the
-  /// rules ledger stays the backstop (a second device / cleared storage still
-  /// gets rejected server-side as permission-denied).
+  /// Casts a status vote. Rate limiting is server-side only (5 actions per
+  /// site per 5 minutes, enforced by the rules) — the client just turns the
+  /// rejection into a friendly message, so undoing a mis-tap always works.
   Future<void> _vote(
     BuildContext context,
-    WidgetRef ref,
     SiteRepository repo,
     SiteStatus status,
   ) async {
-    final remaining = ref
-        .read(cooldownProvider)
-        .remainingVote(site.id, DateTime.now());
-    if (remaining != null) {
-      _snack(context, cooldownMessage(remaining, isVote: true));
-      return;
-    }
     try {
       await repo.vote(site.id, status);
-      ref.read(cooldownProvider.notifier).markVote(site.id);
       if (context.mounted) {
         _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
       }
@@ -211,7 +191,7 @@ class SiteCard extends ConsumerWidget {
       _snack(
         context,
         isRateLimited(e)
-            ? cooldownMessage(kVoteCooldown, isVote: true)
+            ? rateLimitMessage
             : 'Could not submit — please try again.',
       );
     }
@@ -219,16 +199,8 @@ class SiteCard extends ConsumerWidget {
 
   Future<void> _reportActivity(
     BuildContext context,
-    WidgetRef ref,
     SiteRepository repo,
   ) async {
-    final remaining = ref
-        .read(cooldownProvider)
-        .remainingReport(site.id, DateTime.now());
-    if (remaining != null) {
-      _snack(context, cooldownMessage(remaining, isVote: false));
-      return;
-    }
     final report = await _showReportDialog(context);
     if (report == null) return;
     try {
@@ -238,14 +210,13 @@ class SiteCard extends ConsumerWidget {
         activityNote: report.activityNote,
         reporterName: report.reporterName,
       );
-      ref.read(cooldownProvider.notifier).markReport(site.id);
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
     } catch (e) {
       if (!context.mounted) return;
       _snack(
         context,
         isRateLimited(e)
-            ? cooldownMessage(kReportCooldown, isVote: false)
+            ? rateLimitMessage
             : 'Could not submit — please try again.',
       );
     }
@@ -519,37 +490,26 @@ String _relativeTime(DateTime createdAt) {
 }
 
 class _VoteRow extends StatelessWidget {
-  const _VoteRow({
-    required this.current,
-    required this.onVote,
-    this.dimmed = false,
-  });
+  const _VoteRow({required this.current, required this.onVote});
 
   final SiteStatus current;
   final ValueChanged<SiteStatus> onVote;
 
-  /// Greyed while the vote cooldown is active — still tappable so the tap can
-  /// explain the cooldown instead of feeling dead.
-  final bool dimmed;
-
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: dimmed ? 0.5 : 1,
-      child: Row(
-        children: [
-          for (final status in SiteStatus.values) ...[
-            if (status != SiteStatus.values.first) const SizedBox(width: 8),
-            Expanded(
-              child: _VoteButton(
-                status: status,
-                selected: current == status,
-                onTap: () => onVote(status),
-              ),
+    return Row(
+      children: [
+        for (final status in SiteStatus.values) ...[
+          if (status != SiteStatus.values.first) const SizedBox(width: 8),
+          Expanded(
+            child: _VoteButton(
+              status: status,
+              selected: current == status,
+              onTap: () => onVote(status),
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 }

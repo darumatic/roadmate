@@ -10,7 +10,6 @@ import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Records calls so the widget's wiring can be asserted. Set [voteError] /
 /// [reportError] to simulate the write being rejected (e.g. by the rules'
@@ -110,9 +109,6 @@ Future<void> _pump(
 }
 
 void main() {
-  // The cooldown controller loads/persists via SharedPreferences.
-  setUp(() => SharedPreferences.setMockInitialValues({}));
-
   testWidgets('tapping a vote button records a vote', (tester) async {
     final repo = FakeSiteRepository();
     await _pump(tester, repo);
@@ -292,26 +288,26 @@ void main() {
     expect(find.text('Remove site?'), findsNothing);
   });
 
-  testWidgets('a second vote inside the cooldown is blocked locally', (
-    tester,
-  ) async {
-    final repo = FakeSiteRepository();
-    await _pump(tester, repo);
-    await tester.pumpAndSettle();
+  testWidgets(
+    'repeat votes are not blocked client-side (undo a mis-tap works)',
+    (tester) async {
+      final repo = FakeSiteRepository();
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Open/Working'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Blitz'));
-    await tester.pump();
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Blitz'));
+      await tester.pump();
 
-    expect(repo.votes, [('nsw-1', SiteStatus.open)]); // only the first landed
-    expect(
-      find.textContaining('voted on this site recently'),
-      findsOneWidget,
-    );
-  });
+      expect(repo.votes, [
+        ('nsw-1', SiteStatus.open),
+        ('nsw-1', SiteStatus.blitz),
+      ]);
+    },
+  );
 
-  testWidgets('a rules rate-limit rejection shows the cooldown message', (
+  testWidgets('a rules rate-limit rejection shows the friendly message', (
     tester,
   ) async {
     final repo = FakeSiteRepository()
@@ -327,7 +323,7 @@ void main() {
 
     expect(repo.votes, isEmpty);
     expect(
-      find.textContaining('voted on this site recently'),
+      find.textContaining('made several changes to this site'),
       findsOneWidget,
     );
   });
@@ -343,10 +339,14 @@ void main() {
     expect(find.textContaining('Could not submit'), findsOneWidget);
   });
 
-  testWidgets('a second activity report inside the cooldown is blocked', (
+  testWidgets('a rate-limited activity report shows the friendly message', (
     tester,
   ) async {
-    final repo = FakeSiteRepository();
+    final repo = FakeSiteRepository()
+      ..reportError = FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'permission-denied',
+      );
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
@@ -354,16 +354,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Submit'));
     await tester.pumpAndSettle();
-    expect(repo.reports, hasLength(1));
 
-    await tester.tap(find.text('Report activity'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('What is happening?'), findsNothing); // no dialog
+    expect(repo.reports, isEmpty);
     expect(
-      find.textContaining('reported activity on this site recently'),
+      find.textContaining('made several changes to this site'),
       findsOneWidget,
     );
-    expect(repo.reports, hasLength(1));
   });
 }

@@ -58,23 +58,21 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
-      // Per-user rate-limit ledger (issue #15): one doc per user per site with
-      // the user's last vote/report time. Every vote/report batch must set the
-      // matching field to request.time (enforced via getAfter() in the rules
-      // above), and updating a field is only allowed once its cooldown has
-      // passed — so a spammy second write rejects the whole batch.
-      // Cooldowns MUST match lib/services/rate_limit.dart (5 min / 2 min).
+      // Per-user rate-limit ledger (issue #15): one doc per user per site
+      // counting actions in the current 5-minute window (max 5 — votes and
+      // reports combined, so mistakes can be undone). Every vote/report batch
+      // must write it (enforced via getAfter() in the rules above); a write
+      // beyond the window limit rejects the whole batch.
       match /limits/{uid} {
         allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
         allow create: if signedIn()
           && request.auth.uid == uid
           && validLimitKeys()
-          && limitStampsAreNow();
+          && isFreshWindow();
         allow update: if signedIn()
           && request.auth.uid == uid
           && validLimitKeys()
-          && voteStampOk()
-          && reportStampOk();
+          && isLedgerUpdateOk();
         allow delete: if isAdmin();
       }
     }
@@ -120,46 +118,41 @@ service cloud.firestore {
     }
 
     // --- Rate limiting (issue #15) -----------------------------------------
-    // The user's ledger doc *after* this batch commits must carry a stamp equal
-    // to request.time — proving the batch also wrote the ledger, whose own rule
-    // enforces the cooldown.
-    function votedNow(siteId) {
+    // Users may take up to 5 actions (votes + activity reports combined) per
+    // site per 5-minute window — enough to undo a mis-tap, too slow to spam.
+    // The ledger doc records the window start and action count; every
+    // vote/report batch must also write the ledger with lastActionAt ==
+    // request.time (proved via getAfter below), and the ledger's own rule
+    // enforces the window. Limits MUST match lib/services/rate_limit.dart.
+    function actionStamped(siteId) {
       return getAfter(/databases/$(database)/documents/sites/$(siteId)/limits/$(request.auth.uid))
-        .data.lastVoteAt == request.time;
-    }
-
-    function reportedNow(siteId) {
-      return getAfter(/databases/$(database)/documents/sites/$(siteId)/limits/$(request.auth.uid))
-        .data.lastReportAt == request.time;
+        .data.lastActionAt == request.time;
     }
 
     function validLimitKeys() {
-      return request.resource.data.keys().hasOnly(['lastVoteAt', 'lastReportAt']);
+      return request.resource.data.keys().hasOnly(
+        ['windowStart', 'count', 'lastActionAt']);
     }
 
-    // First ledger doc for this user+site: any present stamp must be "now".
-    function limitStampsAreNow() {
-      return (!('lastVoteAt' in request.resource.data)
-          || request.resource.data.lastVoteAt == request.time)
-        && (!('lastReportAt' in request.resource.data)
-          || request.resource.data.lastReportAt == request.time);
+    // First action ever on this site: opens a window with one action.
+    function isFreshWindow() {
+      return request.resource.data.windowStart == request.time
+        && request.resource.data.count == 1
+        && request.resource.data.lastActionAt == request.time;
     }
 
-    // A changed stamp must be "now" AND the previous one (if any) must be older
-    // than the cooldown. Votes: 5 minutes.
-    function voteStampOk() {
-      return !affectedKeys().hasAny(['lastVoteAt'])
-        || (request.resource.data.lastVoteAt == request.time
-          && (!('lastVoteAt' in resource.data)
-            || request.time > resource.data.lastVoteAt + duration.value(5, 'm')));
-    }
-
-    // Activity reports: 2 minutes.
-    function reportStampOk() {
-      return !affectedKeys().hasAny(['lastReportAt'])
-        || (request.resource.data.lastReportAt == request.time
-          && (!('lastReportAt' in resource.data)
-            || request.time > resource.data.lastReportAt + duration.value(2, 'm')));
+    // Either the previous window ended (start a new one), or this is one more
+    // action inside the current window, capped at 5.
+    function isLedgerUpdateOk() {
+      return request.resource.data.lastActionAt == request.time
+        && (
+          (request.time > resource.data.windowStart + duration.value(5, 'm')
+            && request.resource.data.windowStart == request.time
+            && request.resource.data.count == 1)
+          || (request.resource.data.windowStart == resource.data.windowStart
+            && request.resource.data.count == resource.data.count + 1
+            && request.resource.data.count <= 5)
+        );
     }
     // ------------------------------------------------------------------------
 
@@ -178,11 +171,11 @@ service cloud.firestore {
         && b.closedVotes >= a.closedVotes
         && (b.openVotes + b.blitzVotes + b.closedVotes)
              == (a.openVotes + a.blitzVotes + a.closedVotes) + 1
-        && votedNow(siteId);
+        && actionStamped(siteId);
     }
 
     function isReportTouch(siteId) {
-      return affectedKeys().hasOnly(['lastReportAt']) && reportedNow(siteId);
+      return affectedKeys().hasOnly(['lastReportAt']) && actionStamped(siteId);
     }
 
     function isValidReport(siteId) {
@@ -201,7 +194,7 @@ service cloud.firestore {
       return d.keys().hasOnly(['siteId', 'status', 'uid', 'createdAt'])
         && d.status is string
         && d.status in ['open', 'blitz', 'closed']
-        && votedNow(siteId);
+        && actionStamped(siteId);
     }
 
     function isValidActivityReport(d, siteId) {
@@ -220,7 +213,7 @@ service cloud.firestore {
           || (d.reporterName is string
             && d.reporterName.size() > 0
             && d.reporterName.size() <= 80))
-        && reportedNow(siteId);
+        && actionStamped(siteId);
     }
 
     // Shared shape for any client-created site; the create rule adds the

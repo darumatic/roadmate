@@ -1,38 +1,33 @@
 import 'package:firebase_core/firebase_core.dart';
 
-/// Client-side cooldowns between actions on the *same site* by the *same
-/// user* (issue #15). These MUST match the `duration.value(...)` literals in
-/// the `limits/{uid}` rules in `firestore.rules` — the rules are the real
-/// enforcement; these drive the friendly UX (disabled buttons + message).
-const Duration kVoteCooldown = Duration(minutes: 5);
-const Duration kReportCooldown = Duration(minutes: 2);
+/// Server-enforced rate limit (issue #15): up to [kMaxActionsPerWindow]
+/// actions — votes and activity reports combined — per user per site within
+/// each [kActionWindow], so a mis-tap can be corrected immediately but a spam
+/// loop cannot run. These MUST match the `limits/{uid}` rules in
+/// `firestore.rules` (5 actions / 5 minutes). Validation is server-side only;
+/// the client just translates the rejection into a friendly message.
+const Duration kActionWindow = Duration(minutes: 5);
+const int kMaxActionsPerWindow = 5;
 
 /// Whether [error] is the security-rules rejection a rate-limited write gets.
 /// (Rules deny the whole batch, which surfaces as permission-denied.)
 bool isRateLimited(Object error) =>
     error is FirebaseException && error.code == 'permission-denied';
 
-/// Time left before the user may act again, or null when free to act.
-Duration? cooldownRemaining({
-  required DateTime? lastActionAt,
+/// User-facing explanation for a rate-limited write.
+const String rateLimitMessage =
+    "You've made several changes to this site just now — "
+    'please try again in a few minutes.';
+
+/// The ledger transition for one more action: start a new window if the
+/// current one has ended, otherwise count within it. Pure, mirrored exactly
+/// by the rules (which verify the transition server-side).
+({bool resetWindow, int count}) nextLedger({
+  required DateTime? windowStart,
+  required int count,
   required DateTime now,
-  required Duration cooldown,
 }) {
-  if (lastActionAt == null) return null;
-  final end = lastActionAt.add(cooldown);
-  return end.isAfter(now) ? end.difference(now) : null;
-}
-
-/// User-facing cooldown explanation, e.g.
-/// "You've voted on this site recently — try again in 4 minutes."
-String cooldownMessage(Duration remaining, {required bool isVote}) {
-  final action = isVote ? 'voted on' : 'reported activity on';
-  return "You've $action this site recently — try again in "
-      '${_approx(remaining)}.';
-}
-
-String _approx(Duration remaining) {
-  if (remaining.inSeconds <= 60) return 'about a minute';
-  final minutes = (remaining.inSeconds / 60).ceil();
-  return '$minutes minutes';
+  final expired =
+      windowStart == null || now.isAfter(windowStart.add(kActionWindow));
+  return (resetWindow: expired, count: expired ? 1 : count + 1);
 }

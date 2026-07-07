@@ -75,17 +75,18 @@ own uid); manage their own favourites list. Deletes are disabled for regular
 users; **admins may delete sites** (and reports) — see admin site removal below.
 **Test mode closed; all four write paths verified live under these rules.**
 
-**Rate limiting (issue #15):** votes/reports are throttled **per user per site**
-by a ledger doc `sites/{siteId}/limits/{uid}` (`lastVoteAt`/`lastReportAt`).
-Each vote/report batch must stamp its field with the server time — verified via
-`getAfter()` — and the ledger's own rule only allows a new stamp once the
-cooldown has passed (**votes 5 min, activity reports 2 min**; the `duration`
-literals in the rules must match `lib/services/rate_limit.dart`). A too-soon
-write rejects the whole batch as permission-denied. The client mirrors the
-cooldown locally (`CooldownController` + SharedPreferences) so buttons grey out
-with a friendly message instead of hitting the rejection; the rules stay the
-backstop. Known limit: identity is anonymous auth, so a fresh uid resets the
-cooldown — App Check is the planned follow-up for scripted abuse.
+**Rate limiting (issue #15):** **5 actions (votes + activity reports combined)
+per user per site per 5-minute window** — enough to undo a mis-tap, too slow to
+spam. A ledger doc `sites/{siteId}/limits/{uid}` (`windowStart`/`count`/
+`lastActionAt`) is written by every vote/report batch (verified via
+`getAfter()`); its own rule verifies the window transition (reset after 5 min,
+else count+1 capped at 5). A write beyond the cap rejects the whole batch as
+permission-denied. **Validation is server-side only** (the earlier client-side
+cooldown UI blocked legitimate status corrections and was removed); the client
+just shows a friendly message on rejection. Constants in the rules must match
+`lib/services/rate_limit.dart` (`kActionWindow`/`kMaxActionsPerWindow`). Known
+limit: identity is anonymous auth, so a fresh uid resets the window — App Check
+is the planned follow-up for scripted abuse.
 
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
@@ -124,7 +125,7 @@ They are approximate — verify exact site positions before production.
 | Web public deploy (Firebase Hosting) | ✅ **LIVE — https://roadmate-b1551.web.app** |
 | Admin site removal (X on site card + warning popup; deletes site + its reports, issue #13) | ✅ Done — `AdminRepository.deleteSite`, rules allow `delete` for admins only |
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
-| Vote/report rate limiting, per user per site (issue #15) | ✅ Done — rules ledger `sites/{id}/limits/{uid}` (5 min votes / 2 min reports) + client cooldown UX (`lib/services/rate_limit.dart`, `cooldown_store.dart`, `cooldown_controller.dart`) |
+| Vote/report rate limiting, per user per site (issue #15) | ✅ Done — rules ledger `sites/{id}/limits/{uid}`: 5 actions per 5-min window (votes+reports combined, so mistakes can be undone); server-side only (`lib/services/rate_limit.dart`) |
 | Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
 
 ## Deployment & domain

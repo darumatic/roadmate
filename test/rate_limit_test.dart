@@ -23,67 +23,50 @@ void main() {
     });
   });
 
-  group('cooldownRemaining', () {
+  group('nextLedger', () {
     final now = DateTime(2026, 7, 7, 12, 0, 0);
 
-    test('null when the user never acted', () {
+    test('first ever action opens a window with count 1', () {
       expect(
-        cooldownRemaining(
-          lastActionAt: null,
-          now: now,
-          cooldown: kVoteCooldown,
-        ),
-        isNull,
+        nextLedger(windowStart: null, count: 0, now: now),
+        (resetWindow: true, count: 1),
       );
     });
 
-    test('remaining time while inside the cooldown', () {
+    test('actions inside the window increment the count', () {
+      final start = now.subtract(const Duration(minutes: 2));
       expect(
-        cooldownRemaining(
-          lastActionAt: now.subtract(const Duration(minutes: 2)),
-          now: now,
-          cooldown: kVoteCooldown,
-        ),
-        const Duration(minutes: 3),
+        nextLedger(windowStart: start, count: 1, now: now),
+        (resetWindow: false, count: 2),
+      );
+      expect(
+        nextLedger(windowStart: start, count: 4, now: now),
+        (resetWindow: false, count: 5),
       );
     });
 
-    test('null once the cooldown has passed (boundary inclusive)', () {
+    test('an expired window resets to count 1', () {
       expect(
-        cooldownRemaining(
-          lastActionAt: now.subtract(kVoteCooldown),
+        nextLedger(
+          windowStart: now.subtract(
+            kActionWindow + const Duration(seconds: 1),
+          ),
+          count: 5,
           now: now,
-          cooldown: kVoteCooldown,
         ),
-        isNull,
-      );
-      expect(
-        cooldownRemaining(
-          lastActionAt: now.subtract(const Duration(hours: 1)),
-          now: now,
-          cooldown: kVoteCooldown,
-        ),
-        isNull,
-      );
-    });
-  });
-
-  group('cooldownMessage', () {
-    test('vote wording with minutes rounded up', () {
-      expect(
-        cooldownMessage(
-          const Duration(minutes: 3, seconds: 10),
-          isVote: true,
-        ),
-        "You've voted on this site recently — try again in 4 minutes.",
+        (resetWindow: true, count: 1),
       );
     });
 
-    test('report wording under a minute', () {
+    test('exactly at the window boundary still counts as inside', () {
+      // Mirrors the rules: reset needs request.time > windowStart + 5m.
       expect(
-        cooldownMessage(const Duration(seconds: 40), isVote: false),
-        "You've reported activity on this site recently — try again in "
-        'about a minute.',
+        nextLedger(
+          windowStart: now.subtract(kActionWindow),
+          count: 2,
+          now: now,
+        ),
+        (resetWindow: false, count: 3),
       );
     });
   });

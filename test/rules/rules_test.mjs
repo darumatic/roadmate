@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   increment,
   serverTimestamp,
@@ -19,6 +20,8 @@ import {
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
+
+const WINDOW_MS = 5 * 60_000; // 5 actions per 5 minutes, as in the rules
 
 const env = await initializeTestEnvironment({
   projectId: 'roadmate-b1551',
@@ -53,8 +56,25 @@ const alice = env
   .authenticatedContext('alice', { firebase: { sign_in_provider: 'anonymous' } })
   .firestore();
 
+// Mirrors FirestoreSiteRepository._ledgerPayload(): read the ledger, reset
+// the window if it ended, otherwise count one more action.
+async function ledgerPayload(db, siteId, uid) {
+  const snap = await getDoc(doc(db, `sites/${siteId}/limits/${uid}`));
+  const data = snap.exists() ? snap.data() : null;
+  const windowStart = data?.windowStart ?? null;
+  const count = data?.count ?? 0;
+  const expired =
+    windowStart == null || Date.now() > windowStart.toMillis() + WINDOW_MS;
+  return {
+    windowStart: expired ? serverTimestamp() : windowStart,
+    count: expired ? 1 : count + 1,
+    lastActionAt: serverTimestamp(),
+  };
+}
+
 // Mirrors FirestoreSiteRepository.vote().
-function voteBatch(db, siteId, status, uid) {
+async function voteBatch(db, siteId, status, uid) {
+  const ledger = await ledgerPayload(db, siteId, uid);
   const b = writeBatch(db);
   b.set(doc(collection(db, `sites/${siteId}/reports`)), {
     siteId,
@@ -67,16 +87,13 @@ function voteBatch(db, siteId, status, uid) {
     currentStatus: status,
     lastReportAt: serverTimestamp(),
   });
-  b.set(
-    doc(db, `sites/${siteId}/limits/${uid}`),
-    { lastVoteAt: serverTimestamp() },
-    { merge: true },
-  );
+  b.set(doc(db, `sites/${siteId}/limits/${uid}`), ledger);
   return b.commit();
 }
 
 // Mirrors FirestoreSiteRepository.report().
-function reportBatch(db, siteId, uid) {
+async function reportBatch(db, siteId, uid) {
+  const ledger = await ledgerPayload(db, siteId, uid);
   const b = writeBatch(db);
   b.set(doc(collection(db, `sites/${siteId}/reports`)), {
     siteId,
@@ -85,11 +102,7 @@ function reportBatch(db, siteId, uid) {
     createdAt: serverTimestamp(),
   });
   b.update(doc(db, `sites/${siteId}`), { lastReportAt: serverTimestamp() });
-  b.set(
-    doc(db, `sites/${siteId}/limits/${uid}`),
-    { lastReportAt: serverTimestamp() },
-    { merge: true },
-  );
+  b.set(doc(db, `sites/${siteId}/limits/${uid}`), ledger);
   return b.commit();
 }
 
@@ -100,17 +113,33 @@ const check = async (label, promise) => {
   console.log(`ok - ${label}`);
 };
 
-await check('first vote succeeds', assertSucceeds(voteBatch(alice, 'site-1', 'open', 'alice')));
+// Five mixed actions (votes + reports share the window) succeed; the sixth
+// is rejected. Undoing a mis-tap right away is explicitly allowed.
 await check(
-  'second vote on same site inside cooldown is rejected',
-  assertFails(voteBatch(alice, 'site-1', 'blitz', 'alice')),
+  'undoing a mis-tap works: two votes in quick succession succeed',
+  (async () => {
+    await assertSucceeds(voteBatch(alice, 'site-1', 'blitz', 'alice'));
+    await assertSucceeds(voteBatch(alice, 'site-1', 'open', 'alice'));
+  })(),
 );
 await check(
-  'vote on a different site is unaffected',
+  'up to five mixed actions per window succeed',
+  (async () => {
+    await assertSucceeds(reportBatch(alice, 'site-1', 'alice'));
+    await assertSucceeds(voteBatch(alice, 'site-1', 'closed', 'alice'));
+    await assertSucceeds(reportBatch(alice, 'site-1', 'alice'));
+  })(),
+);
+await check(
+  'the sixth action inside the window is rejected',
+  assertFails(voteBatch(alice, 'site-1', 'open', 'alice')),
+);
+await check(
+  'a different site is unaffected',
   assertSucceeds(voteBatch(alice, 'site-2', 'open', 'alice')),
 );
 await check(
-  'bare counter bump without ledger stamp is rejected',
+  'bare counter bump without a ledger write is rejected',
   assertFails(
     updateDoc(doc(alice, 'sites/site-1'), {
       openVotes: increment(1),
@@ -120,47 +149,51 @@ await check(
   ),
 );
 await check(
-  'activity report right after a vote succeeds (independent field)',
-  assertSucceeds(reportBatch(alice, 'site-1', 'alice')),
-);
-await check(
-  'second activity report inside cooldown is rejected',
-  assertFails(reportBatch(alice, 'site-1', 'alice')),
-);
-await check(
-  'backdated ledger stamp is rejected',
-  assertFails(
-    setDoc(
-      doc(alice, 'sites/site-1/limits/alice'),
-      { lastVoteAt: Timestamp.fromDate(new Date(Date.now() - 3600_000)) },
-      { merge: true },
-    ),
-  ),
+  'a forged ledger (fake window or count jump) is rejected',
+  (async () => {
+    // Backdated windowStart to dodge the cap.
+    await assertFails(
+      setDoc(doc(alice, 'sites/site-1/limits/alice'), {
+        windowStart: Timestamp.fromDate(new Date(Date.now() - 3600_000)),
+        count: 1,
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+    // Same window but count not incremented.
+    await assertFails(
+      setDoc(doc(alice, 'sites/site-1/limits/alice'), {
+        windowStart: (
+          await getDoc(doc(alice, 'sites/site-1/limits/alice'))
+        ).data().windowStart,
+        count: 5,
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+  })(),
 );
 await check(
   "another user's ledger cannot be written",
   assertFails(
     setDoc(doc(alice, 'sites/site-1/limits/bob'), {
-      lastVoteAt: serverTimestamp(),
+      windowStart: serverTimestamp(),
+      count: 1,
+      lastActionAt: serverTimestamp(),
     }),
   ),
 );
 
-// Once the cooldown has genuinely passed, voting works again (backdate the
+// Once the window has genuinely passed, actions work again (backdate the
 // ledger with rules disabled to simulate the wait).
 await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), 'sites/site-1/limits/alice'), {
-    lastVoteAt: Timestamp.fromDate(new Date(Date.now() - 6 * 60_000)),
-    lastReportAt: Timestamp.fromDate(new Date(Date.now() - 3 * 60_000)),
+    windowStart: Timestamp.fromDate(new Date(Date.now() - 6 * 60_000)),
+    count: 5,
+    lastActionAt: Timestamp.fromDate(new Date(Date.now() - 6 * 60_000)),
   });
 });
 await check(
-  'vote succeeds again after the cooldown passes',
+  'a new window opens after 5 minutes and actions succeed again',
   assertSucceeds(voteBatch(alice, 'site-1', 'closed', 'alice')),
-);
-await check(
-  'report succeeds again after its cooldown passes',
-  assertSucceeds(reportBatch(alice, 'site-1', 'alice')),
 );
 
 // Issue #13 rules: admin site delete (with subcollections), non-admin denied.
