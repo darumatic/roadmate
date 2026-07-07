@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router.dart';
+import 'services/keep_awake.dart';
 import 'services/startup_service.dart';
 import 'theme/app_theme.dart';
 
@@ -12,24 +13,28 @@ class RoadMateApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final startup = ref.watch(appStartupProvider);
 
-    return startup.when(
-      loading: () => MaterialApp(
-        title: 'RoadMate AU',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
-        home: const _StartupScreen(),
-      ),
-      error: (error, _) => MaterialApp(
-        title: 'RoadMate AU',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
-        home: _StartupErrorScreen(error: error),
-      ),
-      data: (_) => MaterialApp.router(
-        title: 'RoadMate AU',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
-        routerConfig: appRouter,
+    // The whole app keeps the screen awake while foregrounded (issue #14) —
+    // drivers glance at it hands-free; it must not lock or sleep mid-run.
+    return KeepAwakeScope(
+      child: startup.when(
+        loading: () => MaterialApp(
+          title: 'RoadMate AU',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.dark,
+          home: const _StartupScreen(),
+        ),
+        error: (error, _) => MaterialApp(
+          title: 'RoadMate AU',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.dark,
+          home: _StartupErrorScreen(error: error),
+        ),
+        data: (_) => MaterialApp.router(
+          title: 'RoadMate AU',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.dark,
+          routerConfig: appRouter,
+        ),
       ),
     );
   }

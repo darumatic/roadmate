@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
+import 'package:roadmate/services/admin_repository.dart';
+import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
@@ -44,6 +46,18 @@ class FakeSiteRepository implements SiteRepository {
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
 }
 
+/// Records site deletions; every other member is unused by the widget under
+/// test, so noSuchMethod covers them.
+class FakeAdminRepository implements AdminRepository {
+  final deletedSites = <String>[];
+
+  @override
+  Future<void> deleteSite(String siteId) async => deletedSites.add(siteId);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 const _site = Site(
   id: 'nsw-1',
   name: 'Marulan',
@@ -61,10 +75,20 @@ Future<void> _pump(
   WidgetTester tester,
   FakeSiteRepository repo, {
   Site site = _site,
+  FakeAdminRepository? adminRepo,
 }) {
   return tester.pumpWidget(
     ProviderScope(
-      overrides: [siteRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        siteRepositoryProvider.overrideWithValue(repo),
+        // A non-null adminRepo pumps the card as a signed-in admin.
+        if (adminRepo != null) ...[
+          currentUserRoleProvider.overrideWith(
+            (ref) => Stream.value(AppUserRole.admin),
+          ),
+          adminRepositoryProvider.overrideWithValue(adminRepo),
+        ],
+      ],
       child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(child: SiteCard(site: site)),
@@ -207,5 +231,50 @@ void main() {
     expect(find.text('Old report shape'), findsNothing);
     expect(find.text('Alex'), findsOneWidget);
     expect(find.text('Anonymous'), findsNWidgets(4));
+  });
+
+  testWidgets('remove-site X is hidden from regular users', (tester) async {
+    final repo = FakeSiteRepository();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Remove site (admin)'), findsNothing);
+  });
+
+  testWidgets('admin sees the X and confirming removes the site', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    final adminRepo = FakeAdminRepository();
+    await _pump(tester, repo, adminRepo: adminRepo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Remove site (admin)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remove site?'), findsOneWidget);
+    expect(find.textContaining('cannot be undone'), findsOneWidget);
+
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(adminRepo.deletedSites, ['nsw-1']);
+  });
+
+  testWidgets('cancelling the remove-site warning deletes nothing', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    final adminRepo = FakeAdminRepository();
+    await _pump(tester, repo, adminRepo: adminRepo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Remove site (admin)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(adminRepo.deletedSites, isEmpty);
+    expect(find.text('Remove site?'), findsNothing);
   });
 }

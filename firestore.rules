@@ -42,7 +42,9 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (signedIn() && (isValidVote() || isReportTouch()));
 
-      allow delete: if false;
+      // Admins may remove a site outright (issue #13); the client deletes the
+      // reports subcollection in the same batch (nested rule below allows it).
+      allow delete: if isAdmin();
 
       match /reports/{reportId} {
         allow read: if true;

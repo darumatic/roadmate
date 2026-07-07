@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
+import '../services/auth_service.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
@@ -27,6 +28,8 @@ class SiteCard extends ConsumerWidget {
     final reportsAsync = ref.watch(siteReportsProvider(site.id));
     final lastReportAt = site.lastReportAt;
     final repo = ref.read(siteRepositoryProvider);
+    final isAdmin =
+        ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -74,18 +77,35 @@ class SiteCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                   ],
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      isFavourite ? Icons.star : Icons.star_border,
-                      color: isFavourite
-                          ? AppTheme.accent
-                          : AppTheme.textSecondary,
-                    ),
-                    onPressed: () => repo.toggleFavourite(site.id),
-                    tooltip: isFavourite
-                        ? 'Remove from favourites'
-                        : 'Add to favourites',
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Admin-only: remove the site entirely (issue #13).
+                      if (isAdmin)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.redAccent,
+                            size: 20,
+                          ),
+                          onPressed: () => _confirmRemoveSite(context, ref),
+                          tooltip: 'Remove site (admin)',
+                        ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          isFavourite ? Icons.star : Icons.star_border,
+                          color: isFavourite
+                              ? AppTheme.accent
+                              : AppTheme.textSecondary,
+                        ),
+                        onPressed: () => repo.toggleFavourite(site.id),
+                        tooltip: isFavourite
+                            ? 'Remove from favourites'
+                            : 'Add to favourites',
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -169,6 +189,39 @@ class SiteCard extends ConsumerWidget {
         reporterName: report.reporterName,
       );
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
+    }
+  }
+
+  /// Warns before permanently deleting the site + its reports (issue #13).
+  Future<void> _confirmRemoveSite(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Remove site?'),
+        content: Text(
+          'This permanently deletes "${site.name}" and all of its reports '
+          'for everyone. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(adminRepositoryProvider).deleteSite(site.id);
+      if (context.mounted) _snack(context, 'Site removed');
+    } catch (e) {
+      if (context.mounted) _snack(context, 'Could not remove site: $e');
     }
   }
 

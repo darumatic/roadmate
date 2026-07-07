@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../models/trip.dart';
 import '../../services/providers.dart';
@@ -76,7 +75,6 @@ class TripController extends Notifier<TripState> {
   TripState build() {
     ref.onDispose(() {
       _sub?.cancel();
-      _setWakelock(false);
     });
     return const TripState();
   }
@@ -124,11 +122,11 @@ class TripController extends Notifier<TripState> {
     state = state.copyWith(avgStats: const TripStats.initial());
   }
 
-  /// Begins recording a trip. GPS keeps running regardless.
+  /// Begins recording a trip. GPS keeps running regardless. (The screen stays
+  /// awake app-wide via KeepAwakeScope, trip or no trip — issue #14.)
   Future<void> startTrip() async {
     await ensureStarted();
     if (state.gps != GpsStatus.active || state.isRecording) return;
-    _setWakelock(true);
     state = state.copyWith(
       tripStats: const TripStats.initial(),
       tripStartedAt: DateTime.now(),
@@ -143,7 +141,6 @@ class TripController extends Notifier<TripState> {
     final s = state.tripStats ?? const TripStats.initial();
     final startedAt = state.tripStartedAt;
     state = state.copyWith(tripStats: null, tripStartedAt: null);
-    _setWakelock(false);
 
     // Save even if no GPS fix ever arrived (the design keeps zero-stat trips).
     // Without samples the GPS duration is zero, so fall back to wall clock.
@@ -203,17 +200,6 @@ class TripController extends Notifier<TripState> {
     } else if (!isOverLimit(speedKmh, limit)) {
       // Back within the limit — arm the next breach to fire immediately.
       _lastAlertAt = null;
-    }
-  }
-
-  // Best-effort; never let a missing/failed plugin (or the test harness) break
-  // tracking. No-op on web.
-  Future<void> _setWakelock(bool on) async {
-    if (kIsWeb) return;
-    try {
-      on ? await WakelockPlus.enable() : await WakelockPlus.disable();
-    } catch (_) {
-      // Keeping the screen awake is a nicety, not a requirement.
     }
   }
 }
