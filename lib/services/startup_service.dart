@@ -33,6 +33,10 @@ final appStartupProvider = FutureProvider<void>((ref) async {
   // Off in debug builds to avoid noisy uploads while developing.
   const ErrorReporter().setCollectionEnabled(!kDebugMode);
 
+  // Finish a pending redirect sign-in (web: popup was blocked and we came
+  // back from the provider) before the anonymous fallback kicks in.
+  unawaited(ref.read(authControllerProvider).completeRedirectSignIn());
+
   unawaited(ensureSignedIn(FirebaseAuth.instance).catchError((_) => ''));
 
   unawaited(_runSeedMaintenance());

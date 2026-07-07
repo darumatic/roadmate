@@ -85,20 +85,30 @@ class _AccountPanelState extends ConsumerState<AccountPanel> {
 
   Future<void> _signIn(
     String provider,
-    Future<UserCredential> Function() action,
+    Future<UserCredential?> Function() action,
   ) async {
     setState(() => _busyProvider = provider);
     try {
-      await action();
+      final credential = await action();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Signed in')));
+      // Null: the popup was blocked and a full-page redirect was started —
+      // the browser is navigating to the provider now.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            credential == null ? 'Taking you to Google sign-in…' : 'Signed in',
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
+      final message = shouldFallBackToRedirect(e)
+          ? 'Your browser blocked the sign-in window — please allow pop-ups '
+                'for roadmate.club and try again.'
+          : 'Could not sign in: $e';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Could not sign in: $e')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _busyProvider = null);
     }
