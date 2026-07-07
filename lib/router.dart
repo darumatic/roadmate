@@ -8,7 +8,7 @@ import 'features/info/info_screen.dart';
 import 'features/nearby/nearby_screen.dart';
 import 'features/favourites/favourites_screen.dart';
 import 'features/state_detail/state_detail_screen.dart';
-import 'features/trips/trips_screen.dart';
+import 'features/user/user_screen.dart';
 import 'widgets/app_shell.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -51,9 +51,9 @@ final appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/trips',
-              name: 'trips',
-              builder: (_, _) => const TripsScreen(),
+              path: '/user',
+              name: 'user',
+              builder: (_, _) => const UserScreen(),
             ),
           ],
         ),

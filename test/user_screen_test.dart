@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/features/speedometer/trip_tile.dart';
-import 'package:roadmate/features/trips/trips_screen.dart';
+import 'package:roadmate/features/user/user_screen.dart';
 import 'package:roadmate/models/trip.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/trip_history_store.dart';
@@ -45,7 +45,7 @@ Future<void> _pump(WidgetTester tester, FakeTripStore store) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [tripHistoryStoreProvider.overrideWithValue(store)],
-      child: const MaterialApp(home: TripsScreen()),
+      child: const MaterialApp(home: UserScreen()),
     ),
   );
   await tester.pumpAndSettle();
@@ -56,7 +56,9 @@ void main() {
     final store = FakeTripStore()..saved.addAll([for (var i = 0; i < 5; i++) _trip(i)]);
     await _pump(tester, store);
 
-    expect(find.text('Trips'), findsOneWidget);
+    expect(find.text('User'), findsOneWidget);
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('My Trips'), findsOneWidget);
     expect(find.text('5 saved trips'), findsOneWidget);
     expect(find.byType(TripTile), findsNWidgets(5));
     expect(find.text('View all (5)'), findsNothing);

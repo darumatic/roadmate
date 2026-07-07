@@ -99,8 +99,8 @@ void main() {
     );
     expect(find.text('Share RoadMate'), findsWidgets);
     expect(find.text(InfoScreen.shareUrl), findsOneWidget);
-    expect(find.text('Account'), findsOneWidget);
-    expect(find.textContaining('Sign-in is unavailable'), findsOneWidget);
+    // Account moved to the User tab (issue #12 redesign).
+    expect(find.text('Account'), findsNothing);
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
     await tester.pumpAndSettle();
@@ -341,7 +341,7 @@ void main() {
     expect(find.text('RoadMate v$appVersion'), findsOneWidget);
   });
 
-  testWidgets('Trips tab sits in the shell and opens the trips list', (
+  testWidgets('User tab sits in the shell and opens account + trips', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1200, 3600));
@@ -362,15 +362,17 @@ void main() {
     appRouter.go('/home');
     await tester.pumpAndSettle();
 
-    // 5 tabs, Trips between Favourites and Info.
+    // 5 tabs, User between Favourites and Info (issue #12 redesign).
     final labels = tester
         .widgetList<NavigationDestination>(find.byType(NavigationDestination))
         .map((d) => d.label)
         .toList();
-    expect(labels, ['Home', 'Nearby', 'Favourites', 'Trips', 'Info']);
+    expect(labels, ['Home', 'Nearby', 'Favourites', 'User', 'Info']);
 
-    await tester.tap(find.text('Trips'));
+    await tester.tap(find.text('User'));
     await tester.pumpAndSettle();
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('My Trips'), findsOneWidget);
     expect(find.text('No trips yet'), findsOneWidget);
   });
 

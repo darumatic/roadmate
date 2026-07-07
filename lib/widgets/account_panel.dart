@@ -202,6 +202,17 @@ class _AccountSummary extends StatelessWidget {
             ),
           ),
         ],
+        if (user == null || user!.isAnonymous) ...[
+          const SizedBox(height: 4),
+          const Text(
+            'Sign in to keep your trips and favourites across devices.',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ],
       ],
     );
   }

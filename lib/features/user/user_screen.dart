@@ -2,32 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/trip.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/account_panel.dart';
 import '../speedometer/trip_controller.dart';
 import '../speedometer/trip_tile.dart';
 
-/// Trips tab (issue #5): every saved trip, newest first, with per-trip delete
-/// and Clear all. The Home Trip Logger shows only the 3 most recent.
-class TripsScreen extends ConsumerWidget {
-  const TripsScreen({super.key});
+/// "User" tab (issue #12 redesign, replaces the Trips tab): account sign-in,
+/// admin moderation entry, and My Trips — every saved trip with per-trip
+/// delete and Clear all. The Home Trip Logger keeps showing the 3 newest.
+class UserScreen extends ConsumerWidget {
+  const UserScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final trips = ref.watch(tripHistoryProvider).asData?.value ?? const <Trip>[];
+    final isAnonymous =
+        ref.watch(currentUserRoleProvider).value == AppUserRole.anonymous;
 
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  'User',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+            const SliverPadding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+              sliver: SliverToBoxAdapter(child: AccountPanel()),
+            ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
                 child: Row(
                   children: [
+                    const Icon(Icons.route, size: 18, color: AppTheme.accent),
+                    const SizedBox(width: 8),
                     const Text(
-                      'Trips',
+                      'My Trips',
                       style: TextStyle(
-                        fontSize: 30,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.textPrimary,
                       ),
@@ -66,7 +90,7 @@ class TripsScreen extends ConsumerWidget {
                 ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                 sliver: SliverList.separated(
                   itemCount: trips.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -77,6 +101,21 @@ class TripsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (isAnonymous)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(32, 4, 32, 24),
+                    child: Text(
+                      'Trips are stored on this device. Sign in to keep them.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ],
         ),
@@ -96,7 +135,7 @@ class _EmptyTrips extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.route, size: 48, color: AppTheme.textSecondary),
+            Icon(Icons.map_outlined, size: 44, color: AppTheme.textSecondary),
             SizedBox(height: 12),
             Text(
               'No trips yet',
@@ -104,7 +143,7 @@ class _EmptyTrips extends StatelessWidget {
             ),
             SizedBox(height: 6),
             Text(
-              'Start a trip from the Home speedometer to log it here.',
+              'Start one from the Home speedometer to log it here.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textSecondary),
             ),

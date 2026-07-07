@@ -91,7 +91,7 @@ class TripLoggerCard extends ConsumerWidget {
           if (trips.length > 3)
             Center(
               child: TextButton(
-                onPressed: () => context.go('/trips'),
+                onPressed: () => context.go('/user'),
                 child: Text('View all (${trips.length})'),
               ),
             ),
