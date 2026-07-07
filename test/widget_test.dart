@@ -115,7 +115,7 @@ void main() {
     expect(find.text('Community-powered'), findsOneWidget);
 
     await tester.pumpWidget(const MaterialApp(home: CreditsPage()));
-    expect(find.text('Leo Pervieux'), findsOneWidget);
+    expect(find.text('Leandro Pervieux'), findsOneWidget);
     expect(find.text('Adrian Deccico'), findsOneWidget);
     expect(find.text('Darumatic'), findsOneWidget);
 
