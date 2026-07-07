@@ -371,7 +371,6 @@ class CreditsPage extends StatelessWidget {
           icon: Icons.local_shipping,
           kicker: 'ORIGINAL IDEA & DESIGN',
           name: 'Leo Pervieux',
-          line: 'Designed on the road, by a fellow truck driver',
           italicLine: true,
         ),
         const _CreditCard(
