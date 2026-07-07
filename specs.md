@@ -126,7 +126,7 @@ They are approximate — verify exact site positions before production.
 | Vote/report rate limiting (issue #15) | ❌ **Rolled back** — both designs caused false rejections/blocked corrections in production; future: App Check / Cloud Functions (see rules note above) |
 | Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
 | Web update banner ("new version — Refresh") | ✅ Done — polls `/version.json` (5 min + on tab refocus) vs baked `appVersion`; Refresh clears SW + caches then reloads (`lib/services/update_checker.dart`, `widgets/update_banner.dart`); no-op on native |
-| Google sign-in popup-blocked fallback | ✅ Done — a blocked popup falls back to `signInWithRedirect`/`linkWithRedirect`; the return leg completes at startup (`AuthController.completeRedirectSignIn`), incl. the link-conflict case; `ensureSignedIn` waits for the restored session first. Follow-up (console-only): switch web `authDomain` to roadmate.club for first-party redirects (needs the OAuth redirect URI added in Google Cloud) |
+| Google sign-in popup-blocked fallback | ✅ Done — a blocked popup falls back to `signInWithRedirect`/`linkWithRedirect`; the return leg completes at startup (`AuthController.completeRedirectSignIn`), incl. the link-conflict case; `ensureSignedIn` waits for the restored session first. Web `authDomain` = `roadmate.club` (first-party redirects — Safari/incognito safe; the OAuth redirect URI was added in Google Cloud 2026-07-07) |
 
 ## Deployment & domain
 

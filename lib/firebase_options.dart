@@ -51,7 +51,13 @@ class DefaultFirebaseOptions {
     appId: '1:976338726022:web:05723528d13b5fe80ef507',
     messagingSenderId: '976338726022',
     projectId: 'roadmate-b1551',
-    authDomain: 'roadmate-b1551.firebaseapp.com',
+    // HAND-EDITED (a `flutterfire configure` re-run will revert this — put it
+    // back): first-party auth domain so popup/redirect sign-in survives
+    // browsers that partition third-party storage (Safari, incognito).
+    // Requires https://roadmate.club/__/auth/handler in the Google OAuth
+    // client's authorized redirect URIs (done 2026-07-07). Guarded by
+    // test/firebase_options_test.dart.
+    authDomain: 'roadmate.club',
     storageBucket: 'roadmate-b1551.firebasestorage.app',
     measurementId: 'G-4BZ3K6PC86',
   );
