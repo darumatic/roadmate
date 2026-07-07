@@ -161,86 +161,17 @@ void main() {
       );
 
       test(
-        'rate limit: five actions per site per window; the sixth is rejected '
-        'and another site is unaffected',
+        'repeated votes in quick succession all succeed (no rate limit)',
         () async {
           await repo.addSite(_site('site-1'));
-          await repo.addSite(_site('site-2'));
 
-          // Undoing a mis-tap works — votes and reports share one window of 5.
           await repo.vote('site-1', SiteStatus.blitz);
           await repo.vote('site-1', SiteStatus.open);
           await repo.report('site-1', ActivityReportType.delays);
-          await repo.vote('site-1', SiteStatus.closed);
-          await repo.report('site-1', ActivityReportType.longQueue);
 
-          await expectLater(
-            repo.vote('site-1', SiteStatus.open),
-            throwsA(isA<FirebaseException>()),
-          );
-
-          // The rejected batch changed nothing.
           final site = await firestore.collection('sites').doc('site-1').get();
+          expect(site.data()?['blitzVotes'], 1);
           expect(site.data()?['openVotes'], 1);
-
-          // Per-site: another site accepts a vote immediately.
-          await repo.vote('site-2', SiteStatus.open);
-        },
-      );
-
-      test(
-        'rate limit: a bare counter bump without the ledger stamp is rejected',
-        () async {
-          await repo.addSite(_site('site-1'));
-
-          await expectLater(
-            firestore.collection('sites').doc('site-1').update({
-              'openVotes': FieldValue.increment(1),
-              'currentStatus': 'open',
-              'lastReportAt': FieldValue.serverTimestamp(),
-            }),
-            throwsA(isA<FirebaseException>()),
-          );
-        },
-      );
-
-      test(
-        'rate limit: a forged or foreign ledger is rejected',
-        () async {
-          await repo.addSite(_site('site-1'));
-          final uid = auth.currentUser!.uid;
-
-          // The window start must be the server time, not a chosen past value.
-          await expectLater(
-            firestore
-                .collection('sites')
-                .doc('site-1')
-                .collection('limits')
-                .doc(uid)
-                .set({
-                  'windowStart': Timestamp.fromDate(
-                    DateTime.now().subtract(const Duration(hours: 1)),
-                  ),
-                  'count': 1,
-                  'lastActionAt': FieldValue.serverTimestamp(),
-                }),
-            throwsA(isA<FirebaseException>()),
-          );
-
-          // Another user's ledger can't be written at all.
-          await expectLater(
-            firestore
-                .collection('sites')
-                .doc('site-1')
-                .collection('limits')
-                .doc('someone-else')
-                .set({
-                  'windowStart': FieldValue.serverTimestamp(),
-                  'count': 1,
-                  'lastActionAt': FieldValue.serverTimestamp(),
-                }),
-            throwsA(isA<FirebaseException>()),
-          );
         },
       );
     },

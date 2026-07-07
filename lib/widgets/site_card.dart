@@ -6,7 +6,6 @@ import '../models/site.dart';
 import '../models/site_report.dart';
 import '../services/auth_service.dart';
 import '../services/providers.dart';
-import '../services/rate_limit.dart';
 import '../services/site_repository.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
@@ -173,9 +172,7 @@ class SiteCard extends ConsumerWidget {
     );
   }
 
-  /// Casts a status vote. Rate limiting is server-side only (5 actions per
-  /// site per 5 minutes, enforced by the rules) — the client just turns the
-  /// rejection into a friendly message, so undoing a mis-tap always works.
+  /// Casts a status vote; a failed write surfaces as a snack, never a crash.
   Future<void> _vote(
     BuildContext context,
     SiteRepository repo,
@@ -188,12 +185,7 @@ class SiteCard extends ConsumerWidget {
       }
     } catch (e) {
       if (!context.mounted) return;
-      _snack(
-        context,
-        isRateLimited(e)
-            ? rateLimitMessage
-            : 'Could not submit — please try again.',
-      );
+      _snack(context, 'Could not submit — please try again.');
     }
   }
 
@@ -213,12 +205,7 @@ class SiteCard extends ConsumerWidget {
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
     } catch (e) {
       if (!context.mounted) return;
-      _snack(
-        context,
-        isRateLimited(e)
-            ? rateLimitMessage
-            : 'Could not submit — please try again.',
-      );
+      _snack(context, 'Could not submit — please try again.');
     }
   }
 

@@ -1,4 +1,3 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -307,28 +306,9 @@ void main() {
     },
   );
 
-  testWidgets('a rules rate-limit rejection shows the friendly message', (
+  testWidgets('vote failures show a friendly error, never a crash', (
     tester,
   ) async {
-    final repo = FakeSiteRepository()
-      ..voteError = FirebaseException(
-        plugin: 'cloud_firestore',
-        code: 'permission-denied',
-      );
-    await _pump(tester, repo);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Open/Working'));
-    await tester.pump();
-
-    expect(repo.votes, isEmpty);
-    expect(
-      find.textContaining('made several changes to this site'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('other vote failures show a generic error', (tester) async {
     final repo = FakeSiteRepository()..voteError = Exception('offline');
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -336,17 +316,14 @@ void main() {
     await tester.tap(find.text('Open/Working'));
     await tester.pump();
 
+    expect(repo.votes, isEmpty);
     expect(find.textContaining('Could not submit'), findsOneWidget);
   });
 
-  testWidgets('a rate-limited activity report shows the friendly message', (
+  testWidgets('report failures show a friendly error, never a crash', (
     tester,
   ) async {
-    final repo = FakeSiteRepository()
-      ..reportError = FirebaseException(
-        plugin: 'cloud_firestore',
-        code: 'permission-denied',
-      );
+    final repo = FakeSiteRepository()..reportError = Exception('offline');
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
@@ -356,9 +333,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.reports, isEmpty);
-    expect(
-      find.textContaining('made several changes to this site'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Could not submit'), findsOneWidget);
   });
 }

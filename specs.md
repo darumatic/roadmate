@@ -75,18 +75,16 @@ own uid); manage their own favourites list. Deletes are disabled for regular
 users; **admins may delete sites** (and reports) — see admin site removal below.
 **Test mode closed; all four write paths verified live under these rules.**
 
-**Rate limiting (issue #15):** **5 actions (votes + activity reports combined)
-per user per site per 5-minute window** — enough to undo a mis-tap, too slow to
-spam. A ledger doc `sites/{siteId}/limits/{uid}` (`windowStart`/`count`/
-`lastActionAt`) is written by every vote/report batch (verified via
-`getAfter()`); its own rule verifies the window transition (reset after 5 min,
-else count+1 capped at 5). A write beyond the cap rejects the whole batch as
-permission-denied. **Validation is server-side only** (the earlier client-side
-cooldown UI blocked legitimate status corrections and was removed); the client
-just shows a friendly message on rejection. Constants in the rules must match
-`lib/services/rate_limit.dart` (`kActionWindow`/`kMaxActionsPerWindow`). Known
-limit: identity is anonymous auth, so a fresh uid resets the window — App Check
-is the planned follow-up for scripted abuse.
+**Rate limiting (issue #15): ROLLED BACK.** Two designs shipped and were
+removed: per-action cooldowns (blocked undoing mis-taps) and a 5-actions-per-
+5-minute ledger window (produced false permission-denied rejections in
+production — the client chose the window-reset-vs-increment branch with the
+device clock, so clock skew broke legitimate votes). The rules still validate
+write *shapes* (one counter +1 etc.) but no longer throttle frequency. Legacy
+`sites/{id}/limits/{uid}` docs are frozen (no client writes; admin read/delete
+only — site deletion purges them). Rate limiting remains a follow-up via App
+Check and/or Cloud Functions (see TASKS.md), which avoid the client-clock
+problem entirely.
 
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
@@ -125,7 +123,7 @@ They are approximate — verify exact site positions before production.
 | Web public deploy (Firebase Hosting) | ✅ **LIVE — https://roadmate-b1551.web.app** |
 | Admin site removal (X on site card + warning popup; deletes site + its reports, issue #13) | ✅ Done — `AdminRepository.deleteSite`, rules allow `delete` for admins only |
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
-| Vote/report rate limiting, per user per site (issue #15) | ✅ Done — rules ledger `sites/{id}/limits/{uid}`: 5 actions per 5-min window (votes+reports combined, so mistakes can be undone); server-side only (`lib/services/rate_limit.dart`) |
+| Vote/report rate limiting (issue #15) | ❌ **Rolled back** — both designs caused false rejections/blocked corrections in production; future: App Check / Cloud Functions (see rules note above) |
 | Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
 | Web update banner ("new version — Refresh") | ✅ Done — polls `/version.json` (5 min + on tab refocus) vs baked `appVersion`; Refresh clears SW + caches then reloads (`lib/services/update_checker.dart`, `widgets/update_banner.dart`); no-op on native |
 

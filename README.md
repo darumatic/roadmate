@@ -73,7 +73,7 @@ firebase deploy --only firestore:rules --project roadmate-b1551  # security rule
 ### Security-rules tests (Firestore emulator)
 `firestore.rules` is tested with the official `@firebase/rules-unit-testing`
 harness in `test/rules/rules_test.mjs` — it exercises the real client write
-shapes (vote/report batches, rate-limit ledger, admin deletes) against the
+shapes (vote/report batches, admin deletes, admin publishes) against the
 emulator. Run it whenever the rules change, before deploying:
 
 ```bash
