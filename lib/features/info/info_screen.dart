@@ -370,7 +370,8 @@ class CreditsPage extends StatelessWidget {
         const _CreditCard(
           icon: Icons.local_shipping,
           kicker: 'ORIGINAL IDEA & DESIGN',
-          name: 'Leo Pervieux',
+          name: 'Leandro Pervieux',
+          line: 'Leo',
           italicLine: true,
         ),
         const _CreditCard(
