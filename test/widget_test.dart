@@ -81,34 +81,66 @@ void main() {
     expect(find.text('Blitz'), findsOneWidget);
   });
 
-  testWidgets('InfoScreen shows disclaimer and about content', (tester) async {
-    // Tall surface so all Info cards build at first paint (the Useful Links
-    // card at the top pushes later blocks down).
+  testWidgets('Info hub lists the seven sections (issue #12)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 2600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(const MaterialApp(home: InfoScreen()));
 
     expect(find.text('Info'), findsOneWidget);
-    expect(find.text('Useful Links'), findsOneWidget);
-    expect(find.text('Use as a heads-up only'), findsOneWidget);
-    expect(find.text('About RoadMate'), findsOneWidget);
-    expect(
-      find.textContaining('Developed by Leandro Pervieux and Adrian Deccico.'),
-      findsOneWidget,
-    );
-    expect(find.text('Share RoadMate'), findsWidgets);
-    expect(find.text(InfoScreen.shareUrl), findsOneWidget);
+    for (final row in [
+      'Useful Links',
+      'About RoadMate',
+      'Credits',
+      'Support the app',
+      'Contact / Support',
+      'Share RoadMate',
+      'Disclaimer',
+    ]) {
+      expect(find.text(row), findsOneWidget);
+    }
     // Account moved to the User tab (issue #12 redesign).
     expect(find.text('Account'), findsNothing);
+  });
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
-    await tester.pumpAndSettle();
+  testWidgets('Info sub-pages render their content', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    expect(find.text('Support'), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(home: AboutPage()));
+    expect(
+      find.text('Built by truck drivers, for truck drivers'),
+      findsOneWidget,
+    );
+    expect(find.text('Community-powered'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: CreditsPage()));
+    expect(find.text('Leo Pervieux'), findsOneWidget);
+    expect(find.text('Adrian Deccico'), findsOneWidget);
+    expect(find.text('Darumatic'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: SupportPage()));
+    expect(find.text('Keep RoadMate rolling'), findsOneWidget);
+    expect(find.text('Buy me a coffee'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: UsefulLinksPage()));
+    expect(find.text('NHVR — Road Access'), findsOneWidget);
+    expect(find.text('TasALERT'), findsOneWidget);
+    expect(
+      find.byType(InfoLinkRow),
+      findsNWidgets(UsefulLinksPage.links.length),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: SharePage()));
+    expect(find.text('Invite another driver'), findsOneWidget);
+    expect(find.text(InfoScreen.shareUrl), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: ContactPage()));
     expect(find.textContaining('info@roadmate.club'), findsOneWidget);
-    expect(find.text('Report activity data'), findsNothing);
-    expect(find.text('Donations'), findsNothing);
+
+    await tester.pumpWidget(const MaterialApp(home: DisclaimerPage()));
+    expect(find.text('Use as a heads-up only'), findsOneWidget);
+    expect(find.text('Approximate locations'), findsOneWidget);
   });
 
   testWidgets('AdminEntryLink shows only for admins', (tester) async {

@@ -63,6 +63,30 @@ final appRouter = GoRouter(
               path: '/info',
               name: 'info',
               builder: (_, _) => const InfoScreen(),
+              routes: [
+                GoRoute(
+                  path: 'links',
+                  builder: (_, _) => const UsefulLinksPage(),
+                ),
+                GoRoute(path: 'about', builder: (_, _) => const AboutPage()),
+                GoRoute(
+                  path: 'credits',
+                  builder: (_, _) => const CreditsPage(),
+                ),
+                GoRoute(
+                  path: 'support',
+                  builder: (_, _) => const SupportPage(),
+                ),
+                GoRoute(
+                  path: 'contact',
+                  builder: (_, _) => const ContactPage(),
+                ),
+                GoRoute(path: 'share', builder: (_, _) => const SharePage()),
+                GoRoute(
+                  path: 'disclaimer',
+                  builder: (_, _) => const DisclaimerPage(),
+                ),
+              ],
             ),
           ],
         ),
