@@ -60,6 +60,12 @@ class FirestoreSiteRepository implements SiteRepository {
         );
   }
 
+  /// The per-user rate-limit ledger doc (issue #15). Vote/report batches must
+  /// stamp it with the server time — the rules verify the stamp via getAfter()
+  /// and reject the whole batch when the previous stamp is inside the cooldown.
+  DocumentReference<Map<String, dynamic>> _limitsRef(String siteId, String uid) =>
+      _sites.doc(siteId).collection('limits').doc(uid);
+
   @override
   Future<void> vote(String siteId, SiteStatus status) async {
     final uid = await ensureSignedIn(auth);
@@ -76,6 +82,9 @@ class FirestoreSiteRepository implements SiteRepository {
       'currentStatus': status.name,
       'lastReportAt': FieldValue.serverTimestamp(),
     });
+    batch.set(_limitsRef(siteId, uid), {
+      'lastVoteAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
     await batch.commit();
   }
 
@@ -98,10 +107,17 @@ class FirestoreSiteRepository implements SiteRepository {
     if (note != null && note.isNotEmpty) data['activityNote'] = note;
     if (name != null && name.isNotEmpty) data['reporterName'] = name;
 
-    await _sites.doc(siteId).collection('reports').add(data);
-    await _sites.doc(siteId).update({
+    // One atomic batch: the rules tie the report + touch to the rate-limit
+    // ledger stamp with getAfter(), which only sees same-batch writes.
+    final batch = firestore.batch();
+    batch.set(_sites.doc(siteId).collection('reports').doc(), data);
+    batch.update(_sites.doc(siteId), {
       'lastReportAt': FieldValue.serverTimestamp(),
     });
+    batch.set(_limitsRef(siteId, uid), {
+      'lastReportAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await batch.commit();
   }
 
   @override

@@ -5,7 +5,10 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import '../services/auth_service.dart';
+import '../services/cooldown_controller.dart';
 import '../services/providers.dart';
+import '../services/rate_limit.dart';
+import '../services/site_repository.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
@@ -30,6 +33,12 @@ class SiteCard extends ConsumerWidget {
     final repo = ref.read(siteRepositoryProvider);
     final isAdmin =
         ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
+    // Cooldown UX (issue #15): grey out actions this device used recently on
+    // this site. The Firestore rules ledger is the real enforcement.
+    final cooldowns = ref.watch(cooldownProvider);
+    final now = DateTime.now();
+    final onVoteCooldown = cooldowns.remainingVote(site.id, now) != null;
+    final onReportCooldown = cooldowns.remainingReport(site.id, now) != null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -152,26 +161,22 @@ class SiteCard extends ConsumerWidget {
           const SizedBox(height: 12),
           _VoteRow(
             current: site.currentStatus,
-            onVote: (status) async {
-              await repo.vote(site.id, status);
-              if (context.mounted) {
-                _snack(
-                  context,
-                  'Reported ${statusDisplayLabel(status)} — thanks!',
-                );
-              }
-            },
+            dimmed: onVoteCooldown,
+            onVote: (status) => _vote(context, ref, repo, status),
           ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(40),
-              foregroundColor: AppTheme.textSecondary,
-              side: const BorderSide(color: AppTheme.border),
+          Opacity(
+            opacity: onReportCooldown ? 0.5 : 1,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+                foregroundColor: AppTheme.textSecondary,
+                side: const BorderSide(color: AppTheme.border),
+              ),
+              icon: const Icon(Icons.flag_outlined, size: 16),
+              label: const Text('Report activity'),
+              onPressed: () => _reportActivity(context, ref, repo),
             ),
-            icon: const Icon(Icons.flag_outlined, size: 16),
-            label: const Text('Report activity'),
-            onPressed: () => _reportActivity(context, repo),
           ),
           _RecentActivityReports(reportsAsync: reportsAsync),
         ],
@@ -179,16 +184,70 @@ class SiteCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _reportActivity(BuildContext context, repo) async {
+  /// Casts a status vote unless this device is inside the vote cooldown; the
+  /// rules ledger stays the backstop (a second device / cleared storage still
+  /// gets rejected server-side as permission-denied).
+  Future<void> _vote(
+    BuildContext context,
+    WidgetRef ref,
+    SiteRepository repo,
+    SiteStatus status,
+  ) async {
+    final remaining = ref
+        .read(cooldownProvider)
+        .remainingVote(site.id, DateTime.now());
+    if (remaining != null) {
+      _snack(context, cooldownMessage(remaining, isVote: true));
+      return;
+    }
+    try {
+      await repo.vote(site.id, status);
+      ref.read(cooldownProvider.notifier).markVote(site.id);
+      if (context.mounted) {
+        _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      _snack(
+        context,
+        isRateLimited(e)
+            ? cooldownMessage(kVoteCooldown, isVote: true)
+            : 'Could not submit — please try again.',
+      );
+    }
+  }
+
+  Future<void> _reportActivity(
+    BuildContext context,
+    WidgetRef ref,
+    SiteRepository repo,
+  ) async {
+    final remaining = ref
+        .read(cooldownProvider)
+        .remainingReport(site.id, DateTime.now());
+    if (remaining != null) {
+      _snack(context, cooldownMessage(remaining, isVote: false));
+      return;
+    }
     final report = await _showReportDialog(context);
-    if (report != null) {
+    if (report == null) return;
+    try {
       await repo.report(
         site.id,
         report.activityType,
         activityNote: report.activityNote,
         reporterName: report.reporterName,
       );
+      ref.read(cooldownProvider.notifier).markReport(site.id);
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
+    } catch (e) {
+      if (!context.mounted) return;
+      _snack(
+        context,
+        isRateLimited(e)
+            ? cooldownMessage(kReportCooldown, isVote: false)
+            : 'Could not submit — please try again.',
+      );
     }
   }
 
@@ -226,9 +285,13 @@ class SiteCard extends ConsumerWidget {
   }
 
   void _snack(BuildContext context, String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
-    );
+    // Replace any showing snack — a cooldown explanation must not sit in a
+    // queue behind the previous "thanks!" message.
+    ScaffoldMessenger.of(context)
+      ..removeCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      );
   }
 }
 
@@ -456,26 +519,37 @@ String _relativeTime(DateTime createdAt) {
 }
 
 class _VoteRow extends StatelessWidget {
-  const _VoteRow({required this.current, required this.onVote});
+  const _VoteRow({
+    required this.current,
+    required this.onVote,
+    this.dimmed = false,
+  });
 
   final SiteStatus current;
   final ValueChanged<SiteStatus> onVote;
 
+  /// Greyed while the vote cooldown is active — still tappable so the tap can
+  /// explain the cooldown instead of feeling dead.
+  final bool dimmed;
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (final status in SiteStatus.values) ...[
-          if (status != SiteStatus.values.first) const SizedBox(width: 8),
-          Expanded(
-            child: _VoteButton(
-              status: status,
-              selected: current == status,
-              onTap: () => onVote(status),
+    return Opacity(
+      opacity: dimmed ? 0.5 : 1,
+      child: Row(
+        children: [
+          for (final status in SiteStatus.values) ...[
+            if (status != SiteStatus.values.first) const SizedBox(width: 8),
+            Expanded(
+              child: _VoteButton(
+                status: status,
+                selected: current == status,
+                onTap: () => onVote(status),
+              ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

@@ -70,17 +70,22 @@ firebase deploy --only firestore:rules --project roadmate-b1551  # security rule
 ```
 `flutterfire` lives at `~/.pub-cache/bin` (not on PATH by default).
 
-### Firebase emulator tests
-Repository/rules integration tests live under `test/firebase`. They are skipped
-by default so normal widget/unit tests stay fast and offline. Run them with the
-Firebase Emulator Suite:
+### Security-rules tests (Firestore emulator)
+`firestore.rules` is tested with the official `@firebase/rules-unit-testing`
+harness in `test/rules/rules_test.mjs` — it exercises the real client write
+shapes (vote/report batches, rate-limit ledger, admin deletes) against the
+emulator. Run it whenever the rules change, before deploying:
 
 ```bash
-FIREBASE_EMULATOR_TESTS=true firebase emulators:exec --only firestore,auth "flutter test test/firebase"
+./scripts/test_rules.sh   # needs Node + Java 21+ (installs npm deps on first run)
 ```
 
-This requires Java and the Firebase CLI locally, and can also run in GitHub
-Actions with the same command.
+There are also Dart-side integration tests under `test/firebase`
+(`FIREBASE_EMULATOR_TESTS=true firebase emulators:exec --only firestore,auth
+"flutter test test/firebase"`), but note they cannot run headless: plain
+`flutter test` has no Firebase platform channels, so `Firebase.initializeApp`
+fails on the VM. They are kept as documentation of the repository behaviour;
+the rules harness above is the one that actually verifies enforcement.
 
 ### Approve a community-submitted site (moderation)
 New sites from **Add Site** are stored with `approved: false` and stay hidden

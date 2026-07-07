@@ -39,17 +39,38 @@ service cloud.firestore {
       // Two permitted update shapes:
       //  - a validated status vote (one counter +1, valid status), or
       //  - a bare lastReportAt touch (accompanies an activity report).
+      // Both must stamp the rate-limit ledger in the same batch (issue #15).
       allow update: if isAdmin()
-        || (signedIn() && (isValidVote() || isReportTouch()));
+        || (signedIn() && (isValidVote(siteId) || isReportTouch(siteId)));
 
       // Admins may remove a site outright (issue #13); the client deletes the
-      // reports subcollection in the same batch (nested rule below allows it).
+      // reports/limits subcollections in the same batch (nested rules allow it).
       allow delete: if isAdmin();
 
       match /reports/{reportId} {
         allow read: if true;
         allow create: if signedIn() && isValidReport(siteId);
         allow update: if false;
+        allow delete: if isAdmin();
+      }
+
+      // Per-user rate-limit ledger (issue #15): one doc per user per site with
+      // the user's last vote/report time. Every vote/report batch must set the
+      // matching field to request.time (enforced via getAfter() in the rules
+      // above), and updating a field is only allowed once its cooldown has
+      // passed — so a spammy second write rejects the whole batch.
+      // Cooldowns MUST match lib/services/rate_limit.dart (5 min / 2 min).
+      match /limits/{uid} {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow create: if signedIn()
+          && request.auth.uid == uid
+          && validLimitKeys()
+          && limitStampsAreNow();
+        allow update: if signedIn()
+          && request.auth.uid == uid
+          && validLimitKeys()
+          && voteStampOk()
+          && reportStampOk();
         allow delete: if isAdmin();
       }
     }
@@ -94,9 +115,54 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    // --- Rate limiting (issue #15) -----------------------------------------
+    // The user's ledger doc *after* this batch commits must carry a stamp equal
+    // to request.time — proving the batch also wrote the ledger, whose own rule
+    // enforces the cooldown.
+    function votedNow(siteId) {
+      return getAfter(/databases/$(database)/documents/sites/$(siteId)/limits/$(request.auth.uid))
+        .data.lastVoteAt == request.time;
+    }
+
+    function reportedNow(siteId) {
+      return getAfter(/databases/$(database)/documents/sites/$(siteId)/limits/$(request.auth.uid))
+        .data.lastReportAt == request.time;
+    }
+
+    function validLimitKeys() {
+      return request.resource.data.keys().hasOnly(['lastVoteAt', 'lastReportAt']);
+    }
+
+    // First ledger doc for this user+site: any present stamp must be "now".
+    function limitStampsAreNow() {
+      return (!('lastVoteAt' in request.resource.data)
+          || request.resource.data.lastVoteAt == request.time)
+        && (!('lastReportAt' in request.resource.data)
+          || request.resource.data.lastReportAt == request.time);
+    }
+
+    // A changed stamp must be "now" AND the previous one (if any) must be older
+    // than the cooldown. Votes: 5 minutes.
+    function voteStampOk() {
+      return !affectedKeys().hasAny(['lastVoteAt'])
+        || (request.resource.data.lastVoteAt == request.time
+          && (!('lastVoteAt' in resource.data)
+            || request.time > resource.data.lastVoteAt + duration.value(5, 'm')));
+    }
+
+    // Activity reports: 2 minutes.
+    function reportStampOk() {
+      return !affectedKeys().hasAny(['lastReportAt'])
+        || (request.resource.data.lastReportAt == request.time
+          && (!('lastReportAt' in resource.data)
+            || request.time > resource.data.lastReportAt + duration.value(2, 'm')));
+    }
+    // ------------------------------------------------------------------------
+
     // Exactly one of the three status counters increases by 1; none decrease;
-    // currentStatus is a valid value; no other fields change.
-    function isValidVote() {
+    // currentStatus is a valid value; no other fields change. Must be batched
+    // with a fresh rate-limit ledger stamp.
+    function isValidVote(siteId) {
       let a = resource.data;
       let b = request.resource.data;
       return affectedKeys().hasOnly(
@@ -107,11 +173,12 @@ service cloud.firestore {
         && b.blitzVotes >= a.blitzVotes
         && b.closedVotes >= a.closedVotes
         && (b.openVotes + b.blitzVotes + b.closedVotes)
-             == (a.openVotes + a.blitzVotes + a.closedVotes) + 1;
+             == (a.openVotes + a.blitzVotes + a.closedVotes) + 1
+        && votedNow(siteId);
     }
 
-    function isReportTouch() {
-      return affectedKeys().hasOnly(['lastReportAt']);
+    function isReportTouch(siteId) {
+      return affectedKeys().hasOnly(['lastReportAt']) && reportedNow(siteId);
     }
 
     function isValidReport(siteId) {
@@ -123,16 +190,17 @@ service cloud.firestore {
         && d.uid == request.auth.uid
         && d.siteId == siteId
         && d.createdAt == request.time
-        && (isValidStatusReport(d) || isValidActivityReport(d));
+        && (isValidStatusReport(d, siteId) || isValidActivityReport(d, siteId));
     }
 
-    function isValidStatusReport(d) {
+    function isValidStatusReport(d, siteId) {
       return d.keys().hasOnly(['siteId', 'status', 'uid', 'createdAt'])
         && d.status is string
-        && d.status in ['open', 'blitz', 'closed'];
+        && d.status in ['open', 'blitz', 'closed']
+        && votedNow(siteId);
     }
 
-    function isValidActivityReport(d) {
+    function isValidActivityReport(d, siteId) {
       return d.keys().hasOnly([
           'siteId', 'activityType', 'activityNote', 'reporterName',
           'uid', 'createdAt'
@@ -147,7 +215,8 @@ service cloud.firestore {
         && (!('reporterName' in d.keys())
           || (d.reporterName is string
             && d.reporterName.size() > 0
-            && d.reporterName.size() <= 80));
+            && d.reporterName.size() <= 80))
+        && reportedNow(siteId);
     }
 
     function isValidNewSite() {

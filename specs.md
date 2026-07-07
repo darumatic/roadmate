@@ -75,6 +75,18 @@ own uid); manage their own favourites list. Deletes are disabled for regular
 users; **admins may delete sites** (and reports) — see admin site removal below.
 **Test mode closed; all four write paths verified live under these rules.**
 
+**Rate limiting (issue #15):** votes/reports are throttled **per user per site**
+by a ledger doc `sites/{siteId}/limits/{uid}` (`lastVoteAt`/`lastReportAt`).
+Each vote/report batch must stamp its field with the server time — verified via
+`getAfter()` — and the ledger's own rule only allows a new stamp once the
+cooldown has passed (**votes 5 min, activity reports 2 min**; the `duration`
+literals in the rules must match `lib/services/rate_limit.dart`). A too-soon
+write rejects the whole batch as permission-denied. The client mirrors the
+cooldown locally (`CooldownController` + SharedPreferences) so buttons grey out
+with a friendly message instead of hitting the rejection; the rules stay the
+backstop. Known limit: identity is anonymous auth, so a fresh uid resets the
+cooldown — App Check is the planned follow-up for scripted abuse.
+
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
 for MVP** — flip `approved` to `true` in the Firebase console. An in-app admin
@@ -112,6 +124,7 @@ They are approximate — verify exact site positions before production.
 | Web public deploy (Firebase Hosting) | ✅ **LIVE — https://roadmate-b1551.web.app** |
 | Admin site removal (X on site card + warning popup; deletes site + its reports, issue #13) | ✅ Done — `AdminRepository.deleteSite`, rules allow `delete` for admins only |
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
+| Vote/report rate limiting, per user per site (issue #15) | ✅ Done — rules ledger `sites/{id}/limits/{uid}` (5 min votes / 2 min reports) + client cooldown UX (`lib/services/rate_limit.dart`, `cooldown_store.dart`, `cooldown_controller.dart`) |
 
 ## Deployment & domain
 

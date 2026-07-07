@@ -84,14 +84,18 @@ class AdminRepository {
     });
   }
 
-  /// Permanently removes a site and every report under it (issue #13).
-  /// Admin-only per the security rules; one atomic batch so a failure never
-  /// leaves orphaned reports behind a deleted site.
+  /// Permanently removes a site and every report and rate-limit ledger doc
+  /// under it (issue #13). Admin-only per the security rules; one atomic
+  /// batch so a failure never leaves orphans behind a deleted site.
   Future<void> deleteSite(String siteId) async {
     final siteRef = _sites.doc(siteId);
     final reports = await siteRef.collection('reports').get();
+    final limits = await siteRef.collection('limits').get();
     final batch = firestore.batch();
     for (final doc in reports.docs) {
+      batch.delete(doc.reference);
+    }
+    for (final doc in limits.docs) {
       batch.delete(doc.reference);
     }
     batch.delete(siteRef);

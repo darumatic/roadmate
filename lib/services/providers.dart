@@ -8,6 +8,7 @@ import '../models/admin_report.dart';
 import 'admin_repository.dart';
 import 'alert_player.dart';
 import 'auth_service.dart';
+import 'cooldown_store.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
@@ -45,6 +46,11 @@ final alertPlayerProvider = Provider<AlertPlayer>((ref) => BeepAlertPlayer());
 /// On-device store for saved trips and the manual speed limit.
 final tripHistoryStoreProvider = Provider<TripHistoryStore>(
   (ref) => const PrefsTripHistoryStore(),
+);
+
+/// On-device store for the vote/report cooldown timestamps (issue #15).
+final cooldownStoreProvider = Provider<CooldownStore>(
+  (ref) => const PrefsCooldownStore(),
 );
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {

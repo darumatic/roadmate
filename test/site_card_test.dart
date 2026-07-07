@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,17 +10,24 @@ import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Records calls so the widget's wiring can be asserted.
+/// Records calls so the widget's wiring can be asserted. Set [voteError] /
+/// [reportError] to simulate the write being rejected (e.g. by the rules'
+/// rate limit).
 class FakeSiteRepository implements SiteRepository {
   final votes = <(String, SiteStatus)>[];
   final favourites = <String>[];
   final reports = <(String, ActivityReportType, String?, String?)>[];
   List<SiteReport> watchedReports = const [];
+  Object? voteError;
+  Object? reportError;
 
   @override
-  Future<void> vote(String siteId, SiteStatus status) async =>
-      votes.add((siteId, status));
+  Future<void> vote(String siteId, SiteStatus status) async {
+    if (voteError != null) throw voteError!;
+    votes.add((siteId, status));
+  }
 
   @override
   Future<void> toggleFavourite(String siteId) async => favourites.add(siteId);
@@ -30,7 +38,10 @@ class FakeSiteRepository implements SiteRepository {
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
-  }) async => reports.add((siteId, activityType, activityNote, reporterName));
+  }) async {
+    if (reportError != null) throw reportError!;
+    reports.add((siteId, activityType, activityNote, reporterName));
+  }
 
   @override
   Future<void> addSite(Site site) async {}
@@ -99,6 +110,9 @@ Future<void> _pump(
 }
 
 void main() {
+  // The cooldown controller loads/persists via SharedPreferences.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('tapping a vote button records a vote', (tester) async {
     final repo = FakeSiteRepository();
     await _pump(tester, repo);
@@ -276,5 +290,80 @@ void main() {
 
     expect(adminRepo.deletedSites, isEmpty);
     expect(find.text('Remove site?'), findsNothing);
+  });
+
+  testWidgets('a second vote inside the cooldown is blocked locally', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open/Working'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Blitz'));
+    await tester.pump();
+
+    expect(repo.votes, [('nsw-1', SiteStatus.open)]); // only the first landed
+    expect(
+      find.textContaining('voted on this site recently'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a rules rate-limit rejection shows the cooldown message', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository()
+      ..voteError = FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'permission-denied',
+      );
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open/Working'));
+    await tester.pump();
+
+    expect(repo.votes, isEmpty);
+    expect(
+      find.textContaining('voted on this site recently'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('other vote failures show a generic error', (tester) async {
+    final repo = FakeSiteRepository()..voteError = Exception('offline');
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open/Working'));
+    await tester.pump();
+
+    expect(find.textContaining('Could not submit'), findsOneWidget);
+  });
+
+  testWidgets('a second activity report inside the cooldown is blocked', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Report activity'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Submit'));
+    await tester.pumpAndSettle();
+    expect(repo.reports, hasLength(1));
+
+    await tester.tap(find.text('Report activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('What is happening?'), findsNothing); // no dialog
+    expect(
+      find.textContaining('reported activity on this site recently'),
+      findsOneWidget,
+    );
+    expect(repo.reports, hasLength(1));
   });
 }

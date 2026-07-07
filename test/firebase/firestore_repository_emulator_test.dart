@@ -159,6 +159,95 @@ void main() {
           );
         },
       );
+
+      test(
+        'rate limit: second vote on the same site inside the cooldown is '
+        'rejected; another site is unaffected',
+        () async {
+          await repo.addSite(_site('site-1'));
+          await repo.addSite(_site('site-2'));
+
+          await repo.vote('site-1', SiteStatus.open);
+          await expectLater(
+            repo.vote('site-1', SiteStatus.blitz),
+            throwsA(isA<FirebaseException>()),
+          );
+
+          // The rejected batch changed nothing.
+          final site = await firestore.collection('sites').doc('site-1').get();
+          expect(site.data()?['openVotes'], 1);
+          expect(site.data()?['blitzVotes'], 0);
+
+          // Per-site: another site accepts a vote immediately.
+          await repo.vote('site-2', SiteStatus.open);
+        },
+      );
+
+      test(
+        'rate limit: votes and activity reports have independent cooldowns',
+        () async {
+          await repo.addSite(_site('site-1'));
+
+          await repo.vote('site-1', SiteStatus.open);
+          // Report right after a vote is fine (separate ledger field)...
+          await repo.report('site-1', ActivityReportType.delays);
+          // ...but a second report inside its own cooldown is not.
+          await expectLater(
+            repo.report('site-1', ActivityReportType.longQueue),
+            throwsA(isA<FirebaseException>()),
+          );
+        },
+      );
+
+      test(
+        'rate limit: a bare counter bump without the ledger stamp is rejected',
+        () async {
+          await repo.addSite(_site('site-1'));
+
+          await expectLater(
+            firestore.collection('sites').doc('site-1').update({
+              'openVotes': FieldValue.increment(1),
+              'currentStatus': 'open',
+              'lastReportAt': FieldValue.serverTimestamp(),
+            }),
+            throwsA(isA<FirebaseException>()),
+          );
+        },
+      );
+
+      test(
+        'rate limit: a backdated or foreign ledger stamp is rejected',
+        () async {
+          await repo.addSite(_site('site-1'));
+          final uid = auth.currentUser!.uid;
+
+          // Stamp must be the server time, not a chosen past value.
+          await expectLater(
+            firestore
+                .collection('sites')
+                .doc('site-1')
+                .collection('limits')
+                .doc(uid)
+                .set({
+                  'lastVoteAt': Timestamp.fromDate(
+                    DateTime.now().subtract(const Duration(hours: 1)),
+                  ),
+                }),
+            throwsA(isA<FirebaseException>()),
+          );
+
+          // Another user's ledger can't be written at all.
+          await expectLater(
+            firestore
+                .collection('sites')
+                .doc('site-1')
+                .collection('limits')
+                .doc('someone-else')
+                .set({'lastVoteAt': FieldValue.serverTimestamp()}),
+            throwsA(isA<FirebaseException>()),
+          );
+        },
+      );
     },
   );
 }

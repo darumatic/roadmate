@@ -1,0 +1,10 @@
+{
+  "name": "roadmate-rules-tests",
+  "private": true,
+  "type": "module",
+  "description": "Firestore security-rules tests (run via scripts/test_rules.sh)",
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.15.0"
+  }
+}
