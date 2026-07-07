@@ -127,6 +127,7 @@ They are approximate — verify exact site positions before production.
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
 | Vote/report rate limiting, per user per site (issue #15) | ✅ Done — rules ledger `sites/{id}/limits/{uid}`: 5 actions per 5-min window (votes+reports combined, so mistakes can be undone); server-side only (`lib/services/rate_limit.dart`) |
 | Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
+| Web update banner ("new version — Refresh") | ✅ Done — polls `/version.json` (5 min + on tab refocus) vs baked `appVersion`; Refresh clears SW + caches then reloads (`lib/services/update_checker.dart`, `widgets/update_banner.dart`); no-op on native |
 
 ## Deployment & domain
 

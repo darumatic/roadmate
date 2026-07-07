@@ -5,6 +5,7 @@ import 'router.dart';
 import 'services/keep_awake.dart';
 import 'services/startup_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/update_banner.dart';
 
 class RoadMateApp extends ConsumerWidget {
   const RoadMateApp({super.key});
@@ -34,6 +35,9 @@ class RoadMateApp extends ConsumerWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.dark,
           routerConfig: appRouter,
+          // Web: offer a one-tap refresh when a newer build is deployed.
+          builder: (context, child) =>
+              UpdateGate(child: child ?? const SizedBox.shrink()),
         ),
       ),
     );
