@@ -105,7 +105,7 @@ class LocalSeedSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> addSite(Site site) async {
+  Future<void> addSite(Site site, {bool approved = false}) async {
     await _ensureLoaded();
     _sites.add(site);
     _sitesController.add(List.unmodifiable(_sites));

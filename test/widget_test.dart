@@ -47,7 +47,7 @@ class FakeSiteRepository implements SiteRepository {
   }) async {}
 
   @override
-  Future<void> addSite(Site site) async {}
+  Future<void> addSite(Site site, {bool approved = false}) async {}
 
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});

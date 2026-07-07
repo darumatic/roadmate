@@ -121,14 +121,18 @@ class FirestoreSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> addSite(Site site) async {
+  Future<void> addSite(Site site, {bool approved = false}) async {
     final uid = await ensureSignedIn(auth);
     final ref = site.id.isEmpty ? _sites.doc() : _sites.doc(site.id);
     await ref.set({
       ...site.toMap(),
-      'approved': false, // pending moderation before it becomes visible
+      // Pending moderation unless an admin publishes directly (issue #16;
+      // the rules reject approved == true from non-admins).
+      'approved': approved,
       'createdBy': uid,
       'createdAt': FieldValue.serverTimestamp(),
+      if (approved) 'approvedAt': FieldValue.serverTimestamp(),
+      if (approved) 'approvedBy': uid,
     });
   }
 

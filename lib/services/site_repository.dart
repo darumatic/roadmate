@@ -23,8 +23,10 @@ abstract class SiteRepository {
     String? reporterName,
   });
 
-  /// Submit a new (community-added) site.
-  Future<void> addSite(Site site);
+  /// Submit a new site. Community submissions stay pending until moderated;
+  /// admins pass [approved] = true to publish immediately (issue #16 — the
+  /// rules only accept an approved create from an admin).
+  Future<void> addSite(Site site, {bool approved = false});
 
   /// IDs of sites the current user has favourited.
   Stream<Set<String>> watchFavourites();

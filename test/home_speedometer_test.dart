@@ -95,7 +95,7 @@ class FakeSites implements SiteRepository {
   FakeSites(this.sites);
   final List<Site> sites;
   @override
-  Future<void> addSite(Site site) async {}
+  Future<void> addSite(Site site, {bool approved = false}) async {}
   @override
   Future<void> report(
     String siteId,

@@ -125,6 +125,7 @@ They are approximate — verify exact site positions before production.
 | Admin site removal (X on site card + warning popup; deletes site + its reports, issue #13) | ✅ Done — `AdminRepository.deleteSite`, rules allow `delete` for admins only |
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
 | Vote/report rate limiting, per user per site (issue #15) | ✅ Done — rules ledger `sites/{id}/limits/{uid}` (5 min votes / 2 min reports) + client cooldown UX (`lib/services/rate_limit.dart`, `cooldown_store.dart`, `cooldown_controller.dart`) |
+| Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
 
 ## Deployment & domain
 

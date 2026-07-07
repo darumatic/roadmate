@@ -33,8 +33,12 @@ service cloud.firestore {
       allow read: if true;
 
       // Community-submitted sites are created as pending (approved == false);
-      // they only become visible after a moderator approves them.
-      allow create: if signedIn() && isValidNewSite();
+      // they only become visible after a moderator approves them. Admins may
+      // create sites already approved — published immediately (issue #16).
+      allow create: if signedIn()
+        && isValidNewSite()
+        && (request.resource.data.approved == false
+          || (request.resource.data.approved == true && isAdmin()));
 
       // Two permitted update shapes:
       //  - a validated status vote (one counter +1, valid status), or
@@ -219,9 +223,11 @@ service cloud.firestore {
         && reportedNow(siteId);
     }
 
+    // Shared shape for any client-created site; the create rule adds the
+    // approved-flag gate (false for everyone, true only for admins).
     function isValidNewSite() {
       let d = request.resource.data;
-      return d.approved == false
+      return d.approved is bool
         && d.createdBy == request.auth.uid
         && d.name is string && d.name.size() > 0
         && d.state is string

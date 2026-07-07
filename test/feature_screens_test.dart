@@ -10,6 +10,7 @@ import 'package:roadmate/features/state_detail/state_detail_screen.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
+import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
@@ -22,10 +23,11 @@ class FeatureFakeSiteRepository implements SiteRepository {
 
   final List<Site> sites;
   final Set<String> favourites;
-  final addedSites = <Site>[];
+  final addedSites = <(Site, bool)>[];
 
   @override
-  Future<void> addSite(Site site) async => addedSites.add(site);
+  Future<void> addSite(Site site, {bool approved = false}) async =>
+      addedSites.add((site, approved));
 
   @override
   Future<void> report(
@@ -303,13 +305,66 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(repo.addedSites, hasLength(1));
-        expect(repo.addedSites.single.name, 'New Yard');
-        expect(repo.addedSites.single.suburb, 'Broome');
-        expect(repo.addedSites.single.address, 'Great Northern Highway');
-        expect(repo.addedSites.single.state, AusState.nsw);
-        expect(repo.addedSites.single.type, SiteType.checkingStation);
+        final (site, approved) = repo.addedSites.single;
+        expect(site.name, 'New Yard');
+        expect(site.suburb, 'Broome');
+        expect(site.address, 'Great Northern Highway');
+        expect(site.state, AusState.nsw);
+        expect(site.type, SiteType.checkingStation);
+        expect(approved, isFalse); // community submissions stay pending
       },
     );
+
+    testWidgets('an admin publishes the site immediately (approved)', (
+      tester,
+    ) async {
+      final repo = FeatureFakeSiteRepository();
+      final router = GoRouter(
+        initialLocation: '/add',
+        routes: [
+          GoRoute(path: '/home', builder: (_, _) => const Scaffold()),
+          GoRoute(path: '/add', builder: (_, _) => const AddSiteScreen()),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            siteRepositoryProvider.overrideWithValue(repo),
+            currentUserRoleProvider.overrideWith(
+              (ref) => Stream.value(AppUserRole.admin),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('published immediately, without review'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Admin Yard');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Broome');
+      await tester.enterText(find.byType(TextFormField).at(2), 'Hwy 1');
+      // The submit button sits below the fold (the ListView builds lazily).
+      final formList = find.byType(ListView).last;
+      await tester.drag(formList, const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      final publishButton = find.widgetWithText(FilledButton, 'Publish site');
+      expect(publishButton, findsOneWidget);
+      await tester.tap(publishButton.last);
+      await tester.pumpAndSettle();
+
+      expect(repo.addedSites, hasLength(1));
+      final (site, approved) = repo.addedSites.single;
+      expect(site.name, 'Admin Yard');
+      expect(approved, isTrue);
+      expect(find.text('Site published — it is live now.'), findsOneWidget);
+    });
   });
 
   group('FavouritesScreen', () {

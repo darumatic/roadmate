@@ -1,6 +1,7 @@
-// Verifies the rate-limit (issue #15) and admin-delete (issue #13) rules in
-// firestore.rules against the Firestore emulator. Run via
-// scripts/test_rules.sh (needs Node and Java 21+; not part of `flutter test`).
+// Verifies the rate-limit (issue #15), admin-delete (issue #13) and
+// admin-publish (issue #16) rules in firestore.rules against the Firestore
+// emulator. Run via scripts/test_rules.sh (needs Node and Java 21+; not part
+// of `flutter test`).
 import {
   initializeTestEnvironment,
   assertFails,
@@ -188,6 +189,36 @@ await check(
       b.delete(doc(admin, 'sites/site-2'));
       return b.commit();
     })(),
+  ),
+);
+
+// Issue #16 rules: site creation — pending for everyone, approved only for
+// admins.
+const newSite = (uid, approved) => ({
+  name: 'New Yard',
+  state: 'NSW',
+  type: 'checkingStation',
+  suburb: 'Broome',
+  address: 'Hwy 1',
+  approved,
+  createdBy: uid,
+});
+await check(
+  'anonymous user creates a pending site',
+  assertSucceeds(setDoc(doc(alice, 'sites/pending-1'), newSite('alice', false))),
+);
+await check(
+  'anonymous user cannot create an approved site',
+  assertFails(setDoc(doc(alice, 'sites/sneaky-1'), newSite('alice', true))),
+);
+await check(
+  'admin creates an approved (published) site',
+  assertSucceeds(
+    setDoc(doc(admin, 'sites/admin-1'), {
+      ...newSite('admin1', true),
+      approvedAt: serverTimestamp(),
+      approvedBy: 'admin1',
+    }),
   ),
 );
 

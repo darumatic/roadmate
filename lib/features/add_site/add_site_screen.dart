@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/enums.dart';
 import '../../models/site.dart';
+import '../../services/auth_service.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
 
@@ -42,9 +43,15 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
     super.dispose();
   }
 
+  /// Admin submissions publish immediately (issue #16); everyone else's stay
+  /// pending until moderated.
+  bool get _isAdmin =>
+      ref.read(currentUserRoleProvider).value == AppUserRole.admin;
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
+    final isAdmin = _isAdmin;
     final site = Site(
       id: '', // repository assigns an id
       name: _name.text.trim(),
@@ -55,10 +62,16 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
       direction: _direction,
     );
     try {
-      await ref.read(siteRepositoryProvider).addSite(site);
+      await ref.read(siteRepositoryProvider).addSite(site, approved: isAdmin);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Submitted for review — thanks!')),
+        SnackBar(
+          content: Text(
+            isAdmin
+                ? 'Site published — it is live now.'
+                : 'Submitted for review — thanks!',
+          ),
+        ),
       );
       context.canPop() ? context.pop() : context.go('/home');
     } catch (e) {
@@ -72,6 +85,8 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin =
+        ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -88,6 +103,10 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              if (isAdmin) ...[
+                const _AdminPublishBanner(),
+                const SizedBox(height: 16),
+              ],
               _label('Site name'),
               TextFormField(
                 controller: _name,
@@ -172,7 +191,7 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
                           color: Colors.white,
                         ),
                       )
-                    : const Text('Submit site'),
+                    : Text(isAdmin ? 'Publish site' : 'Submit site'),
               ),
             ],
           ),
@@ -192,4 +211,33 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
       ),
     ),
   );
+}
+
+/// Tells an admin this form skips moderation (issue #16).
+class _AdminPublishBanner extends StatelessWidget {
+  const _AdminPublishBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border.all(color: AppTheme.accent),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.verified_user_outlined, color: AppTheme.accent, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Admin: this site will be published immediately, without review.',
+              style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
