@@ -14,4 +14,17 @@ void main() {
     final plist = File('ios/Runner/Info.plist').readAsStringSync();
     expect(plist, contains('<string>$scheme</string>'));
   });
+
+  test('Info.plist carries the location purpose strings Apple requires', () {
+    // geolocator references the always-authorization APIs, so App Store
+    // ingestion (Transporter ITMS-90683) rejects the binary unless the
+    // "always" purpose string exists too — even though RoadMate only ever
+    // requests when-in-use.
+    final plist = File('ios/Runner/Info.plist').readAsStringSync();
+    expect(plist, contains('<key>NSLocationWhenInUseUsageDescription</key>'));
+    expect(
+      plist,
+      contains('<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>'),
+    );
+  });
 }
