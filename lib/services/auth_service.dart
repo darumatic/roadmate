@@ -9,6 +9,15 @@ import 'display_mode_stub.dart'
     if (dart.library.js_interop) 'display_mode_web.dart'
     as display_mode;
 
+import '../firebase_options.dart';
+
+/// The first-party domain native (iOS/Android) provider sign-in round-trips
+/// through, mirroring the web authDomain so no platform falls back to the
+/// default roadmate-b1551.firebaseapp.com handler. Null on web: there the
+/// authDomain in [DefaultFirebaseOptions.web] already applies.
+String? nativeCustomAuthDomain({required bool isWeb}) =>
+    isWeb ? null : DefaultFirebaseOptions.web.authDomain;
+
 /// Ensures the user is signed in anonymously and exposes their uid. Anonymous
 /// auth is the device-based identity used to attribute votes/reports/saves
 /// without a login wall.

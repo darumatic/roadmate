@@ -29,6 +29,13 @@ final appStartupProvider = FutureProvider<void>((ref) async {
 
   if (!firebaseReady) return;
 
+  // Native provider sign-in must round-trip through roadmate.club like web
+  // does, not the default firebaseapp.com auth handler.
+  final authDomain = nativeCustomAuthDomain(isWeb: kIsWeb);
+  if (authDomain != null) {
+    FirebaseAuth.instance.customAuthDomain = authDomain;
+  }
+
   // Enable crash reporting now that Firebase is up (native only; no-op on web).
   // Off in debug builds to avoid noisy uploads while developing.
   const ErrorReporter().setCollectionEnabled(!kDebugMode);
