@@ -4,6 +4,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+// Whether the app runs as an installed PWA (web) — false elsewhere.
+import 'display_mode_stub.dart'
+    if (dart.library.js_interop) 'display_mode_web.dart'
+    as display_mode;
+
 /// Ensures the user is signed in anonymously and exposes their uid. Anonymous
 /// auth is the device-based identity used to attribute votes/reports/saves
 /// without a login wall.
@@ -71,6 +76,7 @@ class AuthController {
     required this.auth,
     required this.firestore,
     this.isWeb = kIsWeb,
+    this.isStandalone = display_mode.isStandaloneDisplayMode,
   });
 
   final FirebaseAuth auth;
@@ -78,6 +84,11 @@ class AuthController {
 
   /// Injectable so the web-only popup/redirect paths are testable on the VM.
   final bool isWeb;
+
+  /// Installed-PWA detection. A PWA's "popup" opens as a custom tab with no
+  /// window.opener, so the Firebase popup handler hangs on a blank page —
+  /// those windows must use the redirect flow from the start.
+  final bool Function() isStandalone;
 
   /// Returns null when a full-page redirect was started instead (blocked
   /// popup) — the page is about to navigate away and sign-in completes on
@@ -141,9 +152,14 @@ class AuthController {
 
   // firebase_auth exposes the *Provider variants only on mobile/desktop; web
   // must use the popup flow (falling back to a redirect when the browser
-  // blocks the popup), otherwise it throws UnimplementedError.
+  // blocks the popup), otherwise it throws UnimplementedError. Installed
+  // PWAs skip the popup entirely — see [isStandalone].
   Future<UserCredential?> _signIn(AuthProvider provider) async {
     if (!isWeb) return auth.signInWithProvider(provider);
+    if (isStandalone()) {
+      await auth.signInWithRedirect(provider);
+      return null;
+    }
     try {
       return await auth.signInWithPopup(provider);
     } catch (e) {
@@ -158,6 +174,10 @@ class AuthController {
     AuthProvider provider,
   ) async {
     if (!isWeb) return user.linkWithProvider(provider);
+    if (isStandalone()) {
+      await user.linkWithRedirect(provider);
+      return null;
+    }
     try {
       return await user.linkWithPopup(provider);
     } catch (e) {

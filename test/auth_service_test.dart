@@ -19,8 +19,11 @@ class FakeFirebaseAuth implements FirebaseAuth {
   @override
   Stream<User?> authStateChanges() => Stream.value(current);
 
+  int popupSignIns = 0;
+
   @override
   Future<UserCredential> signInWithPopup(AuthProvider provider) async {
+    popupSignIns++;
     if (popupError != null) throw popupError!;
     return FakeUserCredential();
   }
@@ -59,6 +62,7 @@ class FakeUser implements User {
   final bool anonymous;
   final Object? linkPopupError;
   int linkRedirects = 0;
+  int linkPopups = 0;
 
   @override
   String get uid => fakeUid;
@@ -68,6 +72,7 @@ class FakeUser implements User {
 
   @override
   Future<UserCredential> linkWithPopup(AuthProvider provider) async {
+    linkPopups++;
     if (linkPopupError != null) throw linkPopupError!;
     return FakeUserCredential();
   }
@@ -99,8 +104,16 @@ class FakeFirestore implements FirebaseFirestore {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-AuthController _controller(FakeFirebaseAuth auth, {bool isWeb = true}) =>
-    AuthController(auth: auth, firestore: FakeFirestore(), isWeb: isWeb);
+AuthController _controller(
+  FakeFirebaseAuth auth, {
+  bool isWeb = true,
+  bool standalone = false,
+}) => AuthController(
+  auth: auth,
+  firestore: FakeFirestore(),
+  isWeb: isWeb,
+  isStandalone: () => standalone,
+);
 
 FirebaseAuthException _blocked() => FirebaseAuthException(
   code: 'popup-blocked',
@@ -127,7 +140,36 @@ void main() {
       final credential = await _controller(auth).signInWithGoogle();
 
       expect(credential, isNotNull);
+      expect(auth.popupSignIns, 1);
       expect(auth.redirectSignIns, 0);
+    });
+
+    test('installed PWA goes straight to redirect — never opens a popup', () async {
+      // A PWA "popup" is an opener-less custom tab where the Firebase
+      // handler hangs on a blank page (Firefox shortcut-app bug report).
+      final auth = FakeFirebaseAuth();
+      final credential = await _controller(
+        auth,
+        standalone: true,
+      ).signInWithGoogle();
+
+      expect(credential, isNull);
+      expect(auth.popupSignIns, 0);
+      expect(auth.redirectSignIns, 1);
+    });
+
+    test('installed PWA links the anonymous user via redirect', () async {
+      final anon = FakeUser(anonymous: true);
+      final auth = FakeFirebaseAuth()..current = anon;
+
+      final credential = await _controller(
+        auth,
+        standalone: true,
+      ).signInWithGoogle();
+
+      expect(credential, isNull);
+      expect(anon.linkPopups, 0);
+      expect(anon.linkRedirects, 1);
     });
 
     test('blocked popup falls back to a redirect and returns null', () async {
