@@ -107,6 +107,10 @@ Building iOS needs the Xcode license accepted (`sudo xcodebuild -license accept`
 Firebase is integrated via **Swift Package Manager** (not CocoaPods). Runs on the
 iOS Simulator today; App Store distribution still needs signing/provisioning.
 
+## Multiplatform
+Code modifications should cover all platforms. iOS, Android and Web.
+
+
 ## Contributing
 
 Commits in this repo are **attributed to the owner only** — do not add
