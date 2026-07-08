@@ -11,6 +11,7 @@ import {
 import { readFileSync } from 'node:fs';
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   increment,
@@ -47,6 +48,13 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'sites/site-1'), site('Site One'));
   await setDoc(doc(db, 'sites/site-2'), site('Site Two'));
   await setDoc(doc(db, 'userRoles/admin1'), { role: 'admin', email: 'a@b.c' });
+  await setDoc(doc(db, 'users/alice'), {
+    email: 'alice@example.com',
+    isAnonymous: false,
+  });
+  await setDoc(doc(db, 'users/alice/favourites/site-1'), {
+    favouritedAt: serverTimestamp(),
+  });
 });
 
 const alice = env
@@ -180,6 +188,31 @@ await check(
       approvedAt: serverTimestamp(),
       approvedBy: 'admin1',
     }),
+  ),
+);
+
+// In-app account deletion (App Store 5.1.1(v)): a user erases their own
+// favourites and profile doc in one batch; strangers cannot touch either.
+const mallory = env
+  .authenticatedContext('mallory', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+await check(
+  'stranger cannot delete another user profile',
+  assertFails(deleteDoc(doc(mallory, 'users/alice'))),
+);
+await check(
+  'stranger cannot delete another user favourite',
+  assertFails(deleteDoc(doc(mallory, 'users/alice/favourites/site-1'))),
+);
+await check(
+  'account deletion batch: self deletes favourites then profile',
+  assertSucceeds(
+    (() => {
+      const b = writeBatch(alice);
+      b.delete(doc(alice, 'users/alice/favourites/site-1'));
+      b.delete(doc(alice, 'users/alice'));
+      return b.commit();
+    })(),
   ),
 );
 

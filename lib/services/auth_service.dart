@@ -108,7 +108,89 @@ class AuthController {
     return _signInWithProvider(provider);
   }
 
+  /// Apple returns name/email only on the first authorization; [syncUser]
+  /// tolerates the nulls on later sign-ins.
+  Future<UserCredential?> signInWithApple() {
+    final provider = AppleAuthProvider()
+      ..addScope('email')
+      ..addScope('name');
+    return _signInWithProvider(provider);
+  }
+
   Future<void> signOut() => auth.signOut();
+
+  /// Deletes the signed-in account (App Store 5.1.1(v)). Erases the user's
+  /// favourites and profile doc, revokes the Apple token when one is linked,
+  /// deletes the Firebase user, then restores the anonymous-first identity.
+  /// Votes/reports keep their now-orphaned uid by design — they can no
+  /// longer be linked to a person. No-op for anonymous sessions.
+  Future<void> deleteAccount() async {
+    final user = auth.currentUser;
+    if (user == null || user.isAnonymous) return;
+
+    // Firestore first: after user.delete() the uid no longer authorises
+    // these writes. One batch — favourites are far under the 500-op limit.
+    // If the auth deletion fails below, syncUser recreates the profile doc
+    // on the next userChanges emission.
+    final userDoc = firestore.collection('users').doc(user.uid);
+    final favourites = await userDoc.collection('favourites').get();
+    final batch = firestore.batch();
+    for (final favourite in favourites.docs) {
+      batch.delete(favourite.reference);
+    }
+    batch.delete(userDoc);
+    await batch.commit();
+
+    // Apple requires apps to revoke the sign-in token on account deletion.
+    // Needs a fresh authorization code, hence the reauthentication. Best
+    // effort: revocation must never block the user's right to delete, and
+    // firebase_auth only implements it on Apple platforms.
+    final hasApple = user.providerData.any(
+      (info) => info.providerId == 'apple.com',
+    );
+    var reauthenticated = false;
+    if (hasApple && !isWeb) {
+      try {
+        final credential = await user.reauthenticateWithProvider(
+          AppleAuthProvider(),
+        );
+        reauthenticated = true;
+        final code = credential.additionalUserInfo?.authorizationCode;
+        if (code != null) await auth.revokeTokenWithAuthorizationCode(code);
+      } on FirebaseAuthException catch (e) {
+        debugPrint('RoadMate: Apple token revocation skipped: ${e.code}');
+      }
+    }
+
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'requires-recent-login' || reauthenticated) rethrow;
+      await _reauthenticate(user);
+      await user.delete();
+    }
+
+    // Only after a successful deletion — never resurrect a failed one.
+    await auth.signInAnonymously();
+  }
+
+  Future<UserCredential> _reauthenticate(User user) {
+    final providerId = user.providerData
+        .map((info) => info.providerId)
+        .firstWhere(
+          (id) => id == 'apple.com' || id == 'google.com',
+          orElse: () => 'google.com',
+        );
+    final provider = providerId == 'apple.com'
+        ? AppleAuthProvider()
+        : (GoogleAuthProvider()
+            ..setCustomParameters({'prompt': 'select_account'}));
+    // Web always uses the popup: a redirect would navigate away and abandon
+    // the deletion mid-flight.
+    return isWeb
+        ? user.reauthenticateWithPopup(provider)
+        : user.reauthenticateWithProvider(provider);
+  }
 
   /// Finishes a redirect sign-in after the round-trip back from the provider
   /// (web only; called once at startup). No redirect pending is a no-op.

@@ -94,7 +94,9 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'email', 'displayName', 'photoUrl', 'isAnonymous', 'lastSeenAt'
         ]);
-      allow delete: if false;
+      // In-app account deletion (App Store 5.1.1(v)): a user erases their
+      // own profile before deleting the Firebase account.
+      allow delete: if signedIn() && request.auth.uid == uid;
 
       // A user's favourite sites live under their own uid and are private to them.
       match /favourites/{siteId} {

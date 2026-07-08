@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,20 +8,15 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
-class AccountPanel extends ConsumerStatefulWidget {
+const _deleteRed = Color(0xFFEF4444);
+
+class AccountPanel extends ConsumerWidget {
   const AccountPanel({super.key, this.compact = false});
 
   final bool compact;
 
   @override
-  ConsumerState<AccountPanel> createState() => _AccountPanelState();
-}
-
-class _AccountPanelState extends ConsumerState<AccountPanel> {
-  String? _busyProvider;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (Firebase.apps.isEmpty) {
       return _Shell(
         icon: Icons.account_circle_outlined,
@@ -57,34 +53,110 @@ class _AccountPanelState extends ConsumerState<AccountPanel> {
             _AccountSummary(user: user, role: roleAsync.value),
             const AdminEntryLink(),
             const SizedBox(height: 12),
-            if (user == null || user.isAnonymous)
-              _ProviderButton(
-                icon: Icons.g_mobiledata_rounded,
-                label: 'Sign in with Google',
-                busy: _busyProvider == 'google',
-                onPressed: () => _signIn(
-                  'google',
-                  () => ref.read(authControllerProvider).signInWithGoogle(),
-                ),
-              )
-            else
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.textSecondary,
-                  side: const BorderSide(color: AppTheme.border),
-                ),
-                icon: const Icon(Icons.logout_rounded, size: 18),
-                label: const Text('Sign out'),
-                onPressed: _busyProvider == null ? _signOut : null,
-              ),
+            AccountActions(user: user),
           ],
         ),
       ),
     );
   }
+}
+
+/// The sign-in / sign-out / delete-account actions for [user]. Public and
+/// Firebase-free so widget tests can pump it with a fake [AuthController].
+class AccountActions extends ConsumerStatefulWidget {
+  const AccountActions({super.key, required this.user});
+
+  final User? user;
+
+  @override
+  ConsumerState<AccountActions> createState() => _AccountActionsState();
+}
+
+class _AccountActionsState extends ConsumerState<AccountActions> {
+  String? _busyProvider;
+
+  // Apple guideline 4.8 only applies to the iOS app; web/Android stay
+  // Google-only (no Apple Services ID is configured for the web flow).
+  bool get _showApple => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.user;
+    if (user == null || user.isAnonymous) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_showApple) ...[
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: AppTheme.border),
+              ),
+              icon: _busyProvider == 'apple'
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.apple, size: 20),
+              label: const Text('Sign in with Apple'),
+              onPressed: _busyProvider != null
+                  ? null
+                  : () => _signIn(
+                      'apple',
+                      'Apple',
+                      () => ref.read(authControllerProvider).signInWithApple(),
+                    ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          _ProviderButton(
+            icon: Icons.g_mobiledata_rounded,
+            label: 'Sign in with Google',
+            busy: _busyProvider == 'google',
+            onPressed: () => _signIn(
+              'google',
+              'Google',
+              () => ref.read(authControllerProvider).signInWithGoogle(),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.textSecondary,
+            side: const BorderSide(color: AppTheme.border),
+          ),
+          icon: const Icon(Icons.logout_rounded, size: 18),
+          label: const Text('Sign out'),
+          onPressed: _busyProvider == null ? _signOut : null,
+        ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: _deleteRed),
+          icon: _busyProvider == 'delete'
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.delete_forever_outlined, size: 18),
+          label: const Text('Delete account'),
+          onPressed: _busyProvider == null ? _deleteAccount : null,
+        ),
+      ],
+    );
+  }
 
   Future<void> _signIn(
     String provider,
+    String providerLabel,
     Future<UserCredential?> Function() action,
   ) async {
     setState(() => _busyProvider = provider);
@@ -96,7 +168,9 @@ class _AccountPanelState extends ConsumerState<AccountPanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            credential == null ? 'Taking you to Google sign-in…' : 'Signed in',
+            credential == null
+                ? 'Taking you to $providerLabel sign-in…'
+                : 'Signed in',
           ),
         ),
       );
@@ -118,6 +192,55 @@ class _AccountPanelState extends ConsumerState<AccountPanel> {
     setState(() => _busyProvider = 'signOut');
     try {
       await ref.read(authControllerProvider).signOut();
+    } finally {
+      if (mounted) setState(() => _busyProvider = null);
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: const Text(
+          'This permanently deletes your sign-in, profile and favourites. '
+          'Status votes and activity reports you have submitted stay in the '
+          'app but are anonymised — they can no longer be linked to you. '
+          'Trip logs stored on this device are not affected. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: _deleteRed),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busyProvider = 'delete');
+    try {
+      await ref.read(authControllerProvider).deleteAccount();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your account has been deleted.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final message = shouldFallBackToRedirect(e)
+          ? 'Your browser blocked the sign-in window needed to confirm the '
+                'deletion — please allow pop-ups for roadmate.club and try '
+                'again.'
+          : 'Could not delete account: $e';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _busyProvider = null);
     }
