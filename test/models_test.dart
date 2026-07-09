@@ -31,16 +31,26 @@ void main() {
       expect(ActivityReportType.noActivity.wire, 'Camera Only');
       expect(ActivityReportType.longQueue.wire, 'longQueue');
       // New wire values, legacy enum names and the rules-era typo all parse.
-      expect(ActivityReportType.fromName('BGD'),
-          ActivityReportType.defectChecks);
-      expect(ActivityReportType.fromName('Camera Only'),
-          ActivityReportType.noActivity);
-      expect(ActivityReportType.fromName('defectChecks'),
-          ActivityReportType.defectChecks);
-      expect(ActivityReportType.fromName('noActivity'),
-          ActivityReportType.noActivity);
-      expect(ActivityReportType.fromName('CameraOnly'),
-          ActivityReportType.noActivity);
+      expect(
+        ActivityReportType.fromName('BGD'),
+        ActivityReportType.defectChecks,
+      );
+      expect(
+        ActivityReportType.fromName('Camera Only'),
+        ActivityReportType.noActivity,
+      );
+      expect(
+        ActivityReportType.fromName('defectChecks'),
+        ActivityReportType.defectChecks,
+      );
+      expect(
+        ActivityReportType.fromName('noActivity'),
+        ActivityReportType.noActivity,
+      );
+      expect(
+        ActivityReportType.fromName('CameraOnly'),
+        ActivityReportType.noActivity,
+      );
     });
   });
 

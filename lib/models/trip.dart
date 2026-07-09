@@ -24,7 +24,9 @@ class Trip {
       startedAt:
           DateTime.tryParse(map['startedAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      duration: Duration(seconds: (map['durationSeconds'] as num?)?.toInt() ?? 0),
+      duration: Duration(
+        seconds: (map['durationSeconds'] as num?)?.toInt() ?? 0,
+      ),
       distanceKm: (map['distanceKm'] as num?)?.toDouble() ?? 0,
       maxSpeedKmh: (map['maxSpeedKmh'] as num?)?.toDouble() ?? 0,
       avgSpeedKmh: (map['avgSpeedKmh'] as num?)?.toDouble() ?? 0,

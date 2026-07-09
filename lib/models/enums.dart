@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
 /// Live, community-reported status of a site.
+///
+/// [unknown] is display-only (issue #21): it is derived when a site has no
+/// report within the freshness window and is never stored or voted, so it is
+/// not part of [votable].
 enum SiteStatus {
   open,
   blitz,
-  closed;
+  closed,
+  unknown;
+
+  /// Statuses a driver can vote for — [unknown] is derived, never cast.
+  static const List<SiteStatus> votable = [open, blitz, closed];
 
   static SiteStatus fromName(String? value) {
     return SiteStatus.values.firstWhere(
@@ -17,12 +25,14 @@ enum SiteStatus {
     SiteStatus.open => 'Open',
     SiteStatus.blitz => 'Blitz',
     SiteStatus.closed => 'Closed',
+    SiteStatus.unknown => 'Unknown',
   };
 
   Color get color => switch (this) {
     SiteStatus.open => const Color(0xFF22C55E), // green
     SiteStatus.blitz => const Color(0xFFF59E0B), // amber
     SiteStatus.closed => const Color(0xFFEF4444), // red
+    SiteStatus.unknown => const Color(0xFF9A9AA2), // grey
   };
 }
 

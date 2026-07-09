@@ -486,8 +486,10 @@ class _VoteRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        for (final status in SiteStatus.values) ...[
-          if (status != SiteStatus.values.first) const SizedBox(width: 8),
+        // Only real statuses are votable — Unknown (issue #21) is derived, so
+        // when it's current no button matches and all three render greyed.
+        for (final status in SiteStatus.votable) ...[
+          if (status != SiteStatus.votable.first) const SizedBox(width: 8),
           Expanded(
             child: _VoteButton(
               status: status,
@@ -516,6 +518,8 @@ class _VoteButton extends StatelessWidget {
     SiteStatus.open => Icons.check_circle_outline,
     SiteStatus.blitz => Icons.warning_amber_rounded,
     SiteStatus.closed => Icons.cancel_outlined,
+    // Not votable — present only to keep the switch exhaustive.
+    SiteStatus.unknown => Icons.help_outline,
   };
 
   @override

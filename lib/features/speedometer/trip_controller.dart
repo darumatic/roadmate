@@ -188,6 +188,14 @@ class TripController extends Notifier<TripState> {
 
   void _maybeAlert(double speedKmh) {
     final limit = ref.read(speedLimitProvider);
+    if (!isOverLimit(speedKmh, limit)) {
+      // Back within the limit — arm the next breach to fire immediately.
+      _lastAlertAt = null;
+      return;
+    }
+    // The speaker toggle (issue #22) mutes the alarm without consuming the
+    // rising edge — unmuting mid-breach beeps on the very next reading.
+    if (!ref.read(soundEnabledProvider)) return;
     final now = DateTime.now();
     if (shouldAlert(
       speedKmh: speedKmh,
@@ -197,9 +205,6 @@ class TripController extends Notifier<TripState> {
     )) {
       _lastAlertAt = now;
       ref.read(alertPlayerProvider).playOverLimit();
-    } else if (!isOverLimit(speedKmh, limit)) {
-      // Back within the limit — arm the next breach to fire immediately.
-      _lastAlertAt = null;
     }
   }
 }
@@ -276,4 +281,37 @@ class SpeedLimitController extends Notifier<int> {
 
 final speedLimitProvider = NotifierProvider<SpeedLimitController, int>(
   SpeedLimitController.new,
+);
+
+/// Whether alert sounds are enabled (issue #22) — the speaker toggle on Home.
+/// On by default; persisted on device like the speed limit.
+class SoundSettingController extends Notifier<bool> {
+  @override
+  bool build() {
+    _load();
+    return true;
+  }
+
+  Future<void> _load() async {
+    try {
+      state = await ref.read(tripHistoryStoreProvider).loadSoundEnabled();
+    } catch (e) {
+      // Storage unavailable (e.g. first launch or test harness) — keep default.
+      debugPrint('RoadMate: failed to load sound setting: $e');
+    }
+  }
+
+  void toggle() {
+    state = !state;
+    try {
+      ref.read(tripHistoryStoreProvider).saveSoundEnabled(state);
+    } catch (e) {
+      // The toggle still applies for this session; persistence is best-effort.
+      debugPrint('RoadMate: failed to save sound setting: $e');
+    }
+  }
+}
+
+final soundEnabledProvider = NotifierProvider<SoundSettingController, bool>(
+  SoundSettingController.new,
 );

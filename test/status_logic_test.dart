@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/models/enums.dart';
+import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/status_logic.dart';
 
@@ -11,8 +12,8 @@ void main() {
   final now = DateTime(2026, 6, 29, 12);
 
   group('deriveStatus', () {
-    test('defaults to open with no reports', () {
-      expect(logic.deriveStatus(const [], now: now), SiteStatus.open);
+    test('defaults to unknown with no reports (issue #21)', () {
+      expect(logic.deriveStatus(const [], now: now), SiteStatus.unknown);
     });
 
     test('uses the most recent report within the window', () {
@@ -24,11 +25,11 @@ void main() {
       expect(logic.deriveStatus(reports, now: now), SiteStatus.blitz);
     });
 
-    test('ignores reports older than the window', () {
+    test('reports older than the window leave the status unknown', () {
       final reports = [
         _report(SiteStatus.blitz, now.subtract(const Duration(hours: 8))),
       ];
-      expect(logic.deriveStatus(reports, now: now), SiteStatus.open);
+      expect(logic.deriveStatus(reports, now: now), SiteStatus.unknown);
     });
 
     test('ignores activity-only reports with no status', () {
@@ -40,7 +41,11 @@ void main() {
           activityNote: 'Truck queue forming',
         ),
       ];
-      expect(logic.deriveStatus(reports, now: now), SiteStatus.open);
+      expect(logic.deriveStatus(reports, now: now), SiteStatus.unknown);
+    });
+
+    test('the default window is the 10-hour freshness rule (issue #21)', () {
+      expect(const StatusLogic().window, const Duration(hours: 10));
     });
   });
 
@@ -57,6 +62,79 @@ void main() {
         _report(SiteStatus.blitz, now.subtract(const Duration(hours: 7))),
       ];
       expect(logic.isBlitzActive(reports, now: now), isFalse);
+    });
+  });
+
+  group('effectiveStatus (issue #21)', () {
+    test('keeps a status reported within the last 10 hours', () {
+      expect(
+        effectiveStatus(
+          SiteStatus.blitz,
+          now.subtract(const Duration(hours: 9, minutes: 59)),
+          now: now,
+        ),
+        SiteStatus.blitz,
+      );
+    });
+
+    test('goes unknown once the last report is over 10 hours old', () {
+      expect(
+        effectiveStatus(
+          SiteStatus.blitz,
+          now.subtract(const Duration(hours: 10, minutes: 1)),
+          now: now,
+        ),
+        SiteStatus.unknown,
+      );
+    });
+
+    test('a site never reported is unknown', () {
+      expect(
+        effectiveStatus(SiteStatus.open, null, now: now),
+        SiteStatus.unknown,
+      );
+    });
+
+    test('withEffectiveStatus maps a whole site list', () {
+      final sites = [
+        Site(
+          id: 'fresh',
+          name: 'Fresh',
+          type: SiteType.weighbridge,
+          state: AusState.nsw,
+          suburb: 'A',
+          address: 'A Rd',
+          currentStatus: SiteStatus.closed,
+          lastReportAt: now.subtract(const Duration(hours: 1)),
+        ),
+        Site(
+          id: 'stale',
+          name: 'Stale',
+          type: SiteType.weighbridge,
+          state: AusState.nsw,
+          suburb: 'B',
+          address: 'B Rd',
+          currentStatus: SiteStatus.blitz,
+          lastReportAt: now.subtract(const Duration(hours: 11)),
+        ),
+        Site(
+          id: 'never',
+          name: 'Never',
+          type: SiteType.weighbridge,
+          state: AusState.nsw,
+          suburb: 'C',
+          address: 'C Rd',
+          currentStatus: SiteStatus.open,
+        ),
+      ];
+      final mapped = withEffectiveStatus(sites, now: now);
+      expect(mapped.map((s) => s.currentStatus), [
+        SiteStatus.closed,
+        SiteStatus.unknown,
+        SiteStatus.unknown,
+      ]);
+      // Everything else is untouched.
+      expect(mapped.map((s) => s.id), ['fresh', 'stale', 'never']);
     });
   });
 }

@@ -55,7 +55,12 @@ final adminRepositoryProvider = Provider<AdminRepository>((ref) {
 });
 
 final sitesProvider = StreamProvider<List<Site>>((ref) {
-  return ref.watch(siteRepositoryProvider).watchSites();
+  // Statuses go grey/Unknown once the last report is >10h old (issue #21);
+  // applied here so every consumer of the site list gets the same rule.
+  return ref
+      .watch(siteRepositoryProvider)
+      .watchSites()
+      .map(withEffectiveStatus);
 });
 
 final favouriteSiteIdsProvider = StreamProvider<Set<String>>((ref) {

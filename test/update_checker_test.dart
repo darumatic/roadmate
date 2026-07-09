@@ -48,25 +48,28 @@ void main() {
   });
 
   group('UpdateChecker', () {
-    test('flips to true when the deployed version differs, and stays true', () async {
-      var calls = 0;
-      final container = _container(
-        fetcher: () async {
-          calls++;
-          return '$appVersion-new';
-        },
-      );
-      final checker = container.read(updateCheckerProvider.notifier);
+    test(
+      'flips to true when the deployed version differs, and stays true',
+      () async {
+        var calls = 0;
+        final container = _container(
+          fetcher: () async {
+            calls++;
+            return '$appVersion-new';
+          },
+        );
+        final checker = container.read(updateCheckerProvider.notifier);
 
-      expect(container.read(updateCheckerProvider), isFalse);
-      await checker.checkNow();
-      expect(container.read(updateCheckerProvider), isTrue);
+        expect(container.read(updateCheckerProvider), isFalse);
+        await checker.checkNow();
+        expect(container.read(updateCheckerProvider), isTrue);
 
-      // Once known, further checks are skipped.
-      await checker.checkNow();
-      expect(calls, 1);
-      expect(container.read(updateCheckerProvider), isTrue);
-    });
+        // Once known, further checks are skipped.
+        await checker.checkNow();
+        expect(calls, 1);
+        expect(container.read(updateCheckerProvider), isTrue);
+      },
+    );
 
     test('stays false while the deployed version matches', () async {
       final container = _container(fetcher: () async => appVersion);

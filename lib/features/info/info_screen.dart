@@ -279,7 +279,11 @@ class UsefulLinksPage extends StatelessWidget {
   /// Official road-access and live-traffic sites (same set as the hosted
   /// useful-links.html page).
   static const links = <(String, String, String)>[
-    ('NHVR — Road Access', 'nhvr.gov.au', 'https://www.nhvr.gov.au/road-access'),
+    (
+      'NHVR — Road Access',
+      'nhvr.gov.au',
+      'https://www.nhvr.gov.au/road-access',
+    ),
     ('Live Traffic NSW', 'livetraffic.com', 'https://www.livetraffic.com/'),
     (
       'VicTraffic',
@@ -588,10 +592,7 @@ class SupportPage extends StatelessWidget {
                   'Donations keep the servers running — the app stays free '
                   'for everyone.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                 ),
               ],
             ),
@@ -633,10 +634,7 @@ class SharePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const InfoSubPage(
-      title: 'Share RoadMate',
-      children: [ShareBlock()],
-    );
+    return const InfoSubPage(title: 'Share RoadMate', children: [ShareBlock()]);
   }
 }
 

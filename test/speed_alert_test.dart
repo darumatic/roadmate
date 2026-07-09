@@ -10,9 +10,11 @@ void main() {
       expect(shouldAlert(speedKmh: 120, limitKmh: 0, now: _now), isFalse);
     });
 
-    test('alerts 1 km/h past the limit (issue #11)', () {
-      // limit 100, tolerance 1 -> exactly 101 is fine, past 101 is over.
-      expect(shouldAlert(speedKmh: 101, limitKmh: 100, now: _now), isFalse);
+    test('alerts the moment the driver hits 1 km/h over (issues #11, #19)', () {
+      // limit 100, tolerance 1 -> under 101 is fine, 101 and beyond alerts
+      // immediately (issue #19: no dead zone past the +1 threshold).
+      expect(shouldAlert(speedKmh: 100.9, limitKmh: 100, now: _now), isFalse);
+      expect(shouldAlert(speedKmh: 101, limitKmh: 100, now: _now), isTrue);
       expect(shouldAlert(speedKmh: 101.5, limitKmh: 100, now: _now), isTrue);
       expect(shouldAlert(speedKmh: 102, limitKmh: 100, now: _now), isTrue);
     });
@@ -51,7 +53,9 @@ void main() {
 
   group('isOverLimit', () {
     test('respects the limit and tolerance', () {
-      expect(isOverLimit(101, 100), isFalse);
+      expect(isOverLimit(100.9, 100), isFalse);
+      // Turns red exactly when the beep starts (issue #19).
+      expect(isOverLimit(101, 100), isTrue);
       expect(isOverLimit(101.5, 100), isTrue);
       expect(isOverLimit(102, 100), isTrue);
       expect(isOverLimit(200, null), isFalse);

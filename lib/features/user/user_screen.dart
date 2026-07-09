@@ -16,7 +16,8 @@ class UserScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final trips = ref.watch(tripHistoryProvider).asData?.value ?? const <Trip>[];
+    final trips =
+        ref.watch(tripHistoryProvider).asData?.value ?? const <Trip>[];
     final isAnonymous =
         ref.watch(currentUserRoleProvider).value == AppUserRole.anonymous;
 

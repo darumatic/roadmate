@@ -16,41 +16,64 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // The nav bar normally absorbs the bottom safe-area inset; strip it
-          // here and re-apply it around the footer, which now sits lowest.
-          MediaQuery.removePadding(
-            context: context,
-            removeBottom: true,
-            child: _navigationBar(),
-          ),
-          ColoredBox(
-            color: AppTheme.surface,
-            child: SafeArea(
-              top: false,
-              child: const Padding(
-                padding: EdgeInsets.only(bottom: 6),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: AppVersionLabel(),
-                ),
-              ),
+      bottomNavigationBar: ShellBottomBar(
+        selectedIndex: navigationShell.currentIndex,
+        onDestinationSelected: (i) => navigationShell.goBranch(
+          i,
+          initialLocation: i == navigationShell.currentIndex,
+        ),
+      ),
+    );
+  }
+}
+
+/// The nav bar + version footer. A separate widget so its inset handling is
+/// unit-testable (issue #26).
+class ShellBottomBar extends StatelessWidget {
+  const ShellBottomBar({
+    super.key,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The nav bar's internal SafeArea normally absorbs the screen insets.
+        // Strip the vertical ones so it lays out at its bare M3 height: bottom
+        // is re-applied around the footer, which now sits lowest, and top must
+        // go too — this context sits outside the Scaffold, so keeping it would
+        // re-introduce the status-bar/notch inset as a huge empty band above
+        // the icons (issue #26, seen on iOS).
+        MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          removeBottom: true,
+          child: _navigationBar(),
+        ),
+        ColoredBox(
+          color: AppTheme.surface,
+          child: SafeArea(
+            top: false,
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: SizedBox(width: double.infinity, child: AppVersionLabel()),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _navigationBar() {
     return NavigationBar(
-      selectedIndex: navigationShell.currentIndex,
-      onDestinationSelected: (i) => navigationShell.goBranch(
-        i,
-        initialLocation: i == navigationShell.currentIndex,
-      ),
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onDestinationSelected,
       destinations: const [
         NavigationDestination(
           icon: Icon(Icons.home_outlined),

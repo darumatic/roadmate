@@ -16,8 +16,7 @@ bool isStandaloneDisplayMode() {
     }
     // Legacy iOS home-screen web apps expose navigator.standalone instead.
     final standalone = web.window.navigator.getProperty('standalone'.toJS);
-    return standalone.isDefinedAndNotNull &&
-        (standalone as JSBoolean).toDart;
+    return standalone.isDefinedAndNotNull && (standalone as JSBoolean).toDart;
   } catch (_) {
     return false; // unknowable — behave like a normal tab
   }

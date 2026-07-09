@@ -103,7 +103,12 @@ void main() {
 
     test('no-op when id is null, unknown, or already first', () {
       expect(pinSiteFirst(sites, null), same(sites));
-      expect(pinSiteFirst(sites, 'nope').map((s) => s.id), ['1', '2', '3', '4']);
+      expect(pinSiteFirst(sites, 'nope').map((s) => s.id), [
+        '1',
+        '2',
+        '3',
+        '4',
+      ]);
       expect(pinSiteFirst(sites, '1').map((s) => s.id), ['1', '2', '3', '4']);
     });
   });

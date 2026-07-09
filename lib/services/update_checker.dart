@@ -25,7 +25,9 @@ typedef AppReloader = Future<void> Function();
 /// The platform probe (fetch deployed version / hard-reload). The single
 /// override point for tests.
 final updateProbeProvider =
-    Provider<({RemoteVersionFetcher fetchRemoteVersion, AppReloader reloadApp})>(
+    Provider<
+      ({RemoteVersionFetcher fetchRemoteVersion, AppReloader reloadApp})
+    >(
       (ref) => (
         fetchRemoteVersion: probe.fetchRemoteVersion,
         reloadApp: probe.reloadApp,

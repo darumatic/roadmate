@@ -70,7 +70,12 @@ void main() {
       final stats = _fold([
         _sample(-33.00, 151.0, Duration.zero, speedMps: 0),
         _sample(-33.01, 151.0, const Duration(seconds: 60), speedMps: 25), // 90
-        _sample(-33.02, 151.0, const Duration(seconds: 120), speedMps: 10), // 36
+        _sample(
+          -33.02,
+          151.0,
+          const Duration(seconds: 120),
+          speedMps: 10,
+        ), // 36
       ]);
       expect(stats.maxSpeedKmh, closeTo(90, 0.01));
       expect(stats.currentSpeedKmh, closeTo(36, 0.01));

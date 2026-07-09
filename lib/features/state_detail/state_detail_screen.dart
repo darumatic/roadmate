@@ -7,11 +7,16 @@ import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/back_to_top.dart';
 import '../../widgets/load_error.dart';
 import '../../widgets/site_card.dart';
 
 class StateDetailScreen extends ConsumerStatefulWidget {
-  const StateDetailScreen({super.key, required this.state, this.highlightSiteId});
+  const StateDetailScreen({
+    super.key,
+    required this.state,
+    this.highlightSiteId,
+  });
 
   final AusState state;
 
@@ -43,33 +48,37 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
               searchSites(stateSites, _query),
               widget.highlightSiteId,
             );
-            return RefreshIndicator(
-              onRefresh: () => _refreshSites(ref),
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _topBar(context, stateSites.length),
-                  ),
-                  if (filtered.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _empty(stateSites.isEmpty),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                      sliver: SliverList.separated(
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (_, i) => SiteCard(
-                          site: filtered[i],
-                          highlighted:
-                              filtered[i].id == widget.highlightSiteId,
+            return BackToTop(
+              builder: (context, scrollController) => RefreshIndicator(
+                onRefresh: () => _refreshSites(ref),
+                child: CustomScrollView(
+                  controller: scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _topBar(context, stateSites.length),
+                    ),
+                    if (filtered.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _empty(stateSites.isEmpty),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                        sliver: SliverList.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (_, i) => SiteCard(
+                            site: filtered[i],
+                            highlighted:
+                                filtered[i].id == widget.highlightSiteId,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             );
           },

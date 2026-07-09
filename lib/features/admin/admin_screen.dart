@@ -334,9 +334,7 @@ class _ReportFeedTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const LoadError(),
       data: (reports) {
-        final matches = reports
-            .where((entry) => filter(entry.report))
-            .toList();
+        final matches = reports.where((entry) => filter(entry.report)).toList();
         if (matches.isEmpty) {
           return _EmptyAdminState(
             icon: emptyIcon,

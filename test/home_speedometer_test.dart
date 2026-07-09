@@ -78,8 +78,7 @@ class FakeTripStore implements TripHistoryStore {
   Future<List<Trip>> all() async => List.of(saved);
 
   @override
-  Future<void> delete(String id) async =>
-      saved.removeWhere((t) => t.id == id);
+  Future<void> delete(String id) async => saved.removeWhere((t) => t.id == id);
 
   @override
   Future<void> clear() async => saved.clear();
@@ -89,6 +88,14 @@ class FakeTripStore implements TripHistoryStore {
 
   @override
   Future<void> saveLimit(int limitKmh) async => savedLimit = limitKmh;
+
+  bool soundEnabled = true;
+
+  @override
+  Future<bool> loadSoundEnabled() async => soundEnabled;
+
+  @override
+  Future<void> saveSoundEnabled(bool enabled) async => soundEnabled = enabled;
 }
 
 class FakeSites implements SiteRepository {
@@ -110,7 +117,8 @@ class FakeSites implements SiteRepository {
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
   @override
-  Stream<List<SiteReport>> watchReports(String siteId) => Stream.value(const []);
+  Stream<List<SiteReport>> watchReports(String siteId) =>
+      Stream.value(const []);
   @override
   Stream<List<Site>> watchSites() => Stream.value(sites);
 }
@@ -171,9 +179,7 @@ Future<void> _pump(
       child: const MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: Column(
-              children: [SpeedometerPanel(), TripLoggerCard()],
-            ),
+            child: Column(children: [SpeedometerPanel(), TripLoggerCard()]),
           ),
         ),
       ),
@@ -244,6 +250,47 @@ void main() {
     expect(alert.calls, greaterThanOrEqualTo(1));
     final speedText = tester.widget<Text>(find.text('108'));
     expect(speedText.style?.color, const Color(0xFFEF4444)); // over-limit red
+  });
+
+  // Issue #22: the speaker toggle mutes the over-limit alarm.
+  test('muted sound suppresses the alert; unmuting re-arms it', () async {
+    final loc = FakeLocationSource();
+    final alert = FakeAlertPlayer();
+    final store = FakeTripStore(initialLimit: 60)..soundEnabled = false;
+    final container = ProviderContainer(
+      overrides: [
+        locationSourceProvider.overrideWithValue(loc),
+        alertPlayerProvider.overrideWithValue(alert),
+        tripHistoryStoreProvider.overrideWithValue(store),
+        siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+      ],
+    );
+    addTearDown(container.dispose);
+    addTearDown(loc.controller.close);
+
+    // Instantiate the setting so the persisted "muted" flag loads before
+    // driving over the limit.
+    container.read(soundEnabledProvider);
+    await container.read(tripControllerProvider.notifier).ensureStarted();
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(soundEnabledProvider), isFalse);
+
+    loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+    await Future<void>.delayed(Duration.zero);
+    loc.emit(
+      _pos(-33.01, 151.0, since: const Duration(seconds: 60), speed: 30),
+    ); // 108 km/h > 60 — but muted
+    await Future<void>.delayed(Duration.zero);
+    expect(alert.calls, 0);
+
+    // Unmuting persists the choice and the next over-limit reading beeps.
+    container.read(soundEnabledProvider.notifier).toggle();
+    expect(store.soundEnabled, isTrue);
+    loc.emit(
+      _pos(-33.02, 151.0, since: const Duration(seconds: 120), speed: 30),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(alert.calls, greaterThanOrEqualTo(1));
   });
 
   // Plain test: reset must re-baseline only the average, never the trip (#9).
@@ -414,10 +461,7 @@ void main() {
     expect(container.read(tripControllerProvider).isRecording, isFalse);
     // The failure must not be swallowed invisibly (a silent catch hid a
     // broken web build): it leaves a console trace.
-    expect(
-      logs.where((m) => m.contains('failed to save trip')),
-      isNotEmpty,
-    );
+    expect(logs.where((m) => m.contains('failed to save trip')), isNotEmpty);
   });
 
   testWidgets('closest-sites card ranks the two nearest sites (issue #7)', (

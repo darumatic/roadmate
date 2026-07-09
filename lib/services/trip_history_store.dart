@@ -11,9 +11,10 @@ const int kMinSpeedLimit = 20;
 const int kMaxSpeedLimit = 130;
 const int kSpeedLimitStep = 1;
 
-/// On-device persistence for saved trips and the manual speed limit. Injectable
-/// (mirrors `LocationSource`) so tests use an in-memory fake. Nothing here
-/// leaves the device — trips are not sent to our servers.
+/// On-device persistence for saved trips, the manual speed limit and the
+/// alert-sound switch (issue #22). Injectable (mirrors `LocationSource`) so
+/// tests use an in-memory fake. Nothing here leaves the device — trips are
+/// not sent to our servers.
 abstract class TripHistoryStore {
   Future<void> save(Trip trip);
   Future<List<Trip>> all();
@@ -21,15 +22,19 @@ abstract class TripHistoryStore {
   Future<void> clear();
   Future<int> loadLimit();
   Future<void> saveLimit(int limitKmh);
+  Future<bool> loadSoundEnabled();
+  Future<void> saveSoundEnabled(bool enabled);
 }
 
 /// `shared_preferences`-backed store. Trips are a JSON array under [_tripsKey];
-/// the limit is a single int under [_limitKey].
+/// the limit is a single int under [_limitKey]; the alert-sound switch is a
+/// bool under [_soundKey] (default on).
 class PrefsTripHistoryStore implements TripHistoryStore {
   const PrefsTripHistoryStore();
 
   static const _tripsKey = 'trips';
   static const _limitKey = 'speedLimit';
+  static const _soundKey = 'soundEnabled';
 
   @override
   Future<void> save(Trip trip) async {
@@ -53,9 +58,7 @@ class PrefsTripHistoryStore implements TripHistoryStore {
   Future<void> delete(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_tripsKey) ?? <String>[];
-    raw.removeWhere(
-      (s) => (jsonDecode(s) as Map<String, dynamic>)['id'] == id,
-    );
+    raw.removeWhere((s) => (jsonDecode(s) as Map<String, dynamic>)['id'] == id);
     await prefs.setStringList(_tripsKey, raw);
   }
 
@@ -75,5 +78,17 @@ class PrefsTripHistoryStore implements TripHistoryStore {
   Future<void> saveLimit(int limitKmh) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_limitKey, limitKmh);
+  }
+
+  @override
+  Future<bool> loadSoundEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_soundKey) ?? true;
+  }
+
+  @override
+  Future<void> saveSoundEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_soundKey, enabled);
   }
 }

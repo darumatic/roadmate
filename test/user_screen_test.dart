@@ -17,8 +17,7 @@ class FakeTripStore implements TripHistoryStore {
   Future<List<Trip>> all() async => List.of(saved);
 
   @override
-  Future<void> delete(String id) async =>
-      saved.removeWhere((t) => t.id == id);
+  Future<void> delete(String id) async => saved.removeWhere((t) => t.id == id);
 
   @override
   Future<void> clear() async => saved.clear();
@@ -28,6 +27,12 @@ class FakeTripStore implements TripHistoryStore {
 
   @override
   Future<void> saveLimit(int limitKmh) async {}
+
+  @override
+  Future<bool> loadSoundEnabled() async => true;
+
+  @override
+  Future<void> saveSoundEnabled(bool enabled) async {}
 }
 
 Trip _trip(int i) => Trip(
@@ -53,7 +58,8 @@ Future<void> _pump(WidgetTester tester, FakeTripStore store) async {
 
 void main() {
   testWidgets('lists every saved trip (not capped at 3)', (tester) async {
-    final store = FakeTripStore()..saved.addAll([for (var i = 0; i < 5; i++) _trip(i)]);
+    final store = FakeTripStore()
+      ..saved.addAll([for (var i = 0; i < 5; i++) _trip(i)]);
     await _pump(tester, store);
 
     expect(find.text('User'), findsOneWidget);

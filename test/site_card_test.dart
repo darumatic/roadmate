@@ -119,6 +119,37 @@ void main() {
     expect(repo.votes, [('nsw-1', SiteStatus.open)]);
   });
 
+  // Issue #21: a stale site shows Unknown — badge grey, no button selected,
+  // and Unknown itself is never offered as a vote.
+  testWidgets('unknown status greys all vote buttons and is not votable', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository();
+    await _pump(
+      tester,
+      repo,
+      site: _site.copyWith(currentStatus: SiteStatus.unknown),
+    );
+    await tester.pumpAndSettle();
+
+    // The status badge reads Unknown…
+    expect(find.text('Unknown'), findsOneWidget);
+    // …but there are only the three real vote buttons, none highlighted.
+    expect(find.text('Open/Working'), findsOneWidget);
+    expect(find.text('Blitz'), findsOneWidget);
+    expect(find.text('Closed'), findsOneWidget);
+    final greyed = tester
+        .widgetList<Text>(
+          find.byWidgetPredicate(
+            (w) =>
+                w is Text &&
+                const ['Open/Working', 'Blitz', 'Closed'].contains(w.data),
+          ),
+        )
+        .map((t) => t.style?.color);
+    expect(greyed, everyElement(const Color(0xFF9A9AA2))); // all grey
+  });
+
   testWidgets('tapping the star toggles favourite', (tester) async {
     final repo = FakeSiteRepository();
     await _pump(tester, repo);

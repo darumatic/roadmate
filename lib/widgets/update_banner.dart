@@ -66,7 +66,11 @@ class _UpdateBanner extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           child: Row(
             children: [
-              const Icon(Icons.system_update_alt, color: Colors.white, size: 18),
+              const Icon(
+                Icons.system_update_alt,
+                color: Colors.white,
+                size: 18,
+              ),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(

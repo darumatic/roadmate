@@ -6,11 +6,20 @@ import '../models/site.dart';
 
 /// Count of sites in each [SiteStatus] across [sites].
 class StatusCounts {
-  const StatusCounts({this.open = 0, this.blitz = 0, this.closed = 0});
+  const StatusCounts({
+    this.open = 0,
+    this.blitz = 0,
+    this.closed = 0,
+    this.unknown = 0,
+  });
 
   final int open;
   final int blitz;
   final int closed;
+
+  /// Sites with no fresh report (issue #21) — not part of [total], which only
+  /// covers statuses the stats bar/state cards break down.
+  final int unknown;
 
   int get total => open + blitz + closed;
 }
@@ -19,7 +28,7 @@ class StatusCounts {
 const visibleStates = AusState.values;
 
 StatusCounts countByStatus(Iterable<Site> sites) {
-  var open = 0, blitz = 0, closed = 0;
+  var open = 0, blitz = 0, closed = 0, unknown = 0;
   for (final s in sites) {
     switch (s.currentStatus) {
       case SiteStatus.open:
@@ -28,9 +37,16 @@ StatusCounts countByStatus(Iterable<Site> sites) {
         blitz++;
       case SiteStatus.closed:
         closed++;
+      case SiteStatus.unknown:
+        unknown++;
     }
   }
-  return StatusCounts(open: open, blitz: blitz, closed: closed);
+  return StatusCounts(
+    open: open,
+    blitz: blitz,
+    closed: closed,
+    unknown: unknown,
+  );
 }
 
 /// Group sites by their state, preserving the UI state order and including

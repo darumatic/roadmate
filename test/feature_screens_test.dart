@@ -170,9 +170,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // The tapped site renders first and is the highlighted card.
-      final cards = tester
-          .widgetList<SiteCard>(find.byType(SiteCard))
-          .toList();
+      final cards = tester.widgetList<SiteCard>(find.byType(SiteCard)).toList();
       expect(cards.first.site.id, 'nsw-3');
       expect(cards.first.highlighted, isTrue);
       expect(cards.where((c) => c.highlighted), hasLength(1));

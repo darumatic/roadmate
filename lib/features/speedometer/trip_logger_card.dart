@@ -22,7 +22,8 @@ class TripLoggerCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(tripControllerProvider);
     final controller = ref.read(tripControllerProvider.notifier);
-    final trips = ref.watch(tripHistoryProvider).asData?.value ?? const <Trip>[];
+    final trips =
+        ref.watch(tripHistoryProvider).asData?.value ?? const <Trip>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

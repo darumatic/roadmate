@@ -8,7 +8,9 @@ import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
 import '../speedometer/speedometer_panel.dart';
 import 'closest_sites_card.dart';
+import '../speedometer/trip_controller.dart';
 import '../speedometer/trip_logger_card.dart';
+import '../../widgets/back_to_top.dart';
 import '../../widgets/blitz_banner.dart';
 import '../../widgets/load_error.dart';
 import '../../widgets/state_card.dart';
@@ -30,38 +32,43 @@ class HomeScreen extends ConsumerWidget {
             final byState = groupByState(sites);
             final recent = recentlyActive(sites);
             final states = visibleStates;
-            return RefreshIndicator(
-              onRefresh: () => _refreshSites(ref),
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _topSection(context, sites, blitzSites(sites)),
-                  ),
-                  if (recent.isNotEmpty)
-                    SliverToBoxAdapter(child: _recentlyActive(context, recent)),
-                  SliverToBoxAdapter(child: _browseHeader(context)),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 260,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.95,
-                          ),
-                      delegate: SliverChildBuilderDelegate((context, i) {
-                        final state = states[i];
-                        return StateCard(
-                          state: state,
-                          sites: byState[state] ?? const [],
-                          onTap: () => context.go('/state/${state.code}'),
-                        );
-                      }, childCount: states.length),
+            return BackToTop(
+              builder: (context, scrollController) => RefreshIndicator(
+                onRefresh: () => _refreshSites(ref),
+                child: CustomScrollView(
+                  controller: scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _topSection(context, sites, blitzSites(sites)),
                     ),
-                  ),
-                ],
+                    if (recent.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: _recentlyActive(context, recent),
+                      ),
+                    SliverToBoxAdapter(child: _browseHeader(context)),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 260,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 0.95,
+                            ),
+                        delegate: SliverChildBuilderDelegate((context, i) {
+                          final state = states[i];
+                          return StateCard(
+                            state: state,
+                            sites: byState[state] ?? const [],
+                            onTap: () => context.go('/state/${state.code}'),
+                          );
+                        }, childCount: states.length),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -70,11 +77,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _topSection(
-    BuildContext context,
-    List<Site> sites,
-    List<Site> blitz,
-  ) {
+  Widget _topSection(BuildContext context, List<Site> sites, List<Site> blitz) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Column(
@@ -113,6 +116,8 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 6),
+              const _SoundToggle(),
             ],
           ),
           const SizedBox(height: 12),
@@ -182,7 +187,8 @@ class HomeScreen extends ConsumerWidget {
               itemBuilder: (_, i) {
                 final s = recent[i];
                 return GestureDetector(
-                  onTap: () => context.go('/state/${s.state.code}?site=${s.id}'),
+                  onTap: () =>
+                      context.go('/state/${s.state.code}?site=${s.id}'),
                   child: Container(
                     width: 200,
                     padding: const EdgeInsets.all(12),
@@ -262,6 +268,26 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Speaker icon at the top right (issue #22): mutes/unmutes the over-limit
+/// alarm. Enabled by default; the choice persists on device.
+class _SoundToggle extends ConsumerWidget {
+  const _SoundToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(soundEnabledProvider);
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        enabled ? Icons.volume_up : Icons.volume_off,
+        color: enabled ? AppTheme.textPrimary : AppTheme.textSecondary,
+      ),
+      tooltip: enabled ? 'Mute alerts' : 'Unmute alerts',
+      onPressed: ref.read(soundEnabledProvider.notifier).toggle,
     );
   }
 }
