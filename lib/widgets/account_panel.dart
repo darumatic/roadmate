@@ -77,7 +77,7 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
 
   // Apple guideline 4.8 only applies to the iOS app; web/Android stay
   // Google-only (no Apple Services ID is configured for the web flow).
-  bool get _showApple => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  bool get _isIosApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   Widget build(BuildContext context) {
@@ -86,10 +86,11 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_showApple) ...[
+          if (_isIosApp) ...[
             _ProviderButton(
               icon: Icons.apple,
               label: 'Sign in with Apple',
+              filled: true,
               busy: _busyProvider == 'apple',
               onPressed: _busyProvider != null
                   ? null
@@ -104,6 +105,7 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
           _ProviderButton(
             icon: Icons.g_mobiledata_rounded,
             label: 'Sign in with Google',
+            filled: _isIosApp,
             busy: _busyProvider == 'google',
             onPressed: _busyProvider != null
                 ? null
@@ -372,36 +374,51 @@ class AdminEntryLink extends ConsumerWidget {
   }
 }
 
-/// Both providers share the filled black/white look Apple's guidelines
-/// require for its own button, so neither reads dimmer than the other.
+/// [filled] gives the black/white look Apple's guidelines require for its
+/// button; on iOS Google gets it too so neither provider reads dimmer than
+/// the other. Elsewhere Google keeps the app's outlined style.
 class _ProviderButton extends StatelessWidget {
   const _ProviderButton({
     required this.icon,
     required this.label,
+    required this.filled,
     required this.busy,
     required this.onPressed,
   });
 
   final IconData icon;
   final String label;
+  final bool filled;
   final bool busy;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton.icon(
-      style: FilledButton.styleFrom(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+    final spinner = busy
+        ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : null;
+    if (filled) {
+      return FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: AppTheme.border),
+        ),
+        icon: spinner ?? Icon(icon, size: 20),
+        label: Text(label),
+        onPressed: busy ? null : onPressed,
+      );
+    }
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppTheme.textPrimary,
         side: const BorderSide(color: AppTheme.border),
       ),
-      icon: busy
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon, size: 20),
+      icon: spinner ?? Icon(icon, size: 18),
       label: Text(label),
       onPressed: busy ? null : onPressed,
     );

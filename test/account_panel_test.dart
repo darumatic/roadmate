@@ -122,6 +122,10 @@ void main() {
 
       expect(find.text('Sign in with Apple'), findsNothing);
       expect(find.text('Sign in with Google'), findsOneWidget);
+      // Off iOS Google keeps the app's outlined style — the filled
+      // black/white treatment is an iOS-only concession to Apple's HIG.
+      expect(find.bySubtype<FilledButton>(), findsNothing);
+      expect(find.bySubtype<OutlinedButton>(), findsOneWidget);
       debugDefaultTargetPlatformOverride = null;
     });
 
