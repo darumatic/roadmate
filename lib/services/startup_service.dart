@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../firebase_options.dart';
+import 'analytics_reporter.dart';
 import 'auth_service.dart';
 import 'error_reporter.dart';
 import 'seed_service.dart';
@@ -39,6 +40,12 @@ final appStartupProvider = FutureProvider<void>((ref) async {
   // Enable crash reporting now that Firebase is up (native only; no-op on web).
   // Off in debug builds to avoid noisy uploads while developing.
   const ErrorReporter().setCollectionEnabled(!kDebugMode);
+
+  // Usage analytics (native only; web is measured by the gtag snippet in
+  // web/index.html — see analytics_reporter.dart).
+  const AnalyticsReporter().setCollectionEnabled(
+    shouldCollectAnalytics(isDebug: kDebugMode),
+  );
 
   // Finish a pending redirect sign-in (web: popup was blocked and we came
   // back from the provider) before the anonymous fallback kicks in.
