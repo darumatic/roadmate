@@ -95,6 +95,25 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
 
+    testWidgets('Google button gets the same filled style as Apple', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await _pump(tester, user: FakeUser(anonymous: true));
+
+      final buttons = tester
+          .widgetList<FilledButton>(find.bySubtype<FilledButton>())
+          .toList();
+      expect(buttons, hasLength(2), reason: 'both providers use FilledButton');
+      Color? backgroundOf(FilledButton button) =>
+          button.style?.backgroundColor?.resolve(const {});
+      Color? foregroundOf(FilledButton button) =>
+          button.style?.foregroundColor?.resolve(const {});
+      expect(buttons.map(backgroundOf), everyElement(Colors.black));
+      expect(buttons.map(foregroundOf), everyElement(Colors.white));
+      debugDefaultTargetPlatformOverride = null;
+    });
+
     testWidgets('no Apple button off iOS — web/Android stay Google-only', (
       tester,
     ) async {

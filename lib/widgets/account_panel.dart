@@ -87,20 +87,10 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_showApple) ...[
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: AppTheme.border),
-              ),
-              icon: _busyProvider == 'apple'
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.apple, size: 20),
-              label: const Text('Sign in with Apple'),
+            _ProviderButton(
+              icon: Icons.apple,
+              label: 'Sign in with Apple',
+              busy: _busyProvider == 'apple',
               onPressed: _busyProvider != null
                   ? null
                   : () => _signIn(
@@ -115,11 +105,13 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
             icon: Icons.g_mobiledata_rounded,
             label: 'Sign in with Google',
             busy: _busyProvider == 'google',
-            onPressed: () => _signIn(
-              'google',
-              'Google',
-              () => ref.read(authControllerProvider).signInWithGoogle(),
-            ),
+            onPressed: _busyProvider != null
+                ? null
+                : () => _signIn(
+                    'google',
+                    'Google',
+                    () => ref.read(authControllerProvider).signInWithGoogle(),
+                  ),
           ),
         ],
       );
@@ -380,6 +372,8 @@ class AdminEntryLink extends ConsumerWidget {
   }
 }
 
+/// Both providers share the filled black/white look Apple's guidelines
+/// require for its own button, so neither reads dimmer than the other.
 class _ProviderButton extends StatelessWidget {
   const _ProviderButton({
     required this.icon,
@@ -391,13 +385,14 @@ class _ProviderButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool busy;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppTheme.textPrimary,
+    return FilledButton.icon(
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
         side: const BorderSide(color: AppTheme.border),
       ),
       icon: busy
@@ -406,7 +401,7 @@ class _ProviderButton extends StatelessWidget {
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : Icon(icon, size: 18),
+          : Icon(icon, size: 20),
       label: Text(label),
       onPressed: busy ? null : onPressed,
     );
