@@ -6,7 +6,9 @@
 #   ./scripts/check_ci.sh <sha>      # defaults to current HEAD
 set -euo pipefail
 
-sha="${1:-$(git rev-parse HEAD)}"
+# The API's head_sha filter only matches the full 40-char sha — a short sha
+# silently matches no runs and the loop polls "queued" until it times out.
+sha="$(git rev-parse "${1:-HEAD}")"
 repo="darumatic/roadmate"
 api="https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}"
 
