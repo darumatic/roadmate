@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/features/speedometer/trip_tile.dart';
@@ -84,6 +85,28 @@ void main() {
 
     expect(store.saved, hasLength(1));
     expect(find.byType(TripTile), findsOneWidget);
+  });
+
+  testWidgets('Help & Support row opens the hosted support page', (
+    tester,
+  ) async {
+    final launched = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/url_launcher'),
+      (call) async {
+        if (call.method == 'launch') {
+          launched.add(call.arguments['url'] as String);
+        }
+        return true;
+      },
+    );
+
+    await _pump(tester, FakeTripStore());
+    expect(find.text('Help & Support'), findsOneWidget);
+
+    await tester.tap(find.text('Help & Support'));
+    await tester.pumpAndSettle();
+    expect(launched, ['https://roadmate.club/support.html']);
   });
 
   testWidgets('Clear all empties the history after confirmation', (

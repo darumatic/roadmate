@@ -5,14 +5,18 @@ import '../../models/trip.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
+import '../info/info_screen.dart';
 import '../speedometer/trip_controller.dart';
 import '../speedometer/trip_tile.dart';
 
 /// "User" tab (issue #12 redesign, replaces the Trips tab): account sign-in,
-/// admin moderation entry, and My Trips — every saved trip with per-trip
-/// delete and Clear all. The Home Trip Logger keeps showing the 3 newest.
+/// help & support link, admin moderation entry, and My Trips — every saved
+/// trip with per-trip delete and Clear all. The Home Trip Logger keeps
+/// showing the 3 newest.
 class UserScreen extends ConsumerWidget {
   const UserScreen({super.key});
+
+  static const supportPageUrl = 'https://roadmate.club/support.html';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,6 +45,18 @@ class UserScreen extends ConsumerWidget {
             const SliverPadding(
               padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
               sliver: SliverToBoxAdapter(child: AccountPanel()),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              sliver: SliverToBoxAdapter(
+                child: InfoLinkRow(
+                  icon: Icons.help_outline_rounded,
+                  title: 'Help & Support',
+                  subtitle: 'roadmate.club/support.html',
+                  trailing: Icons.open_in_new_rounded,
+                  onTap: () => openExternal(context, supportPageUrl),
+                ),
+              ),
             ),
             SliverToBoxAdapter(
               child: Padding(
