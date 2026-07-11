@@ -29,6 +29,7 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 
 - **Commit attribution: only the user.** Do NOT add `Co-Authored-By: Claude` (or any Claude/Anthropic attribution) to commits — overrides the default Claude Code trailer (per `specs.md`).
 - **Every feature ships with a unit test** (per `specs.md`).
+- **Never break retrocompatibility with released mobile clients.** Shipped Android/iOS builds talk to the same live Firestore and, unlike web, cannot be hot-updated — users may sit on old versions for months. So: Firestore schema changes must be additive (never rename/remove/repurpose fields old clients read or write), `firestore.rules` must keep accepting every read/write shape shipped mobile versions produce, and behaviour changes should live in client-side logic (like the 10h status/activity freshness windows) rather than server-side enforcement wherever possible. If a breaking server-side change is ever unavoidable, flag it explicitly to the owner — it requires coordinated store releases and acceptance that old apps misbehave until updated.
 - Data lives in `sites/nhvr_national_inspection_sites.json` (authoritative, 24 sites). **Coordinates are geocoded (town-level, approximate)** via OSM Nominatim — verify exact positions before production.
 - TASKS.md is for the user to control what is next. Don't write this file but you can use it as a reference.
 - **Every change follows the full release cycle (the owner has standing authorization to deploy to prod):**
