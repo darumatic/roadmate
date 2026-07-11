@@ -14,6 +14,13 @@ set -euo pipefail
 # This VPS's tool locations (flutter / firebase are not on the default PATH).
 export PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"
 
+# Deploy with the service-account key when it is on this machine, so the
+# firebase CLI never depends on a (expirable) personal login token.
+if [ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+    && [ -f "$HOME/.config/roadmate/firebase-adminsdk.json" ]; then
+  export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/roadmate/firebase-adminsdk.json"
+fi
+
 cd "$(dirname "$0")/.."
 
 msg="${1:-}"
