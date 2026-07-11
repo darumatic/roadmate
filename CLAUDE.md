@@ -34,17 +34,16 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 - **Every change follows the full release cycle (the owner has standing authorization to deploy to prod):**
   1. **Local tests** — `flutter test` + `flutter analyze` (both must be clean). When fixing a bug or adding a feature, **add/update unit tests** for it first.
   2. **Commit & push** to `master` (commit attribution: only the user — see above).
-  3. **Remote checks on GitHub** — wait for the **Flutter CI** Actions run on that commit to go **green** before deploying (`scripts/check_ci.sh <sha>` polls the public API; no `gh`/token needed).
-  4. **Deploy to prod** — publish web + Firestore rules/indexes.
-  - `scripts/release.sh` runs all four in order (and bumps the patch version — see the version tooling); prefer it over doing the steps by hand. It **only deploys if CI is green**.
+  3. **Deploy to prod** — publish web + Firestore rules/indexes. **Do not wait for GitHub CI** — it runs the same analyze+test suite already run locally in step 1 (`scripts/check_ci.sh <sha>` can poll a run manually if ever needed; no `gh`/token required).
+  - `scripts/release.sh` runs all three in order (and bumps the patch version — see the version tooling); prefer it over doing the steps by hand.
 
 ## Commands
 
 Deploy runs on a Linux VPS. `flutter` lives at `/opt/flutter/bin` and `firebase`/`flutterfire` at `~/.pub-cache/bin` — **neither is on the default PATH**, so scripts export `PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"`. Firebase is authenticated (`firebase login`, headless via `--no-localhost`); `.firebaserc` sets the default project so `--project` is optional.
 
 ```bash
-./scripts/release.sh [msg]         # FULL CYCLE: test+analyze -> bump -> commit+push -> CI check -> deploy
-./scripts/check_ci.sh [sha]        # poll GitHub Flutter CI for a commit until green (0=pass)
+./scripts/release.sh [msg]         # FULL CYCLE: test+analyze -> bump -> commit+push -> deploy
+./scripts/check_ci.sh [sha]        # poll GitHub Flutter CI for a commit until green (0=pass; manual use only, not part of the release cycle)
 dart run tool/bump_version.dart    # bump patch in pubspec.yaml + regen lib/version.dart (used by release.sh)
 
 flutter run -d chrome              # run the web app

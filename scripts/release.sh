@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Full release cycle for RoadMate. Runs the mandatory steps in order:
-#   local tests -> bump patch version -> commit & push -> GitHub CI check -> deploy to prod
+#   local tests -> bump patch version -> commit & push -> deploy to prod
 #
 #   ./scripts/release.sh                       # cuts a release of the committed tree
 #   ./scripts/release.sh "Fix blitz banner"    # bundles staged/working changes under that message
 #
 # Any working-tree changes are committed with the given message (or a default
-# "Release vX.Y.Z"). Deploy only happens after GitHub CI goes green.
+# "Release vX.Y.Z"). GitHub CI runs the same analyze+test suite on the pushed
+# commit, but the deploy does not wait for it (use scripts/check_ci.sh to poll
+# a run manually).
 set -euo pipefail
 
 # This VPS's tool locations (flutter / firebase are not on the default PATH).
@@ -32,10 +34,6 @@ echo "==> Commit & push"
 git add -A
 git commit -m "$msg"
 git push
-sha="$(git rev-parse HEAD)"
-
-echo "==> GitHub CI check (${sha})"
-./scripts/check_ci.sh "$sha"
 
 echo "==> Build web"
 flutter build web --no-tree-shake-icons
