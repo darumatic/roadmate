@@ -7,6 +7,7 @@ import '../models/site_report.dart';
 import '../services/auth_service.dart';
 import '../services/providers.dart';
 import '../services/site_repository.dart';
+import '../services/status_logic.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
@@ -375,11 +376,10 @@ class _RecentActivityReports extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reports = reportsAsync.value
-        ?.where((report) => report.activityType != null)
-        .take(5)
-        .toList();
-    if (reports == null || reports.isEmpty) return const SizedBox.shrink();
+    final reports = recentActivityReports(
+      reportsAsync.value ?? const [],
+    ).take(5).toList();
+    if (reports.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),

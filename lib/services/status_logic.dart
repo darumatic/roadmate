@@ -40,6 +40,21 @@ List<Site> withEffectiveStatus(List<Site> sites, {DateTime? now}) {
   ];
 }
 
+/// Activity reports (BGD, Delays, …) still fresh enough to show to drivers —
+/// the same 10-hour window statuses live by. Older reports are hidden, never
+/// deleted: the full history stays in Firestore as the audit log (the admin
+/// feed is deliberately unfiltered).
+List<SiteReport> recentActivityReports(
+  Iterable<SiteReport> reports, {
+  DateTime? now,
+  Duration window = statusFreshWindow,
+}) {
+  final cutoff = (now ?? DateTime.now()).subtract(window);
+  return reports
+      .where((r) => r.activityType != null && r.createdAt.isAfter(cutoff))
+      .toList();
+}
+
 /// Displayed status of a site = the status of the most recent report within
 /// [window]. If there are no recent status reports, the site's live status is
 /// [SiteStatus.unknown] (issue #21).

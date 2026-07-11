@@ -273,6 +273,51 @@ void main() {
     expect(find.text('Anonymous'), findsNWidgets(4));
   });
 
+  testWidgets('activity reports expire from the card after 10 hours', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository()
+      ..watchedReports = [
+        SiteReport(
+          id: 'fresh',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(hours: 9)),
+          activityType: ActivityReportType.longQueue,
+        ),
+        SiteReport(
+          id: 'stale',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(hours: 11)),
+          activityType: ActivityReportType.policePresent,
+        ),
+      ];
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    // Only two reports, so take(5) keeps both — absence proves the 10h filter.
+    expect(find.text('Long queue'), findsOneWidget);
+    expect(find.text('Police present'), findsNothing);
+  });
+
+  testWidgets('Recent reports section hides when every report has expired', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository()
+      ..watchedReports = [
+        SiteReport(
+          id: 'stale',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(hours: 11)),
+          activityType: ActivityReportType.longQueue,
+        ),
+      ];
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recent reports'), findsNothing);
+    expect(find.text('Long queue'), findsNothing);
+  });
+
   testWidgets('remove-site X is hidden from regular users', (tester) async {
     final repo = FakeSiteRepository();
     await _pump(tester, repo);

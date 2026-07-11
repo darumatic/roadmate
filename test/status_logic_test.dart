@@ -7,6 +7,13 @@ import 'package:roadmate/services/status_logic.dart';
 SiteReport _report(SiteStatus status, DateTime at) =>
     SiteReport(id: 'x', siteId: 's1', createdAt: at, status: status);
 
+SiteReport _activity(String id, DateTime at) => SiteReport(
+  id: id,
+  siteId: 's1',
+  createdAt: at,
+  activityType: ActivityReportType.longQueue,
+);
+
 void main() {
   final logic = const StatusLogic(window: Duration(hours: 6));
   final now = DateTime(2026, 6, 29, 12);
@@ -135,6 +142,47 @@ void main() {
       ]);
       // Everything else is untouched.
       expect(mapped.map((s) => s.id), ['fresh', 'stale', 'never']);
+    });
+  });
+
+  group('recentActivityReports', () {
+    test('keeps fresh activity reports and drops expired ones', () {
+      final reports = [
+        _activity('fresh', now.subtract(const Duration(hours: 9, minutes: 59))),
+        _activity('stale', now.subtract(const Duration(hours: 10, minutes: 1))),
+      ];
+      expect(
+        recentActivityReports(reports, now: now).map((r) => r.id),
+        ['fresh'],
+      );
+    });
+
+    test('drops status-only reports even when recent', () {
+      final reports = [
+        _report(SiteStatus.open, now.subtract(const Duration(minutes: 5))),
+        _activity('a', now.subtract(const Duration(minutes: 5))),
+      ];
+      expect(recentActivityReports(reports, now: now).map((r) => r.id), ['a']);
+    });
+
+    test('empty when every activity report has expired', () {
+      final reports = [
+        _activity('a', now.subtract(const Duration(hours: 11))),
+        _activity('b', now.subtract(const Duration(days: 2))),
+      ];
+      expect(recentActivityReports(reports, now: now), isEmpty);
+    });
+
+    test('respects a custom window', () {
+      final reports = [_activity('a', now.subtract(const Duration(hours: 2)))];
+      expect(
+        recentActivityReports(
+          reports,
+          now: now,
+          window: const Duration(hours: 1),
+        ),
+        isEmpty,
+      );
     });
   });
 }
