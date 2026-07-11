@@ -17,11 +17,10 @@ class StatusCounts {
   final int blitz;
   final int closed;
 
-  /// Sites with no fresh report (issue #21) — not part of [total], which only
-  /// covers statuses the stats bar/state cards break down.
+  /// Sites with no fresh report (issue #21).
   final int unknown;
 
-  int get total => open + blitz + closed;
+  int get total => open + blitz + closed + unknown;
 }
 
 /// States shown in the app, preserving the enum order used by the UI.

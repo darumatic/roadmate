@@ -129,6 +129,16 @@ class StateCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (counts.unknown > 0) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${counts.unknown}',
+                        style: TextStyle(
+                          color: SiteStatus.unknown.color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 Text(
@@ -175,6 +185,11 @@ class StateCard extends StatelessWidget {
             Expanded(
               flex: counts.closed,
               child: Container(height: 4, color: SiteStatus.closed.color),
+            ),
+          if (counts.unknown > 0)
+            Expanded(
+              flex: counts.unknown,
+              child: Container(height: 4, color: SiteStatus.unknown.color),
             ),
         ],
       ),

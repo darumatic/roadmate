@@ -436,4 +436,37 @@ void main() {
     expect(find.text('1 sites'), findsOneWidget);
     expect(find.text('Blitz'), findsOneWidget);
   });
+
+  testWidgets('StateCard surfaces the Unknown status count in grey', (
+    tester,
+  ) async {
+    Site site(String id, SiteStatus status) => Site(
+      id: id,
+      name: 'Site $id',
+      type: SiteType.weighbridge,
+      state: AusState.qld,
+      suburb: 'Town',
+      address: 'Bruce Hwy',
+      lat: 0,
+      lng: 0,
+      currentStatus: status,
+    );
+    final sites = [
+      site('1', SiteStatus.open),
+      site('2', SiteStatus.unknown),
+      site('3', SiteStatus.unknown),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StateCard(state: AusState.qld, sites: sites),
+        ),
+      ),
+    );
+
+    final openCount = tester.widget<Text>(find.text('1'));
+    expect(openCount.style?.color, SiteStatus.open.color);
+    final unknownCount = tester.widget<Text>(find.text('2'));
+    expect(unknownCount.style?.color, SiteStatus.unknown.color);
+  });
 }

@@ -29,6 +29,7 @@ void main() {
     _site(id: '2', state: AusState.nsw, status: SiteStatus.blitz),
     _site(id: '3', state: AusState.vic, status: SiteStatus.closed),
     _site(id: '4', state: AusState.vic, status: SiteStatus.open, name: 'Euroa'),
+    _site(id: '5', state: AusState.qld, status: SiteStatus.unknown),
   ];
 
   test('countByStatus tallies each status', () {
@@ -36,7 +37,8 @@ void main() {
     expect(c.open, 2);
     expect(c.blitz, 1);
     expect(c.closed, 1);
-    expect(c.total, 4);
+    expect(c.unknown, 1);
+    expect(c.total, 5);
   });
 
   test('groupByState includes visible states, including zero-site states', () {
@@ -46,7 +48,7 @@ void main() {
     expect(grouped.keys, contains(AusState.nt));
     expect(grouped[AusState.nsw]!.length, 2);
     expect(grouped[AusState.vic]!.length, 2);
-    expect(grouped[AusState.qld]!, isEmpty);
+    expect(grouped[AusState.qld]!.length, 1);
     expect(grouped[AusState.wa]!, isEmpty);
     expect(grouped[AusState.nt]!, isEmpty);
   });
@@ -98,7 +100,7 @@ void main() {
   group('pinSiteFirst', () {
     test('moves the matching site to the front, keeping the rest in order', () {
       final pinned = pinSiteFirst(sites, '3');
-      expect(pinned.map((s) => s.id), ['3', '1', '2', '4']);
+      expect(pinned.map((s) => s.id), ['3', '1', '2', '4', '5']);
     });
 
     test('no-op when id is null, unknown, or already first', () {
@@ -108,8 +110,15 @@ void main() {
         '2',
         '3',
         '4',
+        '5',
       ]);
-      expect(pinSiteFirst(sites, '1').map((s) => s.id), ['1', '2', '3', '4']);
+      expect(pinSiteFirst(sites, '1').map((s) => s.id), [
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+      ]);
     });
   });
 }
