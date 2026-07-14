@@ -111,7 +111,3 @@ iOS Simulator today; App Store distribution still needs signing/provisioning.
 Code modifications should cover all platforms. iOS, Android and Web.
 
 
-## Contributing
-
-Commits in this repo are **attributed to the owner only** — do not add
-`Co-Authored-By` trailers.
