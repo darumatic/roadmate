@@ -35,7 +35,7 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 - **Every change follows the full release cycle (the owner has standing authorization to deploy to prod):**
   1. **Local tests** — `flutter test` + `flutter analyze` (both must be clean). When fixing a bug or adding a feature, **add/update unit tests** for it first.
   2. **Commit & push** to `master` (commit attribution: only the user — see above).
-  3. **Deploy to prod** — publish web + Firestore rules/indexes. **Do not wait for GitHub CI** — it runs the same analyze+test suite already run locally in step 1 (`scripts/check_ci.sh <sha>` can poll a run manually if ever needed; no `gh`/token required).
+  3. **Deploy to prod** — publish web + Firestore rules/indexes. **Do not wait for, or post-check, GitHub CI** — its jobs run the same suites already run locally (flutter analyze/test, and test/rules via `scripts/test_rules.sh`), so polling it adds nothing (`scripts/check_ci.sh <sha>` exists only for the rare manual investigation; no `gh`/token required).
   - `scripts/release.sh` runs all three in order (and bumps the patch version — see the version tooling); prefer it over doing the steps by hand.
 
 ## Commands
