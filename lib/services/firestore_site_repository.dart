@@ -5,6 +5,7 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import 'auth_service.dart';
+import 'rate_limit.dart';
 import 'site_repository.dart';
 
 /// Firestore-backed [SiteRepository].
@@ -60,23 +61,75 @@ class FirestoreSiteRepository implements SiteRepository {
         );
   }
 
+  DocumentReference<Map<String, dynamic>> _ledgerRef(String uid) => firestore
+      .collection('users')
+      .doc(uid)
+      .collection('limits')
+      .doc('actions');
+
+  /// Commits [addOps] plus a rate-limit ledger stamp in one atomic batch
+  /// (issue #15 redux — see rate_limit.dart for why this is clock-free).
+  ///
+  /// Tries the increment shape first (the common case inside an open window);
+  /// when the server refuses it — window expired, doc missing, or count
+  /// exhausted — retries once with the reset shape. A denial of both shapes
+  /// means the user really is over the limit.
+  Future<void> _commitWithLedgerStamp(
+    String uid,
+    void Function(WriteBatch batch) addOps,
+  ) async {
+    Future<void> attempt(LedgerShape shape) {
+      // Batches are single-use; rebuild for each attempt.
+      final batch = firestore.batch();
+      addOps(batch);
+      final ledger = _ledgerRef(uid);
+      if (shape == LedgerShape.increment) {
+        batch.update(
+          ledger,
+          ledgerIncrementPayload(
+            incrementByOne: FieldValue.increment(1),
+            serverTime: FieldValue.serverTimestamp(),
+          ),
+        );
+      } else {
+        batch.set(
+          ledger,
+          ledgerResetPayload(serverTime: FieldValue.serverTimestamp()),
+        );
+      }
+      return batch.commit();
+    }
+
+    try {
+      await attempt(LedgerShape.increment);
+    } catch (e) {
+      if (!shouldTryOtherShape(e)) rethrow;
+      try {
+        await attempt(LedgerShape.reset);
+      } catch (e2) {
+        if (isRulesDenial(e2)) throw const RateLimitedException();
+        rethrow;
+      }
+    }
+  }
+
   @override
   Future<void> vote(String siteId, SiteStatus status) async {
     final uid = await ensureSignedIn(auth);
     final reportRef = _sites.doc(siteId).collection('reports').doc();
-    final batch = firestore.batch();
-    batch.set(reportRef, {
-      'siteId': siteId,
-      'status': status.name,
-      'uid': uid,
-      'createdAt': FieldValue.serverTimestamp(),
+    await _commitWithLedgerStamp(uid, (batch) {
+      batch.set(reportRef, {
+        'siteId': siteId,
+        'status': status.name,
+        'uid': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      batch.update(_sites.doc(siteId), {
+        '${status.name}Votes': FieldValue.increment(1),
+        'currentStatus': status.name,
+        'lastReportAt': FieldValue.serverTimestamp(),
+      });
     });
-    batch.update(_sites.doc(siteId), {
-      '${status.name}Votes': FieldValue.increment(1),
-      'currentStatus': status.name,
-      'lastReportAt': FieldValue.serverTimestamp(),
-    });
-    await batch.commit();
   }
 
   @override
@@ -99,12 +152,12 @@ class FirestoreSiteRepository implements SiteRepository {
     if (name != null && name.isNotEmpty) data['reporterName'] = name;
 
     // One atomic batch so a report never lands without its site touch.
-    final batch = firestore.batch();
-    batch.set(_sites.doc(siteId).collection('reports').doc(), data);
-    batch.update(_sites.doc(siteId), {
-      'lastReportAt': FieldValue.serverTimestamp(),
+    await _commitWithLedgerStamp(uid, (batch) {
+      batch.set(_sites.doc(siteId).collection('reports').doc(), data);
+      batch.update(_sites.doc(siteId), {
+        'lastReportAt': FieldValue.serverTimestamp(),
+      });
     });
-    await batch.commit();
   }
 
   @override

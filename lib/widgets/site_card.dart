@@ -6,6 +6,7 @@ import '../models/site.dart';
 import '../models/site_report.dart';
 import '../services/auth_service.dart';
 import '../services/providers.dart';
+import '../services/rate_limit.dart';
 import '../services/site_repository.dart';
 import '../services/status_logic.dart';
 import '../theme/app_theme.dart';
@@ -184,6 +185,9 @@ class SiteCard extends ConsumerWidget {
       if (context.mounted) {
         _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
       }
+    } on RateLimitedException {
+      if (!context.mounted) return;
+      _snack(context, kRateLimitMessage);
     } catch (e) {
       if (!context.mounted) return;
       _snack(context, 'Could not submit — please try again.');
@@ -204,6 +208,9 @@ class SiteCard extends ConsumerWidget {
         reporterName: report.reporterName,
       );
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
+    } on RateLimitedException {
+      if (!context.mounted) return;
+      _snack(context, kRateLimitMessage);
     } catch (e) {
       if (!context.mounted) return;
       _snack(context, 'Could not submit — please try again.');

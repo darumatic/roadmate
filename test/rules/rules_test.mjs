@@ -1,8 +1,9 @@
-// Verifies the vote/report shapes, admin-delete (issue #13) and
-// admin-publish (issue #16) rules in firestore.rules against the Firestore
-// emulator. (The issue #15 rate-limit ledger was rolled back — it produced
-// false rejections in production.) Run via scripts/test_rules.sh (needs Node
-// and Java 21+; not part of `flutter test`).
+// Verifies the vote/report shapes, admin-delete (issue #13), admin-publish
+// (issue #16) and the global per-user rate-limit ledger (issue #15 redux:
+// 5 actions per 5 minutes at users/{uid}/limits/actions, judged entirely by
+// request.time) rules in firestore.rules against the Firestore emulator.
+// Run via scripts/test_rules.sh (needs Node and Java 21+) or the CI
+// rules-test job; not part of `flutter test`.
 import {
   initializeTestEnvironment,
   assertFails,
@@ -13,10 +14,12 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   increment,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
@@ -91,6 +94,55 @@ async function reportBatch(db, siteId, uid) {
   return b.commit();
 }
 
+// The new-client shapes: same action batches plus the global ledger stamp
+// (mirrors FirestoreSiteRepository._commitWithLedgerStamp).
+const ledgerDoc = (db, uid) => doc(db, `users/${uid}/limits/actions`);
+
+function stampIncrement(b, db, uid) {
+  b.update(ledgerDoc(db, uid), {
+    count: increment(1),
+    lastActionAt: serverTimestamp(),
+  });
+}
+
+function stampReset(b, db, uid) {
+  b.set(ledgerDoc(db, uid), {
+    count: 1,
+    windowStart: serverTimestamp(),
+    lastActionAt: serverTimestamp(),
+  });
+}
+
+async function stampedVote(db, siteId, status, uid, stamp) {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, `sites/${siteId}/reports`)), {
+    siteId,
+    status,
+    uid,
+    createdAt: serverTimestamp(),
+  });
+  b.update(doc(db, `sites/${siteId}`), {
+    [`${status}Votes`]: increment(1),
+    currentStatus: status,
+    lastReportAt: serverTimestamp(),
+  });
+  stamp(b, db, uid);
+  return b.commit();
+}
+
+async function stampedReport(db, siteId, uid, stamp) {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, `sites/${siteId}/reports`)), {
+    siteId,
+    activityType: 'delays',
+    uid,
+    createdAt: serverTimestamp(),
+  });
+  b.update(doc(db, `sites/${siteId}`), { lastReportAt: serverTimestamp() });
+  stamp(b, db, uid);
+  return b.commit();
+}
+
 const checks = [];
 const check = async (label, promise) => {
   await promise;
@@ -98,10 +150,11 @@ const check = async (label, promise) => {
   console.log(`ok - ${label}`);
 };
 
-// Rate limiting was rolled back: repeated votes/reports in quick succession
-// must all succeed (mis-taps can always be corrected).
+// RETROCOMPAT (phase 1 of issue #15 redux): released mobile builds commit
+// plain 2-op batches with no ledger stamp and must keep succeeding without
+// any frequency limit.
 await check(
-  'repeated votes and reports in quick succession all succeed',
+  'legacy unstamped votes and reports in quick succession all succeed',
   (async () => {
     await assertSucceeds(voteBatch(alice, 'site-1', 'blitz', 'alice'));
     await assertSucceeds(voteBatch(alice, 'site-1', 'open', 'alice'));
@@ -110,6 +163,114 @@ await check(
     await assertSucceeds(voteBatch(alice, 'site-2', 'open', 'alice'));
   })(),
 );
+
+// ---- Rate-limit ledger (issue #15 redux) ----
+const bob = env
+  .authenticatedContext('bob', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+
+await check(
+  'increment before any ledger exists fails (client falls back to reset)',
+  assertFails(stampedVote(bob, 'site-1', 'open', 'bob', stampIncrement)),
+);
+await check(
+  'first stamped action creates the ledger via the reset shape',
+  assertSucceeds(stampedVote(bob, 'site-1', 'open', 'bob', stampReset)),
+);
+await check(
+  'actions 2-5 increment the open window — votes and reports, any site',
+  (async () => {
+    await assertSucceeds(stampedVote(bob, 'site-1', 'blitz', 'bob', stampIncrement));
+    await assertSucceeds(stampedReport(bob, 'site-1', 'bob', stampIncrement));
+    await assertSucceeds(stampedReport(bob, 'site-2', 'bob', stampIncrement));
+    await assertSucceeds(stampedVote(bob, 'site-2', 'closed', 'bob', stampIncrement));
+  })(),
+);
+await check(
+  'the 6th action inside the window is denied in both shapes (global limit)',
+  (async () => {
+    await assertFails(stampedVote(bob, 'site-2', 'open', 'bob', stampIncrement));
+    await assertFails(stampedVote(bob, 'site-2', 'open', 'bob', stampReset));
+    await assertFails(stampedReport(bob, 'site-1', 'bob', stampIncrement));
+  })(),
+);
+await check(
+  'an exhausted ledger still does not block legacy unstamped batches',
+  assertSucceeds(voteBatch(bob, 'site-1', 'open', 'bob')),
+);
+
+// Window expiry: the emulator clock cannot be advanced, so age the window by
+// backdating it with rules disabled — valid because the rules only compare
+// stored timestamps against the server's request.time.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await updateDoc(doc(ctx.firestore(), 'users/bob/limits/actions'), {
+    windowStart: Timestamp.fromDate(new Date(Date.now() - 6 * 60_000)),
+  });
+});
+await check(
+  'once the window expires, increment is denied but reset starts fresh',
+  (async () => {
+    await assertFails(stampedVote(bob, 'site-1', 'open', 'bob', stampIncrement));
+    await assertSucceeds(stampedVote(bob, 'site-1', 'open', 'bob', stampReset));
+  })(),
+);
+
+// Forged ledgers: every shortcut around the counter must be rejected.
+const carol = env
+  .authenticatedContext('carol', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+await check(
+  'forged ledgers are rejected in every variation',
+  (async () => {
+    // Fresh create claiming a bigger allowance or a client-chosen clock.
+    await assertFails(
+      setDoc(ledgerDoc(carol, 'carol'), {
+        count: 3,
+        windowStart: serverTimestamp(),
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(ledgerDoc(carol, 'carol'), {
+        count: 1,
+        windowStart: Timestamp.fromDate(new Date(Date.now() - 10 * 60_000)),
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(ledgerDoc(carol, 'carol'), {
+        count: 1,
+        windowStart: serverTimestamp(),
+        lastActionAt: serverTimestamp(),
+        bonus: true,
+      }),
+    );
+    // Legitimate ledger, then tampered increments (bob is at count 1).
+    await assertFails(
+      updateDoc(ledgerDoc(bob, 'bob'), {
+        count: increment(2),
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(ledgerDoc(bob, 'bob'), {
+        count: increment(1),
+        windowStart: serverTimestamp(), // moving the window mid-increment
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+    // Another user's ledger is untouchable, and unreadable by strangers.
+    await assertFails(
+      setDoc(ledgerDoc(carol, 'bob'), {
+        count: 1,
+        windowStart: serverTimestamp(),
+        lastActionAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(getDoc(ledgerDoc(carol, 'bob')));
+  })(),
+);
+
 await check(
   'a tampering counter update (two counters at once) is still rejected',
   assertFails(
@@ -191,6 +352,19 @@ await check(
   ),
 );
 
+// App config (forced-update gate): world-readable, never client-writable —
+// not even by admins; the doc is edited only in the console/Admin SDK.
+await check(
+  'config is readable pre-auth and unwritable by clients',
+  (async () => {
+    await assertSucceeds(
+      getDoc(doc(env.unauthenticatedContext().firestore(), 'config/app')),
+    );
+    await assertFails(setDoc(doc(alice, 'config/app'), { minVersion: '9.9.9' }));
+    await assertFails(setDoc(doc(admin, 'config/app'), { minVersion: '9.9.9' }));
+  })(),
+);
+
 // In-app account deletion (App Store 5.1.1(v)): a user erases their own
 // favourites and profile doc in one batch; strangers cannot touch either.
 const mallory = env
@@ -205,11 +379,18 @@ await check(
   assertFails(deleteDoc(doc(mallory, 'users/alice/favourites/site-1'))),
 );
 await check(
-  'account deletion batch: self deletes favourites then profile',
+  'stranger cannot delete another user rate-limit ledger',
+  assertFails(deleteDoc(ledgerDoc(mallory, 'bob'))),
+);
+await check(
+  'account deletion batch: self deletes favourites, ledger, then profile',
   assertSucceeds(
     (() => {
       const b = writeBatch(alice);
       b.delete(doc(alice, 'users/alice/favourites/site-1'));
+      // Blind ledger delete, mirroring AuthController.deleteAccount — alice
+      // never stamped one, so this also proves absent-doc deletes pass.
+      b.delete(ledgerDoc(alice, 'alice'));
       b.delete(doc(alice, 'users/alice'));
       return b.commit();
     })(),

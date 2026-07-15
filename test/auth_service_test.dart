@@ -516,6 +516,8 @@ void main() {
       expect(store.deletedPaths, [
         'users/u-1/favourites/site-1',
         'users/u-1/favourites/site-2',
+        // Rate-limit ledger (issue #15): erased with the account.
+        'users/u-1/limits/actions',
         'users/u-1',
       ]);
       expect(events, ['firestore', 'auth']); // rules need the live uid

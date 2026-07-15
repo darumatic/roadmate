@@ -8,7 +8,15 @@ import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/firestore_site_repository.dart';
+import 'package:roadmate/services/rate_limit.dart';
 
+// NOTE: `Firebase.initializeApp` needs a real platform plugin, which the
+// plain `flutter test` VM does not have — run this suite from a host with
+// native FlutterFire support (macOS/Android) against the emulators:
+//   FIREBASE_EMULATOR_TESTS=true firebase emulators:exec --only firestore,auth \
+//     "flutter test test/firebase/firestore_repository_emulator_test.dart"
+// The rules themselves are covered headlessly in CI by test/rules/rules_test.mjs,
+// whose batch helpers mirror FirestoreSiteRepository exactly.
 const _projectId = 'roadmate-b1551';
 final _runEmulatorTests =
     Platform.environment['FIREBASE_EMULATOR_TESTS'] == 'true';
@@ -161,17 +169,63 @@ void main() {
       );
 
       test(
-        'repeated votes in quick succession all succeed (no rate limit)',
+        'first-ever action creates the rate-limit ledger via the retry path',
         () async {
           await repo.addSite(_site('site-1'));
 
+          // No ledger doc exists yet, so the increment attempt fails on the
+          // missing-doc precondition and the reset retry must create it.
+          await repo.vote('site-1', SiteStatus.blitz);
+
+          final ledger = await firestore
+              .doc('users/${auth.currentUser!.uid}/limits/actions')
+              .get();
+          expect(ledger.data()?['count'], 1);
+          expect(ledger.data()?['windowStart'], isA<Timestamp>());
+          expect(ledger.data()?['lastActionAt'], isA<Timestamp>());
+        },
+      );
+
+      test(
+        '5 actions succeed, the 6th is rate-limited and changes nothing '
+        '(issue #15 redux)',
+        () async {
+          await repo.addSite(_site('site-1'));
+          await repo.addSite(_site('site-2'));
+
+          // 5 mixed actions across two sites — the window is global.
           await repo.vote('site-1', SiteStatus.blitz);
           await repo.vote('site-1', SiteStatus.open);
           await repo.report('site-1', ActivityReportType.delays);
+          await repo.report('site-2', ActivityReportType.longQueue);
+          await repo.vote('site-2', SiteStatus.closed);
 
-          final site = await firestore.collection('sites').doc('site-1').get();
-          expect(site.data()?['blitzVotes'], 1);
-          expect(site.data()?['openVotes'], 1);
+          final uid = auth.currentUser!.uid;
+          final ledger = await firestore.doc('users/$uid/limits/actions').get();
+          expect(ledger.data()?['count'], 5);
+
+          await expectLater(
+            repo.vote('site-1', SiteStatus.open),
+            throwsA(isA<RateLimitedException>()),
+          );
+          await expectLater(
+            repo.report('site-1', ActivityReportType.policePresent),
+            throwsA(isA<RateLimitedException>()),
+          );
+
+          // The denied batches were atomic: no counter moved, no report or
+          // ledger increment landed.
+          final site1 = await firestore.collection('sites').doc('site-1').get();
+          expect(site1.data()?['blitzVotes'], 1);
+          expect(site1.data()?['openVotes'], 1);
+          final reports = await firestore
+              .collection('sites')
+              .doc('site-1')
+              .collection('reports')
+              .get();
+          expect(reports.docs, hasLength(3));
+          final after = await firestore.doc('users/$uid/limits/actions').get();
+          expect(after.data()?['count'], 5);
         },
       );
     },

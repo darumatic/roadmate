@@ -103,16 +103,71 @@ service cloud.firestore {
       match /favourites/{siteId} {
         allow read, write: if signedIn() && request.auth.uid == uid;
       }
+
+      // Global per-user action ledger (issue #15 redux): 5 votes/reports per
+      // 5 minutes across all sites. New clients stamp this doc in the same
+      // batch as every vote/report; the whole batch fails when the stamp is
+      // rejected. All time judgments use request.time — the device clock
+      // choosing the reset-vs-increment branch caused the 2026-07-07 rollback
+      // and must never decide again. Old released clients don't write the
+      // ledger and stay unthrottled (retrocompat) until a future strict phase.
+      match /limits/actions {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow create: if signedIn() && request.auth.uid == uid
+          && isLedgerReset();
+        allow update: if signedIn() && request.auth.uid == uid
+          && (isLedgerIncrement()
+            || (isLedgerReset() && ledgerWindowExpired()));
+        // Owner: account-deletion cleanup. Admin: moderation purge.
+        allow delete: if signedIn()
+          && (request.auth.uid == uid || isAdmin());
+      }
+    }
+
+    // Public app configuration (e.g. minVersion for the forced-update gate).
+    // Readable pre-auth so the gate works before sign-in; written only from
+    // the Firebase console / Admin SDK.
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
     }
     function affectedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    // Rate-limit ledger shapes (issue #15 redux). A reset starts a fresh
+    // 5-minute window; an increment adds an action to the open window, capped
+    // at 5. The client never consults its own clock: it tries increment, and
+    // retries with reset when the server denies it. NOTE: the 5-action /
+    // 5-minute values must match kMaxActionsPerWindow / kRateLimitWindow in
+    // lib/services/rate_limit.dart.
+    function isLedgerReset() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['count', 'windowStart', 'lastActionAt'])
+        && d.count == 1
+        && d.windowStart == request.time
+        && d.lastActionAt == request.time;
+    }
+
+    function ledgerWindowExpired() {
+      return request.time > resource.data.windowStart + duration.value(5, 'm');
+    }
+
+    function isLedgerIncrement() {
+      let d = request.resource.data;
+      return affectedKeys().hasOnly(['count', 'lastActionAt'])
+        && d.count == resource.data.count + 1
+        && d.count <= 5
+        && d.lastActionAt == request.time
+        && request.time <= resource.data.windowStart + duration.value(5, 'm');
+    }
+
     // Exactly one of the three status counters increases by 1; none decrease;
     // currentStatus is a valid value; no other fields change.
-    // NOTE: the rate-limit ledger (issue #15) was rolled back — it produced
-    // false rejections in production. Rate limiting is a future follow-up
-    // (Cloud Functions / App Check, see TASKS.md).
+    // NOTE: this phase deliberately does NOT require the ledger stamp here —
+    // released mobile builds commit plain 2-op batches and must keep working
+    // (CLAUDE.md retrocompat constraint). A future strict phase adds
+    // getAfter(/users/$(uid)/limits/actions).lastActionAt == request.time.
     function isValidVote() {
       let a = resource.data;
       let b = request.resource.data;

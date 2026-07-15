@@ -23,6 +23,34 @@ String bumpPatchVersion(String current) {
   return '$major.$minor.$patch+$build';
 }
 
+/// Numeric compare of two `x.y.z` versions (any `+build` suffix is ignored):
+/// negative when [a] < [b], zero when equal, positive when [a] > [b].
+/// So `0.1.9` < `0.1.10`. Throws [FormatException] on malformed input.
+int compareVersions(String a, String b) {
+  final ma = _versionPattern.firstMatch(a.trim());
+  final mb = _versionPattern.firstMatch(b.trim());
+  if (ma == null || mb == null) {
+    throw FormatException('Invalid version string: "${ma == null ? a : b}"');
+  }
+  for (var group = 1; group <= 3; group++) {
+    final diff = int.parse(ma.group(group)!) - int.parse(mb.group(group)!);
+    if (diff != 0) return diff;
+  }
+  return 0;
+}
+
+/// Whether [current] falls below the remotely-configured [minimum]
+/// (the forced-update gate). Fails OPEN — a missing or malformed minimum
+/// must never lock users out of the app.
+bool isBelowMinimum({required String current, String? minimum}) {
+  if (minimum == null || minimum.trim().isEmpty) return false;
+  try {
+    return compareVersions(current, minimum) < 0;
+  } on FormatException {
+    return false;
+  }
+}
+
 /// The display-only marketing version (`x.y.z`), stripping any `+build` suffix.
 ///
 /// `'1.0.1+2'` -> `'1.0.1'`. Throws [FormatException] on malformed input.

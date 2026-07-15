@@ -75,16 +75,35 @@ own uid); manage their own favourites list. Deletes are disabled for regular
 users; **admins may delete sites** (and reports) — see admin site removal below.
 **Test mode closed; all four write paths verified live under these rules.**
 
-**Rate limiting (issue #15): ROLLED BACK.** Two designs shipped and were
-removed: per-action cooldowns (blocked undoing mis-taps) and a 5-actions-per-
-5-minute ledger window (produced false permission-denied rejections in
-production — the client chose the window-reset-vs-increment branch with the
-device clock, so clock skew broke legitimate votes). The rules still validate
-write *shapes* (one counter +1 etc.) but no longer throttle frequency. Legacy
-`sites/{id}/limits/{uid}` docs are frozen (no client writes; admin read/delete
-only — site deletion purges them). Rate limiting remains a follow-up via App
-Check and/or Cloud Functions (see TASKS.md), which avoid the client-clock
-problem entirely.
+**Rate limiting (issue #15 redux): LIVE, global per user.** 5 actions (votes +
+activity reports combined, across all sites) per 5-minute window, enforced by
+a ledger doc at `users/{uid}/limits/actions` (`count`, `windowStart`,
+`lastActionAt`) that new clients stamp in the same atomic batch as every
+vote/report. The 2026-07-07 rollback happened because the client chose the
+window-reset-vs-increment branch with the device clock; the redesign is
+**clock-free**: rules judge both shapes purely with `request.time` (increment:
+count+1 ≤ 5 inside the window and `windowStart` untouched; reset: a fresh
+count-1 window, allowed on create or once the old window expired) and the
+client simply tries increment then retries once with reset — two consecutive
+denials mean genuinely rate-limited (`RateLimitedException` → "Easy there"
+snackbar). **Retrocompat phase 1:** vote/report rules do NOT require the
+stamp, so released mobile builds (plain 2-op batches) keep working
+unthrottled; a deliberate abuser can mimic that legacy shape until phase 2
+flips the rules to require
+`getAfter(/users/$(uid)/limits/actions).lastActionAt == request.time` once the
+min-version gate has pushed adoption. Legacy `sites/{id}/limits/{uid}` docs
+stay frozen (admin read/delete only). Covered by `test/rules/rules_test.mjs`
+(run locally via `scripts/test_rules.sh`, and in CI by the `rules-test` job),
+pure unit tests (`test/rate_limit_test.dart`), and a device-gated emulator
+suite (`test/firebase/firestore_repository_emulator_test.dart`).
+
+**Forced-update gate:** `config/app.minVersion` (Firestore, world-readable,
+console-edited only) is watched live; builds below it render a blocking
+"Update required" screen (store link / web refresh) — `lib/services/
+min_version.dart`, `widgets/force_update_screen.dart`, gated in `app.dart`.
+Fails open on missing/malformed config. Limitation: only builds shipping the
+gate obey it; older builds are retired by the phase-2 strict rules above.
+(iOS App Store URL is a placeholder until the app is listed.)
 
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
@@ -92,7 +111,8 @@ for MVP** — flip `approved` to `true` in the Firebase console. An in-app admin
 screen is a follow-up. (Re-seeding a wiped DB is blocked by the strict create
 rule — it's an admin op.)
 
-Still owed before scale: per-user rate-limiting and an admin/moderation UI.
+Still owed before scale: an admin/moderation UI, and phase 2 of rate limiting
+(strict ledger stamping + App Check) once mobile adoption allows.
 
 ## Data source
 
@@ -123,7 +143,7 @@ They are approximate — verify exact site positions before production.
 | Web public deploy (Firebase Hosting) | ✅ **LIVE — https://roadmate-b1551.web.app** |
 | Admin site removal (X on site card + warning popup; deletes site + its reports, issue #13) | ✅ Done — `AdminRepository.deleteSite`, rules allow `delete` for admins only |
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
-| Vote/report rate limiting (issue #15) | ❌ **Rolled back** — both designs caused false rejections/blocked corrections in production; future: App Check / Cloud Functions (see rules note above) |
+| Vote/report rate limiting (issue #15) | ✅ **Done (redux)** — global 5 actions/5 min per user via a clock-free rules ledger (`users/{uid}/limits/actions`, retry-based branch selection); old mobile builds exempt until the phase-2 strict flip; forced-update gate shipped alongside (see rules note above) |
 | Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
 | Web update banner ("new version — Refresh") | ✅ Done — polls `/version.json` (5 min + on tab refocus) vs baked `appVersion`; Refresh clears SW + caches then reloads (`lib/services/update_checker.dart`, `widgets/update_banner.dart`); no-op on native |
 | Alert beep audible over music (issue #18) | ✅ Done — `alertAudioContext()` in `alert_player.dart`: Android alarm stream + transient duck; iOS `playback` category (ignores silent switch) + `duckOthers`; web unaffected |

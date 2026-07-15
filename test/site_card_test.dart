@@ -7,6 +7,7 @@ import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/admin_repository.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
+import 'package:roadmate/services/rate_limit.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
 
@@ -410,5 +411,36 @@ void main() {
 
     expect(repo.reports, isEmpty);
     expect(find.textContaining('Could not submit'), findsOneWidget);
+  });
+
+  // Issue #15 redux: hitting the 5-actions/5-minutes limit gets its own
+  // explanation, not the generic failure text.
+  testWidgets('rate-limited vote shows the cooldown message', (tester) async {
+    final repo = FakeSiteRepository()..voteError = const RateLimitedException();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open/Working'));
+    await tester.pump();
+
+    expect(find.text(kRateLimitMessage), findsOneWidget);
+    expect(find.textContaining('Could not submit'), findsNothing);
+  });
+
+  testWidgets('rate-limited report shows the cooldown message', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository()
+      ..reportError = const RateLimitedException();
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Report activity'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Submit'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(kRateLimitMessage), findsOneWidget);
+    expect(find.textContaining('Could not submit'), findsNothing);
   });
 }
