@@ -49,7 +49,7 @@ class FakeSiteRepository implements SiteRepository {
   Stream<List<Site>> watchSites() => Stream.value(const []);
 
   @override
-  Stream<List<SiteReport>> watchReports(String siteId) =>
+  Stream<List<SiteReport>> watchAllRecentReports() =>
       Stream.value(watchedReports);
 
   @override
@@ -258,6 +258,15 @@ void main() {
           createdAt: DateTime.now().subtract(const Duration(minutes: 50)),
           activityType: ActivityReportType.other,
         ),
+        // The repository stream is now shared across all sites — another
+        // site's report must never leak onto this card.
+        SiteReport(
+          id: 'other-site',
+          siteId: 'qld-9',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 5)),
+          activityType: ActivityReportType.delays,
+          reporterName: 'Zoe',
+        ),
       ];
     await _pump(tester, repo);
     await tester.pumpAndSettle();
@@ -272,6 +281,7 @@ void main() {
     expect(find.text('Old report shape'), findsNothing);
     expect(find.text('Alex'), findsOneWidget);
     expect(find.text('Anonymous'), findsNWidgets(4));
+    expect(find.text('Zoe'), findsNothing); // qld-9's report stays off nsw-1
   });
 
   testWidgets('activity reports expire from the card after 10 hours', (

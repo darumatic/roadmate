@@ -145,11 +145,13 @@ class NearbyScreen extends ConsumerWidget {
 }
 
 Future<void> _refreshNearby(WidgetRef ref) async {
+  // The device position genuinely goes stale, so a pull re-reads it; the
+  // Firestore streams are live and handled by refreshSiteData's error-only
+  // restart rule.
   ref.invalidate(currentPositionProvider);
-  ref.invalidate(sitesProvider);
   await Future.wait([
     ref.read(currentPositionProvider.future),
-    ref.read(sitesProvider.future),
+    refreshSiteData(ref),
   ]);
 }
 

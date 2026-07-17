@@ -185,4 +185,63 @@ void main() {
       );
     });
   });
+
+  // The shared recent-reports stream: exact client-side 10h filter over the
+  // server query, plus the per-site slicing every card relies on.
+  group('reportsWithinWindow', () {
+    final now = DateTime(2026, 6, 29, 12);
+
+    test('keeps votes and activity reports inside the window', () {
+      final reports = [
+        _report(SiteStatus.blitz, now.subtract(const Duration(hours: 9))),
+        _activity('a', now.subtract(const Duration(minutes: 5))),
+      ];
+      expect(reportsWithinWindow(reports, now: now), hasLength(2));
+    });
+
+    test('drops anything older than the window, vote or activity', () {
+      final reports = [
+        _report(SiteStatus.open, now.subtract(const Duration(hours: 11))),
+        _activity('stale', now.subtract(const Duration(hours: 10, minutes: 1))),
+        _activity('fresh', now.subtract(const Duration(hours: 9, minutes: 59))),
+      ];
+      expect(
+        reportsWithinWindow(reports, now: now).map((r) => r.id),
+        ['fresh'],
+      );
+    });
+
+    test('respects a custom window', () {
+      final reports = [_activity('a', now.subtract(const Duration(hours: 2)))];
+      expect(
+        reportsWithinWindow(
+          reports,
+          now: now,
+          window: const Duration(hours: 1),
+        ),
+        isEmpty,
+      );
+    });
+  });
+
+  group('reportsForSite', () {
+    final now = DateTime(2026, 6, 29, 12);
+
+    SiteReport at(String id, String siteId) =>
+        SiteReport(id: id, siteId: siteId, createdAt: now);
+
+    test('keeps only the requested site, preserving order', () {
+      final shared = [
+        at('1', 's1'),
+        at('2', 's2'),
+        at('3', 's1'),
+        at('4', 's3'),
+      ];
+      expect(reportsForSite(shared, 's1').map((r) => r.id), ['1', '3']);
+    });
+
+    test('empty when the site has no reports in the shared stream', () {
+      expect(reportsForSite([at('1', 's2')], 's1'), isEmpty);
+    });
+  });
 }

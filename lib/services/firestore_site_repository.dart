@@ -7,6 +7,7 @@ import '../models/site_report.dart';
 import 'auth_service.dart';
 import 'rate_limit.dart';
 import 'site_repository.dart';
+import 'status_logic.dart';
 
 /// Firestore-backed [SiteRepository].
 ///
@@ -46,13 +47,22 @@ class FirestoreSiteRepository implements SiteRepository {
         );
   }
 
+  /// Runaway-cost guard on the shared recent-reports query. At the enforced
+  /// rate limit (5 actions/5min/user) this only bites under coordinated spam;
+  /// ordering is newest-first, so if it ever does, the freshest reports win.
+  static const int recentReportsQueryCap = 500;
+
   @override
-  Stream<List<SiteReport>> watchReports(String siteId) {
-    return _sites
-        .doc(siteId)
-        .collection('reports')
+  Stream<List<SiteReport>> watchAllRecentReports() {
+    // The cutoff is fixed when the listener starts, so a long-lived session
+    // only ever over-fetches (window grows past 10h, never shrinks below);
+    // the exact 10h filter stays client-side in status_logic, as always.
+    final cutoff = DateTime.now().subtract(statusFreshWindow);
+    return firestore
+        .collectionGroup('reports')
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
         .orderBy('createdAt', descending: true)
-        .limit(20)
+        .limit(recentReportsQueryCap)
         .snapshots()
         .map(
           (snap) => snap.docs

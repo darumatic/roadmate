@@ -9,8 +9,12 @@ abstract class SiteRepository {
   /// Live stream of all (approved) sites.
   Stream<List<Site>> watchSites();
 
-  /// Live stream of recent reports for a single site (most-recent first).
-  Stream<List<SiteReport>> watchReports(String siteId);
+  /// Live stream of every report across all sites inside the 10h freshness
+  /// window ([statusFreshWindow]), most-recent first. One shared query — a
+  /// per-site query re-billed its whole result set for every visible card,
+  /// while this costs each report document once per session. Time-bounded
+  /// rather than count-bounded so a busy day can never push data out.
+  Stream<List<SiteReport>> watchAllRecentReports();
 
   /// Record a status vote for a site.
   Future<void> vote(String siteId, SiteStatus status);

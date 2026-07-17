@@ -12,15 +12,20 @@ import {
 import { readFileSync } from 'node:fs';
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
   increment,
+  limit,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 
@@ -162,6 +167,27 @@ await check(
     await assertSucceeds(reportBatch(alice, 'site-1', 'alice'));
     await assertSucceeds(voteBatch(alice, 'site-2', 'open', 'alice'));
   })(),
+);
+
+// The shared recent-reports listener (read-cost work): every client — not
+// just admins — may run the 10h collectionGroup('reports') query that feeds
+// all site cards from a single subscription.
+await check(
+  'any client runs the shared recent-reports collectionGroup query',
+  assertSucceeds(
+    getDocs(
+      query(
+        collectionGroup(alice, 'reports'),
+        where(
+          'createdAt',
+          '>=',
+          Timestamp.fromDate(new Date(Date.now() - 10 * 3_600_000)),
+        ),
+        orderBy('createdAt', 'desc'),
+        limit(500),
+      ),
+    ),
+  ),
 );
 
 // ---- Rate-limit ledger (issue #15 redux) ----

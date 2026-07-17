@@ -47,7 +47,7 @@ class FeatureFakeSiteRepository implements SiteRepository {
   Stream<Set<String>> watchFavourites() => Stream.value(favourites);
 
   @override
-  Stream<List<SiteReport>> watchReports(String siteId) =>
+  Stream<List<SiteReport>> watchAllRecentReports() =>
       Stream.value(const []);
 
   @override

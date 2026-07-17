@@ -11,6 +11,7 @@ import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
+import 'refresh_logic.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 import 'trip_history_store.dart';
@@ -67,12 +68,39 @@ final favouriteSiteIdsProvider = StreamProvider<Set<String>>((ref) {
   return ref.watch(siteRepositoryProvider).watchFavourites();
 });
 
-final siteReportsProvider = StreamProvider.family<List<SiteReport>, String>((
-  ref,
-  siteId,
-) {
-  return ref.watch(siteRepositoryProvider).watchReports(siteId);
+/// One shared Firestore listener for every report inside the 10h freshness
+/// window, across all sites. Replaces the old per-visible-card query, which
+/// billed up to 20 reads per site per session; the window is time-bounded
+/// (not count-bounded), so a busy day can never push a site's reports out.
+final recentReportsProvider = StreamProvider<List<SiteReport>>((ref) {
+  return ref.watch(siteRepositoryProvider).watchAllRecentReports();
 });
+
+/// A single site's slice of [recentReportsProvider] — the same AsyncValue
+/// shape SiteCard has always consumed, now derived client-side instead of
+/// opening one Firestore query per site.
+final siteReportsProvider =
+    Provider.family<AsyncValue<List<SiteReport>>, String>((ref, siteId) {
+      return ref
+          .watch(recentReportsProvider)
+          .whenData((reports) => reportsForSite(reports, siteId));
+    });
+
+/// Shared pull-to-refresh for the Firestore-backed streams: a healthy
+/// snapshot listener is already live, so it is only restarted after an error
+/// (retry); restarting a working one would re-bill its whole result set.
+Future<void> refreshSiteData(WidgetRef ref) async {
+  for (final provider in [
+    sitesProvider,
+    recentReportsProvider,
+    favouriteSiteIdsProvider,
+  ]) {
+    if (shouldRestartOnRefresh(ref.read(provider))) {
+      ref.invalidate(provider);
+    }
+  }
+  await ref.read(sitesProvider.future);
+}
 
 final pendingSitesProvider = StreamProvider<List<Site>>((ref) {
   return ref.watch(adminRepositoryProvider).watchPendingSites();

@@ -66,12 +66,14 @@ service cloud.firestore {
       }
     }
 
-    // Authorises the admin moderation feed's collectionGroup('reports') query.
-    // Rules v2 does not apply the nested /sites/{id}/reports rule to collection
-    // group queries — those need a recursive-wildcard match. Per-doc reads stay
-    // governed by the nested rule above (public); this only gates the group scan.
+    // Authorises collectionGroup('reports') queries: every client's shared
+    // 10h recent-reports listener (one query feeds all site cards — read
+    // cost) plus the admin moderation feed. Rules v2 does not apply the
+    // nested /sites/{id}/reports rule to collection group queries — those
+    // need a recursive-wildcard match. Reports were already world-readable
+    // per-site via the nested rule above, so this widens nothing.
     match /{path=**}/reports/{reportId} {
-      allow read: if isAdmin();
+      allow read: if true;
     }
 
     match /userRoles/{uid} {

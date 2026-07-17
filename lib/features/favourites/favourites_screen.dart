@@ -25,7 +25,7 @@ class FavouritesScreen extends ConsumerWidget {
                 .where((s) => favouriteIds.contains(s.id))
                 .toList();
             return RefreshIndicator(
-              onRefresh: () => _refreshFavourites(ref),
+              onRefresh: () => refreshSiteData(ref),
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
@@ -64,15 +64,6 @@ class FavouritesScreen extends ConsumerWidget {
       ),
     );
   }
-}
-
-Future<void> _refreshFavourites(WidgetRef ref) async {
-  ref.invalidate(sitesProvider);
-  ref.invalidate(favouriteSiteIdsProvider);
-  await Future.wait([
-    ref.read(sitesProvider.future),
-    ref.read(favouriteSiteIdsProvider.future),
-  ]);
 }
 
 class _EmptyFavourites extends StatelessWidget {

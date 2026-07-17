@@ -55,6 +55,30 @@ List<SiteReport> recentActivityReports(
       .toList();
 }
 
+/// Every report (status votes and activity alike) still inside [window] —
+/// the exact client-side filter over the shared recent-reports stream, whose
+/// server query is only a ≥[window] cost bound fixed at subscription time.
+List<SiteReport> reportsWithinWindow(
+  Iterable<SiteReport> reports, {
+  DateTime? now,
+  Duration window = statusFreshWindow,
+}) {
+  final cutoff = (now ?? DateTime.now()).subtract(window);
+  return [
+    for (final r in reports)
+      if (r.createdAt.isAfter(cutoff)) r,
+  ];
+}
+
+/// A single site's slice of the shared recent-reports stream, preserving the
+/// stream's most-recent-first order.
+List<SiteReport> reportsForSite(Iterable<SiteReport> reports, String siteId) {
+  return [
+    for (final r in reports)
+      if (r.siteId == siteId) r,
+  ];
+}
+
 /// Displayed status of a site = the status of the most recent report within
 /// [window]. If there are no recent status reports, the site's live status is
 /// [SiteStatus.unknown] (issue #21).

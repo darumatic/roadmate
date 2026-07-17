@@ -6,6 +6,13 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 
+/// Whether the cached site-name map already resolves every referenced site.
+/// Empty ids (a report whose parent site cannot be determined) never force a
+/// refetch — no fetch could resolve them anyway.
+bool siteNamesCover(Map<String, String> names, Iterable<String> siteIds) {
+  return siteIds.every((id) => id.isEmpty || names.containsKey(id));
+}
+
 class AdminRepository {
   AdminRepository({required this.firestore, required this.auth});
 
@@ -38,30 +45,36 @@ class AdminRepository {
   }
 
   Stream<List<AdminReport>> watchRecentReports() {
+    // Site names come from one cached sites fetch per subscription (refreshed
+    // only when a report references an unseen site) — the previous per-report
+    // get() billed up to 100 extra reads on every snapshot.
+    var siteNames = const <String, String>{};
     return firestore
         .collectionGroup('reports')
         .orderBy('createdAt', descending: true)
         .limit(100)
         .snapshots()
         .asyncMap((snap) async {
-          final reports = <AdminReport>[];
-          for (final doc in snap.docs) {
-            final siteId =
-                doc.reference.parent.parent?.id ??
-                (doc.data()['siteId'] as String? ?? '');
-            final siteSnap = siteId.isEmpty
-                ? null
-                : await _sites.doc(siteId).get();
-            final siteName = siteSnap?.data()?['name'] as String? ?? siteId;
-            reports.add(
+          final siteIds = [
+            for (final doc in snap.docs)
+              doc.reference.parent.parent?.id ??
+                  (doc.data()['siteId'] as String? ?? ''),
+          ];
+          if (!siteNamesCover(siteNames, siteIds)) {
+            final sitesSnap = await _sites.get();
+            siteNames = {
+              for (final doc in sitesSnap.docs)
+                doc.id: doc.data()['name'] as String? ?? doc.id,
+            };
+          }
+          return [
+            for (final (i, doc) in snap.docs.indexed)
               AdminReport(
                 report: SiteReport.fromMap(doc.id, _normalise(doc.data())),
-                siteId: siteId,
-                siteName: siteName,
+                siteId: siteIds[i],
+                siteName: siteNames[siteIds[i]] ?? siteIds[i],
               ),
-            );
-          }
-          return reports;
+          ];
         });
   }
 

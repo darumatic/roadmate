@@ -25,6 +25,8 @@ Core surface: Home (stats bar Open/Blitz/Closed + Browse-by-State grid + Recentl
 
 **Pure, unit-tested logic** lives Flutter/Firebase-free for fast tests: `services/status_logic.dart` (live status from reports), `services/site_stats.dart` (counts/grouping/search/recently-active/blitz), `services/geo.dart` (haversine/nearest), and `parseNhvrNationalData` in `site_repository.dart`.
 
+**Firestore read budget (keep it):** the app deliberately opens few listeners — `watchSites` (one query) and `watchAllRecentReports` (**one** `collectionGroup('reports')` query bounded by the 10h freshness window, feeding every site card via `recentReportsProvider`). Never reintroduce per-site reports listeners, and never `invalidate` a healthy live stream on pull-to-refresh (`refreshSiteData` restarts errored streams only) — both patterns re-bill whole result sets and once blew ~200 reads/user/session.
+
 ## Hard constraints
 
 - **Commit attribution: only the user.** Do NOT add `Co-Authored-By: Claude` (or any Claude/Anthropic attribution) to commits — overrides the default Claude Code trailer (per `specs.md`).

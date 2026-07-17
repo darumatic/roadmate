@@ -50,7 +50,7 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
             );
             return BackToTop(
               builder: (context, scrollController) => RefreshIndicator(
-                onRefresh: () => _refreshSites(ref),
+                onRefresh: () => refreshSiteData(ref),
                 child: CustomScrollView(
                   controller: scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -179,8 +179,3 @@ AusState stateFromRouteCode(String? code) => AusState.fromCode(code ?? 'NSW');
 /// Exposed for tests: convenience accessor used by the screen.
 List<Site> sitesForState(List<Site> all, AusState state) =>
     all.where((s) => s.state == state).toList();
-
-Future<void> _refreshSites(WidgetRef ref) async {
-  ref.invalidate(sitesProvider);
-  await ref.read(sitesProvider.future);
-}

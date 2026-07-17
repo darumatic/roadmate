@@ -34,7 +34,7 @@ class HomeScreen extends ConsumerWidget {
             final states = visibleStates;
             return BackToTop(
               builder: (context, scrollController) => RefreshIndicator(
-                onRefresh: () => _refreshSites(ref),
+                onRefresh: () => refreshSiteData(ref),
                 child: CustomScrollView(
                   controller: scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -290,11 +290,6 @@ class _SoundToggle extends ConsumerWidget {
       onPressed: ref.read(soundEnabledProvider.notifier).toggle,
     );
   }
-}
-
-Future<void> _refreshSites(WidgetRef ref) async {
-  ref.invalidate(sitesProvider);
-  await ref.read(sitesProvider.future);
 }
 
 String _relativeTime(DateTime createdAt) {

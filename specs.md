@@ -44,6 +44,19 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   bypass the FlutterFire CLI's broken `xcodeproj`-gem step on system Ruby 2.6; since
   init passes explicit options, the bundled plist isn't strictly required.
 - **Riverpod 3** (manual providers, no codegen) + **go_router** (`StatefulShellRoute`).
+- **Read-cost design (2026-07)** — 61 users generated ~12k Firestore reads, so the
+  free tier was at risk. Root cause: every visible site card opened its own
+  `reports` listener (≤20 docs, re-billed per session), pull-to-refresh tore down
+  live listeners (full re-read for zero new data), and the admin feed did one site
+  `get()` per report. As built now: **one shared `collectionGroup('reports')`
+  listener** with `createdAt ≥ now − 10h` feeds every card (time-bounded — a busy
+  day can never push a site's reports out of view — with a `limit(500)` guard
+  against runaway spam only; newest win); the exact 10h filter stays client-side
+  (`reportsWithinWindow`); pull-to-refresh restarts a stream **only after an
+  error** (`shouldRestartOnRefresh` — a healthy snapshot listener is never stale);
+  the admin feed resolves site names from one cached sites fetch. Rules: the
+  collection-group `reports` read was widened from admin-only to public — per-doc
+  reads were already public, so nothing new is exposed.
 
 ## Architecture (as built)
 

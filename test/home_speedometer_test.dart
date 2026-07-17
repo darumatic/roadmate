@@ -117,7 +117,7 @@ class FakeSites implements SiteRepository {
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
   @override
-  Stream<List<SiteReport>> watchReports(String siteId) =>
+  Stream<List<SiteReport>> watchAllRecentReports() =>
       Stream.value(const []);
   @override
   Stream<List<Site>> watchSites() => Stream.value(sites);

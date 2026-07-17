@@ -7,6 +7,7 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import 'site_repository.dart';
+import 'status_logic.dart';
 
 /// In-memory [SiteRepository] backed by the bundled seed JSON. Used for local
 /// development, demos and tests; replaced by a Firestore implementation in a
@@ -26,7 +27,7 @@ class LocalSeedSiteRepository implements SiteRepository {
 
   final _sitesController = StreamController<List<Site>>.broadcast();
   final _favouritesController = StreamController<Set<String>>.broadcast();
-  final _reportControllers = <String, StreamController<List<SiteReport>>>{};
+  final _allReportsController = StreamController<List<SiteReport>>.broadcast();
 
   Future<void> _ensureLoaded() async {
     if (_loaded) return;
@@ -46,13 +47,16 @@ class LocalSeedSiteRepository implements SiteRepository {
   }
 
   @override
-  Stream<List<SiteReport>> watchReports(String siteId) async* {
-    final controller = _reportControllers.putIfAbsent(
-      siteId,
-      () => StreamController<List<SiteReport>>.broadcast(),
-    );
-    yield List.unmodifiable((_reports[siteId] ?? const []).take(20));
-    yield* controller.stream;
+  Stream<List<SiteReport>> watchAllRecentReports() async* {
+    await _ensureLoaded();
+    yield _recentReportsSnapshot();
+    yield* _allReportsController.stream;
+  }
+
+  List<SiteReport> _recentReportsSnapshot() {
+    final recent = reportsWithinWindow(_reports.values.expand((l) => l))
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return List.unmodifiable(recent);
   }
 
   @override
@@ -126,14 +130,12 @@ class LocalSeedSiteRepository implements SiteRepository {
   void _addReport(SiteReport report) {
     final list = _reports.putIfAbsent(report.siteId, () => <SiteReport>[]);
     list.insert(0, report);
-    _reportControllers[report.siteId]?.add(List.unmodifiable(list.take(20)));
+    _allReportsController.add(_recentReportsSnapshot());
   }
 
   void dispose() {
     _sitesController.close();
     _favouritesController.close();
-    for (final c in _reportControllers.values) {
-      c.close();
-    }
+    _allReportsController.close();
   }
 }
