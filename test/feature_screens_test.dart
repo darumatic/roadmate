@@ -313,6 +313,55 @@ void main() {
       },
     );
 
+    testWidgets('direction dropdown offers all four bounds and submits '
+        'the selection', (tester) async {
+      final repo = FeatureFakeSiteRepository();
+      final router = GoRouter(
+        initialLocation: '/add',
+        routes: [
+          GoRoute(path: '/home', builder: (_, _) => const Scaffold()),
+          GoRoute(path: '/add', builder: (_, _) => const AddSiteScreen()),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [siteRepositoryProvider.overrideWithValue(repo)],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'East Yard');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Orange');
+      await tester.enterText(find.byType(TextFormField).at(2), 'Mitchell Hwy');
+
+      final formList = find.byType(ListView).last;
+      await tester.drag(formList, const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(DropdownButtonFormField<String?>));
+      await tester.pumpAndSettle();
+      for (final option in [
+        'Northbound',
+        'Southbound',
+        'Eastbound',
+        'Westbound',
+      ]) {
+        expect(find.text(option), findsWidgets);
+      }
+      await tester.tap(find.text('Eastbound').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Submit site').last);
+      await tester.pumpAndSettle();
+
+      expect(repo.addedSites, hasLength(1));
+      final (site, _) = repo.addedSites.single;
+      expect(site.direction, 'eastbound');
+    });
+
     testWidgets('an admin publishes the site immediately (approved)', (
       tester,
     ) async {

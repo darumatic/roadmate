@@ -171,6 +171,14 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
                     value: 'southbound',
                     child: Text('Southbound'),
                   ),
+                  DropdownMenuItem(
+                    value: 'eastbound',
+                    child: Text('Eastbound'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'westbound',
+                    child: Text('Westbound'),
+                  ),
                 ],
                 onChanged: (v) => setState(() => _direction = v),
               ),

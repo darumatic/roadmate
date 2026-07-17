@@ -38,7 +38,8 @@ class Site {
   final double? lat;
   final double? lng;
 
-  /// Optional travel direction, e.g. "northbound" / "southbound".
+  /// Optional travel direction: "northbound" / "southbound" /
+  /// "eastbound" / "westbound".
   final String? direction;
 
   /// Optional free-text note (e.g. GVM entry requirement, intercept details).
@@ -116,7 +117,12 @@ class Site {
 
   static String? _normaliseDirection(String? raw) {
     final d = raw?.toLowerCase().trim();
-    if (d == 'northbound' || d == 'southbound') return d;
+    if (d == 'northbound' ||
+        d == 'southbound' ||
+        d == 'eastbound' ||
+        d == 'westbound') {
+      return d;
+    }
     return null; // "Both" / "N/A" / null → no direction tag
   }
 

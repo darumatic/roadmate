@@ -605,7 +605,17 @@ class _DirectionTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isNorth = direction.toLowerCase().contains('north');
+    final d = direction.toLowerCase();
+    final IconData icon;
+    if (d.contains('north')) {
+      icon = Icons.arrow_upward;
+    } else if (d.contains('east')) {
+      icon = Icons.arrow_forward;
+    } else if (d.contains('west')) {
+      icon = Icons.arrow_back;
+    } else {
+      icon = Icons.arrow_downward;
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -615,11 +625,7 @@ class _DirectionTag extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isNorth ? Icons.arrow_upward : Icons.arrow_downward,
-            size: 12,
-            color: AppTheme.textSecondary,
-          ),
+          Icon(icon, size: 12, color: AppTheme.textSecondary),
           const SizedBox(width: 4),
           Text(
             direction[0].toUpperCase() + direction.substring(1),

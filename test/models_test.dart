@@ -182,5 +182,19 @@ void main() {
       expect(vic.direction, isNull); // "Both"
       expect(vic.note, 'NHVR/VicRoads Intercept');
     });
+
+    test('accepts all four compass directions', () {
+      Site siteWithDirection(String? raw) => Site.fromNhvrStation({
+        'site_id': 'X-1',
+        'location': 'Somewhere',
+        'direction': raw,
+      }, state: AusState.nsw, facilityType: 'HVSS');
+
+      expect(siteWithDirection('Northbound').direction, 'northbound');
+      expect(siteWithDirection('Southbound').direction, 'southbound');
+      expect(siteWithDirection('Eastbound').direction, 'eastbound');
+      expect(siteWithDirection('Westbound').direction, 'westbound');
+      expect(siteWithDirection('Both').direction, isNull);
+    });
   });
 }
