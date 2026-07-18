@@ -5,7 +5,21 @@ description: Build, launch and drive the RoadMate web app headlessly to verify a
 
 # Verify RoadMate changes (headless web)
 
-No Chrome is installed system-wide on this VPS. The recipe that works:
+## First choice: the deterministic suite
+
+`./scripts/verify_web.sh` compiles the app and drives it in real headless
+Chrome via `integration_test/app_test.dart` (semantic finders, seed data, no
+Firebase), writing PNGs to `build/integration_screenshots/` — run it, check
+exit code 0, and read the PNGs. The same script runs nightly in CI
+(`.github/workflows/nightly-visual.yml`). When a change touches a screen the
+suite covers (Home, Info hub, Share, state detail), extend the suite's
+assertions/screenshots instead of hand-driving. First run installs a matched
+Chrome-for-Testing + chromedriver pair into `~/.cache/roadmate-verify` (~1 min).
+
+## Ad-hoc / live-site driving (Puppeteer)
+
+For flows the suite doesn't cover, live Firestore data, or the deployed site
+(https://roadmate.club), the interactive recipe:
 
 1. **Build**: `export PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH" && flutter build web --no-tree-shake-icons` (~3 min).
 2. **Browser**: in a scratch dir, `npm i puppeteer-core @puppeteer/browsers && npx @puppeteer/browsers install chrome-headless-shell@stable` (~1 min; pin the executable path it prints).
