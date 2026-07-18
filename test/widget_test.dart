@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -141,6 +143,38 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: DisclaimerPage()));
     expect(find.text('Use as a heads-up only'), findsOneWidget);
     expect(find.text('Approximate locations'), findsOneWidget);
+  });
+
+  testWidgets('Share page store buttons follow the platform', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // Web build: both stores on offer.
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: ShareBlock(isWeb: true))),
+    );
+    expect(find.text('Get the app'), findsOneWidget);
+    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text('App Store'), findsOneWidget);
+
+    // Android app: Google Play only.
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: ShareBlock())),
+    );
+    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text('App Store'), findsNothing);
+
+    // iOS app: App Store only.
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: ShareBlock())),
+    );
+    expect(find.text('App Store'), findsOneWidget);
+    expect(find.text('Google Play'), findsNothing);
+
+    // Must be reset before the framework's end-of-test invariant check.
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('AdminEntryLink shows only for admins', (tester) async {

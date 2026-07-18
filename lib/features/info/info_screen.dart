@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../services/min_version.dart';
 import '../../theme/app_theme.dart';
 
 /// Info tab (issue #12 redesign): a hub of link rows, each opening a native
@@ -668,10 +671,17 @@ class DisclaimerPage extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class ShareBlock extends StatelessWidget {
-  const ShareBlock({super.key});
+  const ShareBlock({super.key, this.isWeb = kIsWeb});
+
+  /// Overridable in widget tests (which always run on the VM).
+  final bool isWeb;
 
   @override
   Widget build(BuildContext context) {
+    final storeLinks = storeLinksFor(
+      isWeb: isWeb,
+      platform: defaultTargetPlatform,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -736,6 +746,34 @@ class ShareBlock extends StatelessWidget {
                     label: const Text('Share RoadMate'),
                     onPressed: () => _shareRoadMate(context),
                   ),
+                  if (storeLinks.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Get the app',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    for (final link in storeLinks) ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accent,
+                          side: const BorderSide(color: AppTheme.border),
+                        ),
+                        icon: Icon(
+                          link.label == 'App Store'
+                              ? Icons.apple
+                              : Icons.android,
+                          size: 18,
+                        ),
+                        label: Text(link.label),
+                        onPressed: () => openExternal(context, link.url),
+                      ),
+                    ],
+                  ],
                 ],
               ),
             ),

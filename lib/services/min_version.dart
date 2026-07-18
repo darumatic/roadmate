@@ -23,9 +23,42 @@ import 'version_logic.dart';
 const String kPlayStoreUrl =
     'https://play.google.com/store/apps/details?id=com.darumatic.roadmate';
 
-/// TODO(owner): replace with the real numeric App Store id once the iOS app
-/// is listed (`https://apps.apple.com/app/id{number}`).
-const String kAppStoreUrl = 'https://apps.apple.com/app/id0000000000';
+const String kAppStoreUrl =
+    'https://apps.apple.com/us/app/roadmate-australia/id6788635496';
+
+/// A store listing offered on the Share page's "Get the app" section.
+class StoreLink {
+  const StoreLink({required this.label, required this.url});
+
+  final String label;
+  final String url;
+}
+
+const StoreLink kPlayStoreLink = StoreLink(
+  label: 'Google Play',
+  url: kPlayStoreUrl,
+);
+const StoreLink kAppStoreLink = StoreLink(
+  label: 'App Store',
+  url: kAppStoreUrl,
+);
+
+/// Store listings to offer for a given runtime: both on web, only the
+/// matching store inside the native apps, none elsewhere (desktop dev runs).
+List<StoreLink> storeLinksFor({
+  required bool isWeb,
+  required TargetPlatform platform,
+}) {
+  if (isWeb) return const [kPlayStoreLink, kAppStoreLink];
+  switch (platform) {
+    case TargetPlatform.android:
+      return const [kPlayStoreLink];
+    case TargetPlatform.iOS:
+      return const [kAppStoreLink];
+    default:
+      return const [];
+  }
+}
 
 /// True while this build is below the remotely-configured minimum version.
 final forceUpdateProvider = StreamProvider<bool>((ref) {
