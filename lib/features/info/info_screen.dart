@@ -22,7 +22,9 @@ class InfoScreen extends StatelessWidget {
       'RoadMate AU\n'
       'Know before you roll.\n'
       'Live community reports for heavy-vehicle inspection sites.\n\n'
-      '$shareUrl';
+      'Web: $shareUrl\n'
+      'iPhone: $kAppStoreUrl\n'
+      'Android: $kPlayStoreUrl';
 
   @override
   Widget build(BuildContext context) {

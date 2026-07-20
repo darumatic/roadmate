@@ -16,6 +16,7 @@ import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/auth_service.dart';
+import 'package:roadmate/services/min_version.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/site_stats.dart';
 import 'package:roadmate/services/startup_service.dart';
@@ -143,6 +144,12 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: DisclaimerPage()));
     expect(find.text('Use as a heads-up only'), findsOneWidget);
     expect(find.text('Approximate locations'), findsOneWidget);
+  });
+
+  test('share text sends web, App Store and Play Store links', () {
+    expect(InfoScreen.shareText, contains('Web: ${InfoScreen.shareUrl}'));
+    expect(InfoScreen.shareText, contains('iPhone: $kAppStoreUrl'));
+    expect(InfoScreen.shareText, contains('Android: $kPlayStoreUrl'));
   });
 
   testWidgets('Share page store buttons follow the platform', (tester) async {
