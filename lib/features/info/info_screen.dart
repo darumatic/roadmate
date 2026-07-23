@@ -72,6 +72,12 @@ class InfoScreen extends StatelessWidget {
 
   List<Widget> _hubRows(BuildContext context) => [
     InfoLinkRow(
+      icon: Icons.timer_outlined,
+      title: 'Camera Times',
+      subtitle: 'Expected times between average-speed cameras',
+      onTap: () => context.go('/info/cameras'),
+    ),
+    InfoLinkRow(
       icon: Icons.link_rounded,
       title: 'Useful Links',
       subtitle: 'Official road-access & live-traffic sites',

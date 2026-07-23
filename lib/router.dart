@@ -7,6 +7,7 @@ import 'services/min_version.dart';
 import 'features/admin/admin_screen.dart';
 import 'features/add_site/add_site_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/info/camera_times_page.dart';
 import 'features/info/info_screen.dart';
 import 'features/nearby/nearby_screen.dart';
 import 'features/favourites/favourites_screen.dart';
@@ -67,6 +68,18 @@ final appRouter = GoRouter(
               name: 'info',
               builder: (_, _) => const InfoScreen(),
               routes: [
+                GoRoute(
+                  path: 'cameras',
+                  builder: (_, _) => const CameraTimesPage(),
+                  routes: [
+                    GoRoute(
+                      path: ':slug',
+                      builder: (_, state) => CameraCorridorPage(
+                        slug: state.pathParameters['slug']!,
+                      ),
+                    ),
+                  ],
+                ),
                 GoRoute(
                   path: 'links',
                   builder: (_, _) => const UsefulLinksPage(),

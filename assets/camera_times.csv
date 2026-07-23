@@ -1,0 +1,123 @@
+Route,Segment,Distance_km,Slow_zone_km,Slow_zone_speed_kph,Expected_Time,Expected_Seconds
+Sydney - Melbourne,Douglas Park - Marulan,91,,,54m 36s,3276
+Sydney - Melbourne,Marulan - One Tree,115,,,1h 9m 0s,4140
+Sydney - Melbourne,One Tree - Coolac,70,,,42m 0s,2520
+Sydney - Melbourne,Coolac - Gundagai,15,,,9m 0s,540
+Sydney - Melbourne,Gundagai - Table Top,166,,,1h 39m 36s,5976
+Sydney - Melbourne,Table Top - Wallan,275,,,2h 45m 0s,9900
+Melbourne - Sydney,Wallan - Table Top,275,,,2h 45m 0s,9900
+Melbourne - Sydney,Table Top - Gundagai,166,,,1h 39m 36s,5976
+Melbourne - Sydney,Gundagai - Coolac,15,,,9m 0s,540
+Melbourne - Sydney,Coolac - One Tree,70,,,42m 0s,2520
+Melbourne - Sydney,One Tree - Marulan,115,,,1h 9m 0s,4140
+Melbourne - Sydney,Marulan - The Nest,75,,,45m 0s,2700
+Sydney - Brisbane (Coast),Mt White - Nabiac,227,16,60,2h 22m 36s,8556
+Sydney - Brisbane (Coast),Nabiac - 4 Mile,17,,,10m 12s,612
+Sydney - Brisbane (Coast),4 Mile - Figtree,19,,,11m 24s,684
+Sydney - Brisbane (Coast),Figtree - Kew,33,,,19m 48s,1188
+Sydney - Brisbane (Coast),Kew - Sapling Creek,15,,,9m 0s,540
+Sydney - Brisbane (Coast),Sapling Creek - Tele Point,15,,,9m 0s,540
+Sydney - Brisbane (Coast),Tele Point - Kempsey,36,,,21m 36s,1296
+Sydney - Brisbane (Coast),Kempsey - Ballina,308,14,60,3h 10m 24s,11424
+Sydney - Brisbane (Coast),Ballina - Chinderah,71,,,42m 36s,2556
+Brisbane - Sydney (Coast),Chinderah - Ballina,71,,,42m 36s,2556
+Brisbane - Sydney (Coast),Ballina - Kempsey,308,14,60,3h 10m 24s,11424
+Brisbane - Sydney (Coast),Kempsey - Tele Point,36,,,21m 36s,1296
+Brisbane - Sydney (Coast),Tele Point - Sapling Creek,15,,,9m 0s,540
+Brisbane - Sydney (Coast),Sapling Creek - Kew,15,,,9m 0s,540
+Brisbane - Sydney (Coast),Kew - Figtree,33,,,19m 48s,1188
+Brisbane - Sydney (Coast),Figtree - 4 Mile,19,,,11m 24s,684
+Brisbane - Sydney (Coast),4 Mile - Nabiac,17,,,10m 12s,612
+Brisbane - Sydney (Coast),Nabiac - 12 Mile,103,,,1h 1m 48s,3708
+Brisbane - Sydney (Coast),12 Mile - Mt White,124,16,60,1h 20m 48s,4848
+Sydney - Brisbane (New England),Mt White - Branxton,123,,,1h 13m 48s,4428
+Sydney - Brisbane (New England),Branxton - Bendemeer,265,,,2h 39m 0s,9540
+Sydney - Brisbane (New England),Bendemeer - Dundee,195,,,1h 57m 0s,7020
+Brisbane - Sydney (New England),Dundee - Bendemeer,195,,,1h 57m 0s,7020
+Brisbane - Sydney (New England),Bendemeer - Branxton,265,,,2h 39m 0s,9540
+Brisbane - Sydney (New England),Branxton - Mt White,123,,,1h 13m 48s,4428
+Sydney - Adelaide (Sturt),Douglas Park - Marulan,91,,,54m 36s,3276
+Sydney - Adelaide (Sturt),Marulan - One Tree,115,,,1h 9m 0s,4140
+Sydney - Adelaide (Sturt),One Tree - Coolac,70,,,42m 0s,2520
+Sydney - Adelaide (Sturt),Coolac - Gundagai,15,,,9m 0s,540
+Sydney - Adelaide (Sturt),Gundagai - Darlington Pt,205,,,2h 2m 59s,7379
+Sydney - Adelaide (Sturt),Darlington Pt - Balranald,275,,,2h 45m 0s,9900
+Sydney - Adelaide (Sturt),Balranald - Yamba,288,,,2h 52m 48s,10368
+Sydney - Adelaide (Sturt),Yamba - Willaston Sth,229,,,2h 17m 24s,8244
+Sydney - Adelaide (Sturt),Willaston Sth - Globe Derby,35,,,21m 0s,1260
+Adelaide - Sydney (Sturt),Globe Derby - Willaston Sth,35,,,21m 0s,1260
+Adelaide - Sydney (Sturt),Willaston Sth - Yamba,229,,,2h 17m 24s,8244
+Adelaide - Sydney (Sturt),Yamba - Balranald,288,,,2h 52m 48s,10368
+Adelaide - Sydney (Sturt),Balranald - Darlington Pt,275,,,2h 45m 0s,9900
+Adelaide - Sydney (Sturt),Darlington Pt - Gundagai,205,,,2h 2m 59s,7379
+Adelaide - Sydney (Sturt),Gundagai - Coolac,15,,,9m 0s,540
+Adelaide - Sydney (Sturt),Coolac - One Tree,70,,,42m 0s,2520
+Adelaide - Sydney (Sturt),One Tree - Marulan,115,,,1h 9m 0s,4140
+Adelaide - Sydney (Sturt),Marulan - Douglas Park,91,,,54m 36s,3276
+Sydney - Adelaide (Mallee),Douglas Park - Marulan,91,,,54m 36s,3276
+Sydney - Adelaide (Mallee),Marulan - One Tree,115,,,1h 9m 0s,4140
+Sydney - Adelaide (Mallee),One Tree - Coolac,70,,,42m 0s,2520
+Sydney - Adelaide (Mallee),Coolac - Gundagai,15,,,9m 0s,540
+Sydney - Adelaide (Mallee),Gundagai - Darlington Pt,205,,,2h 2m 59s,7379
+Sydney - Adelaide (Mallee),Darlington Pt - Balranald,275,,,2h 45m 0s,9900
+Sydney - Adelaide (Mallee),Balranald - Pinnaroo,282,,,2h 49m 12s,10152
+Sydney - Adelaide (Mallee),Pinnaroo - Crafers West,231,,,2h 18m 36s,8316
+Adelaide - Sydney (Mallee),Crafers West - Pinnaroo,231,,,2h 18m 36s,8316
+Adelaide - Sydney (Mallee),Pinnaroo - Balranald,282,,,2h 49m 12s,10152
+Adelaide - Sydney (Mallee),Balranald - Darlington Pt,275,,,2h 45m 0s,9900
+Adelaide - Sydney (Mallee),Darlington Pt - Gundagai,205,,,2h 2m 59s,7379
+Adelaide - Sydney (Mallee),Gundagai - Coolac,15,,,9m 0s,540
+Adelaide - Sydney (Mallee),Coolac - One Tree,70,,,42m 0s,2520
+Adelaide - Sydney (Mallee),One Tree - Marulan,115,,,1h 9m 0s,4140
+Adelaide - Sydney (Mallee),Marulan - Douglas Park,91,,,54m 36s,3276
+Melbourne - Adelaide,Ballan - Bordertown,377,,,3h 46m 12s,13572
+Melbourne - Adelaide,Bordertown - Keith,50,,,30m 0s,1800
+Melbourne - Adelaide,Keith - Crafers,203,,,2h 1m 47s,7307
+Adelaide - Melbourne,Crafers - Keith,203,,,2h 1m 47s,7307
+Adelaide - Melbourne,Keith - Bordertown,50,,,30m 0s,1800
+Adelaide - Melbourne,Bordertown - Ballan,377,,,3h 46m 12s,13572
+Melbourne - Brisbane (Coast),Wallan - Table Top,275,,,2h 45m 0s,9900
+Melbourne - Brisbane (Coast),Table Top - Gundagai,166,,,1h 39m 36s,5976
+Melbourne - Brisbane (Coast),Gundagai - Coolac,15,,,9m 0s,540
+Melbourne - Brisbane (Coast),Coolac - One Tree,70,,,42m 0s,2520
+Melbourne - Brisbane (Coast),One Tree - Marulan,115,,,1h 9m 0s,4140
+Melbourne - Brisbane (Coast),Marulan - The Nest,75,,,45m 0s,2700
+Melbourne - Brisbane (Coast),The Nest - Mt White,136,37,80,1h 27m 9s,5229
+Melbourne - Brisbane (Coast),Mt White - Nabiac,227,16,60,2h 22m 36s,8556
+Melbourne - Brisbane (Coast),Nabiac - 4 Mile,17,,,10m 12s,612
+Melbourne - Brisbane (Coast),4 Mile - Figtree,19,,,11m 24s,684
+Melbourne - Brisbane (Coast),Figtree - Kew,33,,,19m 48s,1188
+Melbourne - Brisbane (Coast),Kew - Sapling Creek,15,,,9m 0s,540
+Melbourne - Brisbane (Coast),Sapling Creek - Tele Point,15,,,9m 0s,540
+Melbourne - Brisbane (Coast),Tele Point - Kempsey,36,,,21m 36s,1296
+Melbourne - Brisbane (Coast),Kempsey - Ballina,308,14,60,3h 10m 24s,11424
+Melbourne - Brisbane (Coast),Ballina - Chinderah,71,,,42m 36s,2556
+Brisbane - Melbourne (Coast),Chinderah - Ballina,71,,,42m 36s,2556
+Brisbane - Melbourne (Coast),Ballina - Kempsey,308,14,60,3h 10m 24s,11424
+Brisbane - Melbourne (Coast),Kempsey - Tele Point,36,,,21m 36s,1296
+Brisbane - Melbourne (Coast),Tele Point - Sapling Creek,15,,,9m 0s,540
+Brisbane - Melbourne (Coast),Sapling Creek - Kew,15,,,9m 0s,540
+Brisbane - Melbourne (Coast),Kew - Figtree,33,,,19m 48s,1188
+Brisbane - Melbourne (Coast),Figtree - 4 Mile,19,,,11m 24s,684
+Brisbane - Melbourne (Coast),4 Mile - Nabiac,17,,,10m 12s,612
+Brisbane - Melbourne (Coast),Nabiac - 12 Mile,103,,,1h 1m 48s,3708
+Brisbane - Melbourne (Coast),12 Mile - Mt White,124,16,60,1h 20m 48s,4848
+Brisbane - Melbourne (Coast),Mt White - Douglas Park,120,37,80,1h 17m 33s,4653
+Brisbane - Melbourne (Coast),Douglas Park - Marulan,91,,,54m 36s,3276
+Brisbane - Melbourne (Coast),Marulan - One Tree,115,,,1h 9m 0s,4140
+Brisbane - Melbourne (Coast),One Tree - Coolac,70,,,42m 0s,2520
+Brisbane - Melbourne (Coast),Coolac - Gundagai,15,,,9m 0s,540
+Brisbane - Melbourne (Coast),Gundagai - Table Top,166,,,1h 39m 36s,5976
+Brisbane - Melbourne (Coast),Table Top - Wallan,275,,,2h 45m 0s,9900
+Melbourne - Brisbane (Newell),Wallan - Jerilderie,268,,,2h 40m 48s,9648
+Melbourne - Brisbane (Newell),Jerilderie - Narranderra,121,,,1h 12m 36s,4356
+Melbourne - Brisbane (Newell),Narranderra - Marsden,197,,,1h 58m 12s,7092
+Melbourne - Brisbane (Newell),Marsden - Tomingley,156,,,1h 33m 36s,5616
+Melbourne - Brisbane (Newell),Tomingley - Coonabarrabran,192,,,1h 55m 12s,6912
+Melbourne - Brisbane (Newell),Coonabarrabran - Boggabilla,335,,,3h 21m 0s,12060
+Brisbane - Melbourne (Newell),Boggabilla - Coonabarrabran,335,,,3h 21m 0s,12060
+Brisbane - Melbourne (Newell),Coonabarrabran - Tomingley,192,,,1h 55m 12s,6912
+Brisbane - Melbourne (Newell),Tomingley - Marsden,156,,,1h 33m 36s,5616
+Brisbane - Melbourne (Newell),Marsden - Narranderra,197,,,1h 58m 12s,7092
+Brisbane - Melbourne (Newell),Narranderra - Jerilderie,121,,,1h 12m 36s,4356
+Brisbane - Melbourne (Newell),Jerilderie - Wallan,268,,,2h 40m 48s,9648
