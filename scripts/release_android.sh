@@ -13,11 +13,12 @@
 #   android/key.properties   -> keyAlias / keyPassword / storePassword / storeFile
 #   the .jks file that key.properties' storeFile points to
 #
-# After the build, upload the AAB in the Play Console
-# (https://play.google.com/console): Production -> Create new release ->
-# upload build/app/outputs/bundle/release/app-release.aab -> release notes ->
-# roll out. (Automated uploads via the roadmate-play-uploader service account
-# can be added once its JSON key is on this machine.)
+# Upload: if the roadmate-play-uploader service-account key exists at
+# ~/.config/roadmate/google-play-service-account.json the AAB is uploaded and
+# rolled out to the production track automatically via scripts/play_upload.py
+# (release notes from store/google_play_release_notes.txt — update that file
+# first). Without the key it falls back to a manual Play Console upload:
+# Production -> Create new release -> upload the AAB -> notes -> roll out.
 set -euo pipefail
 
 export PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"
@@ -55,4 +56,15 @@ if [ ! -f "$aab" ]; then
 fi
 
 echo "==> Built ${aab} (${version})."
-echo "    Upload it in the Play Console: Production -> Create new release (see header)."
+
+sa_key="$HOME/.config/roadmate/google-play-service-account.json"
+if [ -f "$sa_key" ]; then
+  echo "==> Upload to Google Play (production)"
+  python3 scripts/play_upload.py --self-test
+  version_name="${version%%+*}"
+  build_no="${version##*+}"
+  python3 scripts/play_upload.py --aab "$aab" --name "${version_name} (${build_no})"
+else
+  echo "    No service-account key at ${sa_key} — upload the AAB in the"
+  echo "    Play Console: Production -> Create new release (see header)."
+fi
