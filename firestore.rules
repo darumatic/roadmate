@@ -54,7 +54,16 @@ service cloud.firestore {
       match /reports/{reportId} {
         allow read: if true;
         allow create: if signedIn() && isValidReport(siteId);
-        allow update: if false;
+        // Admins may edit an activity report's content (type/note/name); the
+        // result must still be a valid activity report and identity fields
+        // (siteId/uid/createdAt) stay frozen. Status votes remain immutable —
+        // their counters live on the site doc, so moderation goes through
+        // deleteReport's recount instead.
+        allow update: if isAdmin()
+          && affectedKeys().hasOnly([
+            'activityType', 'activityNote', 'reporterName'
+          ])
+          && isValidActivityReport(request.resource.data);
         allow delete: if isAdmin();
       }
 

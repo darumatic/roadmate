@@ -333,6 +333,60 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Long queue'), findsOneWidget);
     expect(find.text('Status: Open'), findsNothing);
+
+    // Only activity reports are editable; the status vote card on the
+    // Reports tab has just the remove action.
+    expect(find.text('Edit'), findsOneWidget);
+    await tester.tap(find.text('Reports'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit'), findsNothing);
+  });
+
+  testWidgets('Admin edit dialog prefills the report and returns the edit', (
+    tester,
+  ) async {
+    ({ActivityReportType type, String note})? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              result = await showDialog(
+                context: context,
+                builder: (_) => const EditActivityReportDialog(
+                  initialType: ActivityReportType.longQueue,
+                  initialNote: 'queued to the ramp',
+                ),
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Prefilled with the report's current values.
+    expect(find.text('Edit activity report'), findsOneWidget);
+    expect(find.text('Long queue'), findsOneWidget);
+    expect(find.text('queued to the ramp'), findsOneWidget);
+
+    // Change the type and the note, then save.
+    await tester.tap(find.text('Long queue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Police present').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'queued to the ramp'),
+      'patrol car on the shoulder',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(result, isNotNull);
+    expect(result!.type, ActivityReportType.policePresent);
+    expect(result!.note, 'patrol car on the shoulder');
   });
 
   testWidgets('Home recently active cards show last activity timestamp', (

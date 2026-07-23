@@ -440,20 +440,78 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
             const SizedBox(height: 10),
             _MetaLine(icon: Icons.person_outline, text: report.uid ?? 'No uid'),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-                side: const BorderSide(color: AppTheme.border),
-                minimumSize: const Size.fromHeight(42),
-              ),
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Remove report'),
-              onPressed: _busy ? null : _deleteReport,
+            Row(
+              children: [
+                // Status votes are immutable (their counters live on the site
+                // doc) — only activity reports get an Edit action.
+                if (report.isActivityReport) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.accent,
+                        side: const BorderSide(color: AppTheme.border),
+                        minimumSize: const Size.fromHeight(42),
+                      ),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Edit'),
+                      onPressed: _busy ? null : _editReport,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: AppTheme.border),
+                      minimumSize: const Size.fromHeight(42),
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Remove report'),
+                    onPressed: _busy ? null : _deleteReport,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _editReport() async {
+    final report = widget.adminReport.report;
+    final edit = await showDialog<({ActivityReportType type, String note})>(
+      context: context,
+      builder: (_) => EditActivityReportDialog(
+        initialType: report.activityType ?? ActivityReportType.other,
+        initialNote: report.activityNote ?? '',
+      ),
+    );
+    if (edit == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final adminReport = widget.adminReport;
+      await ref
+          .read(adminRepositoryProvider)
+          .updateActivityReport(
+            adminReport.siteId,
+            adminReport.report.id,
+            activityType: edit.type,
+            activityNote: edit.note,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Report updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update report: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _deleteReport() async {
@@ -475,6 +533,81 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// Edit form for an activity report: type + note (the only fields the
+/// security rules let an admin change). Pops with the chosen values, or null
+/// on cancel; the caller performs the actual update.
+class EditActivityReportDialog extends StatefulWidget {
+  const EditActivityReportDialog({
+    super.key,
+    required this.initialType,
+    required this.initialNote,
+  });
+
+  final ActivityReportType initialType;
+  final String initialNote;
+
+  @override
+  State<EditActivityReportDialog> createState() =>
+      _EditActivityReportDialogState();
+}
+
+class _EditActivityReportDialogState extends State<EditActivityReportDialog> {
+  late ActivityReportType _type = widget.initialType;
+  late final TextEditingController _note = TextEditingController(
+    text: widget.initialNote,
+  );
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit activity report'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<ActivityReportType>(
+            initialValue: _type,
+            decoration: const InputDecoration(labelText: 'Activity'),
+            items: [
+              for (final type in ActivityReportType.values)
+                DropdownMenuItem(value: type, child: Text(type.label)),
+            ],
+            onChanged: (type) {
+              if (type != null) setState(() => _type = type);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _note,
+            maxLength: 500, // matches the activityNote limit in firestore.rules
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Note',
+              hintText: 'Optional details',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.of(context).pop((type: _type, note: _note.text)),
+          child: const Text('Save'),
+        ),
+      ],
+    );
   }
 }
 

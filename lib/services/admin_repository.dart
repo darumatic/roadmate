@@ -13,6 +13,21 @@ bool siteNamesCover(Map<String, String> names, Iterable<String> siteIds) {
   return siteIds.every((id) => id.isEmpty || names.containsKey(id));
 }
 
+/// Field values for an admin edit of an activity report — exactly the fields
+/// the security rules allow to change. The note is trimmed; a blank note maps
+/// to null, which [AdminRepository.updateActivityReport] turns into a field
+/// delete so the doc stays a valid activity-report shape.
+Map<String, String?> activityReportEditData(
+  ActivityReportType activityType,
+  String? activityNote,
+) {
+  final note = activityNote?.trim();
+  return {
+    'activityType': activityType.wire,
+    'activityNote': (note == null || note.isEmpty) ? null : note,
+  };
+}
+
 class AdminRepository {
   AdminRepository({required this.firestore, required this.auth});
 
@@ -113,6 +128,22 @@ class AdminRepository {
     }
     batch.delete(siteRef);
     await batch.commit();
+  }
+
+  /// Edits an activity report in place (admin-only per the security rules).
+  /// Only activityType/activityNote change; status votes are immutable —
+  /// moderating one means [deleteReport], which recounts the site's tallies.
+  Future<void> updateActivityReport(
+    String siteId,
+    String reportId, {
+    required ActivityReportType activityType,
+    String? activityNote,
+  }) {
+    final data = activityReportEditData(activityType, activityNote);
+    return _sites.doc(siteId).collection('reports').doc(reportId).update({
+      'activityType': data['activityType'],
+      'activityNote': data['activityNote'] ?? FieldValue.delete(),
+    });
   }
 
   Future<void> deleteReport(String siteId, String reportId) async {

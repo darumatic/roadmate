@@ -14,6 +14,7 @@ import {
   collection,
   collectionGroup,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -376,6 +377,66 @@ await check(
       approvedBy: 'admin1',
     }),
   ),
+);
+
+// Admin activity-report edits: only activityType/activityNote/reporterName
+// may change, the doc must stay a valid activity report, and status votes
+// stay immutable (their counters live on the site doc).
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'sites/site-1/reports/act-1'), {
+    siteId: 'site-1',
+    activityType: 'delays',
+    activityNote: 'roadworks',
+    uid: 'alice',
+    createdAt: Timestamp.now(),
+  });
+  await setDoc(doc(db, 'sites/site-1/reports/vote-1'), {
+    siteId: 'site-1',
+    status: 'open',
+    uid: 'alice',
+    createdAt: Timestamp.now(),
+  });
+});
+const actRef = (db) => doc(db, 'sites/site-1/reports/act-1');
+await check(
+  'non-admin cannot edit an activity report',
+  assertFails(updateDoc(actRef(alice), { activityNote: 'defaced' })),
+);
+await check(
+  'admin edits an activity report type and note',
+  assertSucceeds(
+    updateDoc(actRef(admin), {
+      activityType: 'policePresent',
+      activityNote: 'patrol car on the shoulder',
+    }),
+  ),
+);
+await check(
+  'admin clears an activity note',
+  assertSucceeds(updateDoc(actRef(admin), { activityNote: deleteField() })),
+);
+await check(
+  'admin edit cannot touch identity fields or forge the shape',
+  (async () => {
+    await assertFails(updateDoc(actRef(admin), { uid: 'someone-else' }));
+    await assertFails(
+      updateDoc(actRef(admin), { createdAt: serverTimestamp() }),
+    );
+    await assertFails(updateDoc(actRef(admin), { siteId: 'site-2' }));
+    await assertFails(updateDoc(actRef(admin), { activityType: 'invented' }));
+    await assertFails(
+      updateDoc(actRef(admin), { activityNote: 'x'.repeat(501) }),
+    );
+  })(),
+);
+await check(
+  'status votes stay immutable even for admins',
+  (async () => {
+    const voteRef = doc(admin, 'sites/site-1/reports/vote-1');
+    await assertFails(updateDoc(voteRef, { activityType: 'delays' }));
+    await assertFails(updateDoc(voteRef, { activityNote: 'note on a vote' }));
+  })(),
 );
 
 // App config (forced-update gate): world-readable, never client-writable —
