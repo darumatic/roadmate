@@ -9,12 +9,12 @@
 #
 # Upload: if App Store Connect API key env vars are set (ASC_KEY_ID and
 # ASC_ISSUER_ID, with AuthKey_<ASC_KEY_ID>.p8 in ~/.appstoreconnect/private_keys/)
-# the IPA is uploaded from the CLI via altool; otherwise it is handed to the
-# Transporter app for a manual upload.
-#
-# After the upload, finish in App Store Connect (https://appstoreconnect.apple.com):
-# wait for the build to finish processing, attach it to the app version,
-# fill in release notes, and submit for review.
+# the IPA is uploaded from the CLI via altool, and then scripts/asc_submit.py
+# finishes the release in App Store Connect automatically: waits for build
+# processing (can take ~1h), sets "What's New" from store/apple_whats_new.txt
+# (update that file first), attaches the build and submits for review.
+# Without the env vars the IPA is handed to the Transporter app and the ASC
+# steps stay manual.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -48,7 +48,11 @@ echo "==> Upload to App Store Connect"
 if [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
   xcrun altool --upload-app --type ios -f "$ipa" \
     --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-  echo "==> Uploaded ${version}. Finish the release in App Store Connect (see header)."
+  echo "==> Uploaded ${version}. Finishing the release in App Store Connect…"
+  python3 scripts/asc_submit.py --self-test
+  version_name="${version%%+*}"
+  build_no="${version##*+}"
+  python3 scripts/asc_submit.py --version "$version_name" --build "$build_no"
 else
   echo "    No ASC_KEY_ID/ASC_ISSUER_ID set — opening the IPA in Transporter."
   open -a Transporter "$ipa"
