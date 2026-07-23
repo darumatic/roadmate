@@ -159,6 +159,45 @@ void main() {
     });
   });
 
+  group('camera timer queue', () {
+    test('startNext rolls through the upcoming legs, then no-ops', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final legs = parseCameraTimesCsv(_sampleCsv).first.legs; // 2 legs
+      final notifier = container.read(cameraTimerProvider.notifier);
+
+      notifier.start(
+        targetTitle: 'Warm-up',
+        distanceKm: 5,
+        expectedSeconds: 180,
+        upcoming: legs,
+      );
+      expect(
+        container.read(cameraTimerProvider)!.nextLeg!.title,
+        'Douglas Park → Marulan',
+      );
+
+      notifier.startNext();
+      var session = container.read(cameraTimerProvider)!;
+      expect(session.targetTitle, 'Douglas Park → Marulan');
+      expect(session.distanceKm, 91);
+      expect(session.expectedSeconds, 3276);
+      expect(session.nextLeg!.title, 'Marulan → One Tree');
+
+      notifier.startNext();
+      session = container.read(cameraTimerProvider)!;
+      expect(session.targetTitle, 'Marulan → One Tree');
+      expect(session.nextLeg, isNull);
+
+      // Nothing queued: startNext must not clear or restart the session.
+      notifier.startNext();
+      expect(
+        container.read(cameraTimerProvider)!.targetTitle,
+        'Marulan → One Tree',
+      );
+    });
+  });
+
   group('formatCameraDuration', () {
     test('drops zero units and keeps camera-relevant seconds', () {
       expect(formatCameraDuration(3276), '54m 36s');
@@ -336,6 +375,26 @@ void main() {
         find.text('TIMING · Full run · Sydney → Melbourne'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('per-leg Time me starts that leg and rolls to the next',
+        (tester) async {
+      await tester.pumpWidget(
+        host(
+          CameraCorridorPage(slug: 'sydney-melbourne', corridors: corridors),
+        ),
+      );
+      await tester.tap(find.byTooltip('Time Douglas Park → Marulan'));
+      await tester.pump();
+
+      expect(find.text('TIMING · Douglas Park → Marulan'), findsOneWidget);
+      expect(find.text('Next · Marulan → One Tree'), findsOneWidget);
+
+      // Passed the camera: jump straight to timing the next stretch.
+      await tester.tap(find.text('Start next'));
+      await tester.pump();
+      expect(find.text('TIMING · Marulan → One Tree'), findsOneWidget);
+      expect(find.text('Next · One Tree → Coolac'), findsOneWidget);
     });
 
     testWidgets('timer flips to Clear once the expected time has elapsed',

@@ -19,6 +19,7 @@ class CameraTimerSession {
     required this.expectedSeconds,
     required this.startedAt,
     this.baselineKm,
+    this.upcoming = const [],
   });
 
   /// What is being timed, e.g. "Marulan → Gundagai".
@@ -31,6 +32,12 @@ class CameraTimerSession {
   /// started, so the panel can show a session average without opening a second
   /// GPS stream. Null when GPS wasn't active at start.
   final double? baselineKm;
+
+  /// The legs after the current target, in run order — lets the driver jump
+  /// to the next camera stretch as soon as they pass the end camera.
+  final List<CameraLeg> upcoming;
+
+  CameraLeg? get nextLeg => upcoming.isEmpty ? null : upcoming.first;
 
   Duration elapsedAt(DateTime now) => now.difference(startedAt);
 }
@@ -45,6 +52,7 @@ class CameraTimerController extends Notifier<CameraTimerSession?> {
     required String targetTitle,
     required int distanceKm,
     required int expectedSeconds,
+    List<CameraLeg> upcoming = const [],
     DateTime? startedAt,
   }) {
     final trip = ref.read(tripControllerProvider);
@@ -56,6 +64,22 @@ class CameraTimerController extends Notifier<CameraTimerSession?> {
       baselineKm: trip.gps == GpsStatus.active
           ? trip.avgStats.distanceKm
           : null,
+      upcoming: upcoming,
+    );
+  }
+
+  /// Rolls the session to the next camera stretch: the driver passed the end
+  /// camera and starts timing the following leg (fresh clock and baseline).
+  /// No-op when nothing is queued.
+  void startNext({DateTime? startedAt}) {
+    final next = state?.nextLeg;
+    if (next == null) return;
+    start(
+      targetTitle: next.title,
+      distanceKm: next.distanceKm,
+      expectedSeconds: next.expectedSeconds,
+      upcoming: state!.upcoming.sublist(1),
+      startedAt: startedAt,
     );
   }
 
@@ -194,6 +218,48 @@ class _CameraTimerPanelState extends ConsumerState<CameraTimerPanel> {
                 height: 1.35,
               ),
             ),
+            if (session.nextLeg case final next?) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Next · ${next.title}',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '${next.distanceKm} km · '
+                          '${formatCameraDuration(next.expectedSeconds)}',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: color,
+                      foregroundColor: Colors.white,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () =>
+                        ref.read(cameraTimerProvider.notifier).startNext(),
+                    icon: const Icon(Icons.skip_next_rounded, size: 18),
+                    label: const Text('Start next'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

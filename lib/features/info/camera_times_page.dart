@@ -83,6 +83,7 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
   LegRange? _selection;
 
   void _startTimer(CameraRoute route, {LegRange? range}) {
+    final end = range?.end ?? route.legs.length - 1;
     ref.read(cameraTimerProvider.notifier).start(
           targetTitle: range == null
               ? 'Full run · ${route.title}'
@@ -90,6 +91,8 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
           distanceKm: range == null ? route.totalKm : route.rangeKm(range),
           expectedSeconds:
               range == null ? route.totalSeconds : route.rangeSeconds(range),
+          // The legs still ahead, so the panel can roll to the next camera.
+          upcoming: route.legs.sublist(end + 1),
         );
   }
 
@@ -161,6 +164,7 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
               onTap: () => setState(
                 () => _selection = nextLegSelection(_selection, i),
               ),
+              onTimeMe: () => _startTimer(route, range: LegRange(i, i)),
             ),
           if (selection != null)
             _PartialRunRow(
@@ -237,18 +241,20 @@ class _WhenLoaded extends StatelessWidget {
       );
 }
 
-/// One camera-to-camera leg: "From → To", distance (+ slow zone), time.
-/// Tapping selects it into the partial-run range.
+/// One camera-to-camera leg: "From → To", distance (+ slow zone), time, and
+/// its own Time me. Tapping the card selects it into the partial-run range.
 class _LegRow extends StatelessWidget {
   const _LegRow({
     required this.leg,
     required this.selected,
     required this.onTap,
+    required this.onTimeMe,
   });
 
   final CameraLeg leg;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onTimeMe;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +277,7 @@ class _LegRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 6, 12),
             child: Row(
               children: [
                 Expanded(
@@ -305,6 +311,13 @@ class _LegRow extends StatelessWidget {
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),
+                ),
+                IconButton(
+                  onPressed: onTimeMe,
+                  icon: const Icon(Icons.play_circle_outline_rounded),
+                  color: AppTheme.accent,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Time ${leg.title}',
                 ),
               ],
             ),
