@@ -106,6 +106,36 @@ void main() {
     expect(find.text('Account'), findsNothing);
   });
 
+  testWidgets('Info hub hides Support the app in the native iOS app', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // Native iOS: no external donation link (App Store guideline 3.1.1).
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InfoScreen(isWeb: false, platform: TargetPlatform.iOS),
+      ),
+    );
+    expect(find.text('Support the app'), findsNothing);
+
+    // Android app and web keep it.
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InfoScreen(isWeb: false, platform: TargetPlatform.android),
+      ),
+    );
+    expect(find.text('Support the app'), findsOneWidget);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InfoScreen(isWeb: true, platform: TargetPlatform.iOS),
+      ),
+    );
+    expect(find.text('Support the app'), findsOneWidget);
+  });
+
   testWidgets('Info sub-pages render their content', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 2600));
     addTearDown(() => tester.binding.setSurfaceSize(null));

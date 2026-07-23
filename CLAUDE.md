@@ -71,3 +71,14 @@ firebase deploy --only hosting,firestore:rules,firestore:indexes   # publish web
 ## Release Information
 - Google Play Service Account: roadmate-play-uploader@roadmate-play-release-501004.iam.gserviceaccount.com
 
+## iOS release & App Store review
+
+**Process:** `scripts/release.sh` covers only web (+ version bump, commit, push). Store builds are separate, manual scripts run on the Mac:
+- `scripts/release_ios.sh` — analyze/test → `flutter build ios --config-only` (a prior `flutter build web` resets the generated Swift package to iOS 13, breaking Firebase plugins; this regenerates it) → `flutter build ipa` → upload via `xcrun altool` when `ASC_KEY_ID`/`ASC_ISSUER_ID` are set (key file `AuthKey_<ID>.p8` in `~/.appstoreconnect/private_keys/`), else hands the IPA to Transporter.
+- After upload, finish in App Store Connect by hand: wait for the build to process, attach it to the version, paste the "What's New" text (kept in `store/apple_release_notes.md`), submit for review.
+- `scripts/release_android.sh` builds the AAB; Play Console upload and release notes are manual.
+
+**App Store review constraints (from the 0.1.38 rejection, Jul 2026):**
+- **Guideline 3.1.1** — the native iOS app must never expose external donation/payment links (Buy Me a Coffee). This is gated by `showDonationLink()` in `lib/services/min_version.dart`: it hides the Info tab's "Support the app" row and redirects `/info/support` → `/info` (see `lib/router.dart`). Android and web keep donations. Keep both gates when touching the Info tab or router.
+- **Guideline 2.3.10** — App Store **metadata** (especially the "What's New" text) must never mention Google Play or other stores. The in-app share message (`InfoScreen.shareText`) is user content and deliberately keeps all three links — that is allowed; only the ASC metadata must stay clean.
+

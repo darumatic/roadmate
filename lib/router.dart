@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+import 'services/min_version.dart';
 
 import 'features/admin/admin_screen.dart';
 import 'features/add_site/add_site_screen.dart';
@@ -75,6 +78,15 @@ final appRouter = GoRouter(
                 ),
                 GoRoute(
                   path: 'support',
+                  // No donation page in the native iOS app (guideline 3.1.1),
+                  // even via deep link.
+                  redirect: (_, _) =>
+                      showDonationLink(
+                        isWeb: kIsWeb,
+                        platform: defaultTargetPlatform,
+                      )
+                      ? null
+                      : '/info',
                   builder: (_, _) => const SupportPage(),
                 ),
                 GoRoute(

@@ -40,6 +40,34 @@ void main() {
     });
   });
 
+  group('showDonationLink', () {
+    test('hidden only in the native iOS app (App Store guideline 3.1.1)', () {
+      expect(
+        showDonationLink(isWeb: false, platform: TargetPlatform.iOS),
+        isFalse,
+      );
+    });
+
+    test('web keeps donations, even in iOS Safari', () {
+      expect(
+        showDonationLink(isWeb: true, platform: TargetPlatform.iOS),
+        isTrue,
+      );
+    });
+
+    test('Android and desktop keep donations', () {
+      for (final platform in [
+        TargetPlatform.android,
+        TargetPlatform.linux,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.fuchsia,
+      ]) {
+        expect(showDonationLink(isWeb: false, platform: platform), isTrue);
+      }
+    });
+  });
+
   test('store URLs point at the published listings', () {
     expect(kPlayStoreUrl, contains('id=com.darumatic.roadmate'));
     expect(kAppStoreUrl, contains('id6788635496'));

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +13,15 @@ import '../../theme/app_theme.dart';
 /// sub-page within the tab — Useful Links, About, Credits, Support the app,
 /// Contact, Share, Disclaimer.
 class InfoScreen extends StatelessWidget {
-  const InfoScreen({super.key});
+  const InfoScreen({
+    super.key,
+    this.isWeb = kIsWeb,
+    this.platform,
+  });
+
+  /// Overridable in widget tests (which always run on the VM).
+  final bool isWeb;
+  final TargetPlatform? platform;
 
   static const shareUrl = 'https://roadmate.club';
   static const buyMeACoffeeUrl = 'https://buymeacoffee.com/darumatic';
@@ -81,12 +89,16 @@ class InfoScreen extends StatelessWidget {
       subtitle: 'The people behind RoadMate',
       onTap: () => context.go('/info/credits'),
     ),
-    InfoLinkRow(
-      icon: Icons.local_cafe_outlined,
-      title: 'Support the app',
-      subtitle: 'Shout the devs a coffee',
-      onTap: () => context.go('/info/support'),
-    ),
+    if (showDonationLink(
+      isWeb: isWeb,
+      platform: platform ?? defaultTargetPlatform,
+    ))
+      InfoLinkRow(
+        icon: Icons.local_cafe_outlined,
+        title: 'Support the app',
+        subtitle: 'Shout the devs a coffee',
+        onTap: () => context.go('/info/support'),
+      ),
     InfoLinkRow(
       icon: Icons.support_agent_rounded,
       title: 'Contact / Support',

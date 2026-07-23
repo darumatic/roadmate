@@ -21,3 +21,15 @@ Australia, powered by drivers on the road:
 Safe travels, and know before you roll.
 
 ---
+
+## 0.1.39
+
+Never mention Google Play (or any other store) in this text — Apple rejected
+0.1.38 under guideline 2.3.10 for exactly that.
+
+---
+
+• Share RoadMate with another driver straight from the Info tab
+• Bug fixes and improvements
+
+---
