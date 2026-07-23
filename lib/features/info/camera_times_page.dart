@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../services/camera_times.dart';
 import '../../theme/app_theme.dart';
+import 'camera_timer.dart';
 import 'info_screen.dart';
 
 /// Camera Times (Info tab): expected point-to-point travel times between
@@ -61,7 +63,7 @@ class CameraTimesPage extends StatelessWidget {
   }
 }
 
-class CameraCorridorPage extends StatefulWidget {
+class CameraCorridorPage extends ConsumerStatefulWidget {
   const CameraCorridorPage({super.key, required this.slug, this.corridors});
 
   final String slug;
@@ -70,11 +72,26 @@ class CameraCorridorPage extends StatefulWidget {
   final List<CameraCorridor>? corridors;
 
   @override
-  State<CameraCorridorPage> createState() => _CameraCorridorPageState();
+  ConsumerState<CameraCorridorPage> createState() =>
+      _CameraCorridorPageState();
 }
 
-class _CameraCorridorPageState extends State<CameraCorridorPage> {
+class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
   int _direction = 0;
+
+  /// Tap-selected consecutive legs (partial run); reset on direction flip.
+  LegRange? _selection;
+
+  void _startTimer(CameraRoute route, {LegRange? range}) {
+    ref.read(cameraTimerProvider.notifier).start(
+          targetTitle: range == null
+              ? 'Full run · ${route.title}'
+              : route.rangeTitle(range),
+          distanceKm: range == null ? route.totalKm : route.rangeKm(range),
+          expectedSeconds:
+              range == null ? route.totalSeconds : route.rangeSeconds(range),
+        );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +119,9 @@ class _CameraCorridorPageState extends State<CameraCorridorPage> {
             corridor.directions[_direction < corridor.directions.length
                 ? _direction
                 : 0];
+        final selection = _selection;
         return [
+          if (ref.watch(cameraTimerProvider) != null) const CameraTimerPanel(),
           if (corridor.directions.length > 1)
             SegmentedButton<int>(
               segments: [
@@ -110,8 +129,10 @@ class _CameraCorridorPageState extends State<CameraCorridorPage> {
                   ButtonSegment(value: i, label: Text('To ${dir.destination}')),
               ],
               selected: {_direction},
-              onSelectionChanged: (sel) =>
-                  setState(() => _direction = sel.first),
+              onSelectionChanged: (sel) => setState(() {
+                _direction = sel.first;
+                _selection = null;
+              }),
               showSelectedIcon: false,
               style: SegmentedButton.styleFrom(
                 selectedBackgroundColor:
@@ -125,8 +146,30 @@ class _CameraCorridorPageState extends State<CameraCorridorPage> {
                 ),
               ),
             ),
-          for (final leg in route.legs) _LegRow(leg: leg),
-          _TotalRow(route: route),
+          const Padding(
+            padding: EdgeInsets.only(left: 4, right: 4),
+            child: Text(
+              'Tap a leg to select it, tap another to extend — then Time me '
+              'a partial run.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+          ),
+          for (final (i, leg) in route.legs.indexed)
+            _LegRow(
+              leg: leg,
+              selected: selection?.contains(i) ?? false,
+              onTap: () => setState(
+                () => _selection = nextLegSelection(_selection, i),
+              ),
+            ),
+          if (selection != null)
+            _PartialRunRow(
+              route: route,
+              range: selection,
+              onTimeMe: () => _startTimer(route, range: selection),
+              onClear: () => setState(() => _selection = null),
+            ),
+          _TotalRow(route: route, onTimeMe: () => _startTimer(route)),
           const Padding(
             padding: EdgeInsets.only(left: 4, right: 4, top: 2),
             child: Text(
@@ -195,10 +238,17 @@ class _WhenLoaded extends StatelessWidget {
 }
 
 /// One camera-to-camera leg: "From → To", distance (+ slow zone), time.
+/// Tapping selects it into the partial-run range.
 class _LegRow extends StatelessWidget {
-  const _LegRow({required this.leg});
+  const _LegRow({
+    required this.leg,
+    required this.selected,
+    required this.onTap,
+  });
 
   final CameraLeg leg;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -207,12 +257,89 @@ class _LegRow extends StatelessWidget {
         : '';
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.border),
+        color: selected
+            ? AppTheme.accent.withValues(alpha: 0.10)
+            : AppTheme.surface,
+        border: Border.all(
+          color: selected ? AppTheme.accent : AppTheme.border,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        leg.title,
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${leg.distanceKm} km$slowZone',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  formatCameraDuration(leg.expectedSeconds),
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Summary of the tap-selected consecutive legs, with Time me / clear.
+class _PartialRunRow extends StatelessWidget {
+  const _PartialRunRow({
+    required this.route,
+    required this.range,
+    required this.onTimeMe,
+    required this.onClear,
+  });
+
+  final CameraRoute route;
+  final LegRange range;
+  final VoidCallback onTimeMe;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final legs = range.length;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.12),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
         child: Row(
           children: [
             Expanded(
@@ -220,7 +347,7 @@ class _LegRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    leg.title,
+                    route.rangeTitle(range),
                     style: const TextStyle(
                       color: AppTheme.textPrimary,
                       fontSize: 15,
@@ -229,7 +356,9 @@ class _LegRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${leg.distanceKm} km$slowZone',
+                    '$legs ${legs == 1 ? 'leg' : 'legs'} · '
+                    '${route.rangeKm(range)} km · '
+                    '${formatCameraDuration(route.rangeSeconds(range))}',
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 12,
@@ -238,14 +367,23 @@ class _LegRow extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            Text(
-              formatCameraDuration(leg.expectedSeconds),
-              style: const TextStyle(
-                color: AppTheme.accent,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
               ),
+              onPressed: onTimeMe,
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('Time me'),
+            ),
+            IconButton(
+              onPressed: onClear,
+              icon: const Icon(Icons.close_rounded),
+              color: AppTheme.textSecondary,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Clear selection',
             ),
           ],
         ),
@@ -254,11 +392,12 @@ class _LegRow extends StatelessWidget {
   }
 }
 
-/// Whole-run total for the selected direction.
+/// Whole-run total for the selected direction, with its own Time me.
 class _TotalRow extends StatelessWidget {
-  const _TotalRow({required this.route});
+  const _TotalRow({required this.route, required this.onTimeMe});
 
   final CameraRoute route;
+  final VoidCallback onTimeMe;
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +408,7 @@ class _TotalRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
         child: Row(
           children: [
             const Icon(Icons.flag_outlined, color: AppTheme.accent, size: 20),
@@ -291,6 +430,13 @@ class _TotalRow extends StatelessWidget {
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
               ),
+            ),
+            IconButton(
+              onPressed: onTimeMe,
+              icon: const Icon(Icons.play_circle_outline_rounded),
+              color: AppTheme.accent,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Time the full run',
             ),
           ],
         ),

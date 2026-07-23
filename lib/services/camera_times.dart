@@ -53,6 +53,65 @@ class CameraRoute {
 
   int get totalKm => legs.fold(0, (sum, l) => sum + l.distanceKm);
   int get totalSeconds => legs.fold(0, (sum, l) => sum + l.expectedSeconds);
+
+  /// The legs inside [range], in run order.
+  List<CameraLeg> legsIn(LegRange range) =>
+      legs.sublist(range.start, range.end + 1);
+
+  int rangeKm(LegRange range) =>
+      legsIn(range).fold(0, (sum, l) => sum + l.distanceKm);
+
+  int rangeSeconds(LegRange range) =>
+      legsIn(range).fold(0, (sum, l) => sum + l.expectedSeconds);
+
+  /// "Marulan → Gundagai" for the selected stretch.
+  String rangeTitle(LegRange range) =>
+      '${legs[range.start].from} → ${legs[range.end].to}';
+}
+
+/// An inclusive range of consecutive leg indexes — the partial-run selection.
+class LegRange {
+  const LegRange(this.start, this.end);
+
+  final int start;
+  final int end;
+
+  bool contains(int index) => index >= start && index <= end;
+  bool get isSingle => start == end;
+  int get length => end - start + 1;
+}
+
+/// Next selection after tapping leg [tapped]: first tap starts a range, a tap
+/// outside extends it to the tapped leg, a tap inside restarts from that leg,
+/// and re-tapping a lone selected leg clears it. Selections therefore stay
+/// consecutive by construction.
+LegRange? nextLegSelection(LegRange? current, int tapped) {
+  if (current == null) return LegRange(tapped, tapped);
+  if (tapped < current.start) return LegRange(tapped, current.end);
+  if (tapped > current.end) return LegRange(current.start, tapped);
+  if (current.isSingle) return null;
+  return LegRange(tapped, tapped);
+}
+
+/// Seconds left before passing the end camera is legal (0 = clear to pass:
+/// the elapsed time already meets the expected minimum).
+int legalWaitSeconds({
+  required int expectedSeconds,
+  required int elapsedSeconds,
+}) => (expectedSeconds - elapsedSeconds).clamp(0, expectedSeconds);
+
+/// The highest whole-trip average that still passes the cameras.
+double maxLegalAvgKmh({
+  required int distanceKm,
+  required int expectedSeconds,
+}) => expectedSeconds <= 0 ? 0 : distanceKm / (expectedSeconds / 3600);
+
+/// Average speed over a timing session, or null when it can't be computed
+/// (no time elapsed, or the odometer baseline was reset mid-session).
+double? sessionAvgKmh({required double distanceKm, required Duration elapsed}) {
+  final hours = elapsed.inMicroseconds / Duration.microsecondsPerHour;
+  if (hours <= 0 || distanceKm < 0) return null;
+  return distanceKm / hours;
 }
 
 /// A city pair (plus variant): both directions of the same run.
