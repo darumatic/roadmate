@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/speed_alert.dart';
 import '../../theme/app_theme.dart';
+import '../info/camera_timer.dart';
 import 'trip_controller.dart';
 
 const _speedGreen = Color(0xFF4ADE80);
@@ -83,6 +84,12 @@ class _SpeedometerPanelState extends ConsumerState<SpeedometerPanel> {
           gpsActive: state.gps == GpsStatus.active,
           recording: state.isRecording,
         ),
+        // A running camera "Time me" session follows the driver to Home
+        // (same panel as the Camera Times page — one source of truth).
+        if (ref.watch(cameraTimerProvider) != null) ...[
+          const SizedBox(height: 14),
+          const CameraTimerPanel(),
+        ],
       ],
     );
   }

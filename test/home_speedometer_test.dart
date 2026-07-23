@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:roadmate/features/nearby/nearby_screen.dart'
     show currentPositionProvider;
 import 'package:roadmate/features/home/closest_sites_card.dart';
+import 'package:roadmate/features/info/camera_timer.dart';
 import 'package:roadmate/features/speedometer/speedometer_panel.dart';
 import 'package:roadmate/features/speedometer/trip_controller.dart';
 import 'package:roadmate/features/speedometer/trip_logger_card.dart';
@@ -215,6 +216,43 @@ void main() {
     expect(find.text('Trip in progress'), findsOneWidget);
     expect(find.text('Stop & Save Trip'), findsOneWidget);
     expect(find.text('Tracking'), findsOneWidget);
+  });
+
+  testWidgets('camera Time me session shows on the Home speedometer', (
+    tester,
+  ) async {
+    final loc = FakeLocationSource();
+    await _pump(tester, location: loc);
+    loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SpeedometerPanel)),
+    );
+    container.read(cameraTimerProvider.notifier).start(
+          targetTitle: 'Douglas Park → Marulan',
+          distanceKm: 91,
+          expectedSeconds: 3276,
+          startedAt: DateTime.now().subtract(const Duration(minutes: 30)),
+        );
+    await tester.pump();
+
+    expect(find.text('TIMING · Douglas Park → Marulan'), findsOneWidget);
+    expect(
+      find.textContaining('until passing the end camera'),
+      findsOneWidget,
+    );
+
+    // ~50 km driven since the session's odometer baseline over the 30 min
+    // elapsed → the panel shows the session average (~100 km/h).
+    loc.emit(_pos(-33.45, 151.0, since: const Duration(minutes: 30)));
+    await tester.pump();
+    expect(find.textContaining('avg 100 km/h'), findsOneWidget);
+
+    // Stopping from Home dismisses the panel.
+    await tester.tap(find.byTooltip('Stop timing'));
+    await tester.pump();
+    expect(find.textContaining('TIMING'), findsNothing);
   });
 
   testWidgets('denied location shows the retry card and GPS idle', (
