@@ -687,4 +687,34 @@ void main() {
     expect(find.text('101'), findsOneWidget);
     expect(store.savedLimit, 101);
   });
+
+  testWidgets('panel buttons are filled and bright enough for night use', (
+    tester,
+  ) async {
+    await _pump(tester, location: FakeLocationSource());
+
+    // The RESET and +/− limit buttons sit on a pure-black background: each
+    // must have a visible fill and a border clearly brighter than #2A2A2E
+    // (the old AppTheme.border, invisible on #000), with bright content.
+    for (final icon in [Icons.refresh, Icons.remove, Icons.add]) {
+      final button = tester.widget<OutlinedButton>(
+        find.widgetWithIcon(OutlinedButton, icon),
+      );
+      final style = button.style!;
+      final fill = style.backgroundColor!.resolve({});
+      expect(fill, isNotNull, reason: '$icon button needs a fill');
+      final border = style.side!.resolve({})!.color;
+      expect(
+        border.computeLuminance(),
+        greaterThan(const Color(0xFF2A2A2E).computeLuminance() * 2),
+        reason: '$icon button border must be clearly brighter than the old one',
+      );
+      final foreground = style.foregroundColor!.resolve({})!;
+      expect(
+        foreground.computeLuminance(),
+        greaterThan(0.5),
+        reason: '$icon button content must be bright',
+      );
+    }
+  });
 }

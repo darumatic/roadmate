@@ -10,6 +10,11 @@ const _speedGreen = Color(0xFF4ADE80);
 const _speedOver = Color(0xFFEF4444);
 const _avgOrange = Color(0xFFF59E0B);
 
+// Panel buttons sit on pure black — they need a fill and a bright border to
+// stay visible at night (AppTheme.border alone disappears on #000).
+const _buttonFill = Color(0xFF1F1F23);
+const _buttonBorder = Color(0xFF4A4A52);
+
 /// The live speedometer block at the top of Home: current speed, nearest site,
 /// average speed + reset, manual limit + steppers, and GPS/tracking status.
 class SpeedometerPanel extends ConsumerStatefulWidget {
@@ -145,10 +150,19 @@ class _AvgColumn extends StatelessWidget {
         const SizedBox(height: 10),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(
-            foregroundColor: AppTheme.textSecondary,
-            side: const BorderSide(color: AppTheme.border),
+            foregroundColor: AppTheme.textPrimary,
+            backgroundColor: _buttonFill,
+            disabledForegroundColor: AppTheme.textSecondary,
+            side: const BorderSide(color: _buttonBorder, width: 1.2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            textStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
           ),
           icon: const Icon(Icons.refresh, size: 16),
           label: const Text('RESET'),
@@ -217,17 +231,21 @@ class _StepButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 40,
-      height: 36,
+      width: 52,
+      height: 40,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppTheme.textPrimary,
-          side: const BorderSide(color: AppTheme.border),
+          backgroundColor: _buttonFill,
+          side: const BorderSide(color: _buttonBorder, width: 1.2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           padding: EdgeInsets.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         onPressed: onPressed,
-        child: Icon(icon, size: 18),
+        child: Icon(icon, size: 22),
       ),
     );
   }
