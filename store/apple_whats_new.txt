@@ -7,6 +7,7 @@ Live status of NHVR heavy-vehicle inspection sites across Australia, powered by 
 • Browse by state or find the nearest sites with GPS
 • Favourites for the sites on your regular runs
 • Trip log with audible speed alerts
+• Camera Times: point-to-point average-speed camera corridors, with a live "Time me" timer for your run
 • Add missing sites
 • Share RoadMate with another driver straight from the Info tab
 • Sign in with Google or Apple
