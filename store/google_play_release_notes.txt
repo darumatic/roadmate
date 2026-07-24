@@ -1,2 +1,4 @@
+• Camera Times: point-to-point average-speed camera corridors in the Info tab, with a "Time me" mode that times each leg as you drive
+• Your running Time me session now shows on the Home speedometer
 • Share RoadMate with another driver straight from the Info tab
 • Bug fixes and improvements
