@@ -1,16 +1,15 @@
 Welcome to RoadMate AU — know before you roll.
 
-New in this version — site alerts:
+New in this version — trip timer fixes:
 
-• RoadMate now warns you as you approach an inspection site and asks for its status — one tap for OPEN, BLITZ or CLOSED
-• Alerts keep working while the app is in the background, so you still get the heads-up with maps on screen or the phone in your pocket
-• Only fires when you're actually driving toward a site, and at most once per site — no nagging when you're parked or heading away
-• Turn it on or off any time with the arrow icon on the Home screen
-• Adding a site now captures its GPS position with one tap, so it appears in Nearby straight away
+• The trip timer now counts from the moment you press Start and keeps ticking every second, even before the first GPS fix arrives. It could previously sit on "0m 0s" for a whole trip if you started somewhere with no signal
+• Saved trips record the real elapsed time of the run, including the wait for GPS at the start, so the log matches what you watched on screen
+• The GPS status under the speedometer now says what is really happening: amber while it waits for a fix, red if the signal drops. It used to show green as soon as tracking started, even when no fix had arrived
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
 
 • Live OPEN / BLITZ / CLOSED site status, voted in real time by other truckies
+• Site alerts as you approach an inspection site, on screen or in the background
 • Blitz alerts when unusual enforcement activity is reported
 • Browse by state or find the nearest sites with GPS
 • Favourites for the sites on your regular runs
