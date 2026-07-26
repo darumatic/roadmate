@@ -1,5 +1,13 @@
 Welcome to RoadMate AU — know before you roll.
 
+New in this version — site alerts:
+
+• RoadMate now warns you as you approach an inspection site and asks for its status — one tap for OPEN, BLITZ or CLOSED
+• Alerts keep working while the app is in the background, so you still get the heads-up with maps on screen or the phone in your pocket
+• Only fires when you're actually driving toward a site, and at most once per site — no nagging when you're parked or heading away
+• Turn it on or off any time with the arrow icon on the Home screen
+• Adding a site now captures its GPS position with one tap, so it appears in Nearby straight away
+
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
 
 • Live OPEN / BLITZ / CLOSED site status, voted in real time by other truckies
