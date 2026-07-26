@@ -62,8 +62,11 @@ class ThrowingTripStore extends FakeTripStore {
 
 class FakeAlertPlayer implements AlertPlayer {
   int calls = 0;
+  int proximityCalls = 0;
   @override
   Future<void> playOverLimit() async => calls++;
+  @override
+  Future<void> playProximity() async => proximityCalls++;
 }
 
 class FakeTripStore implements TripHistoryStore {
@@ -97,6 +100,15 @@ class FakeTripStore implements TripHistoryStore {
 
   @override
   Future<void> saveSoundEnabled(bool enabled) async => soundEnabled = enabled;
+
+  bool proximityEnabled = true;
+
+  @override
+  Future<bool> loadProximityEnabled() async => proximityEnabled;
+
+  @override
+  Future<void> saveProximityEnabled(bool enabled) async =>
+      proximityEnabled = enabled;
 }
 
 class FakeSites implements SiteRepository {
@@ -118,8 +130,7 @@ class FakeSites implements SiteRepository {
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
   @override
-  Stream<List<SiteReport>> watchAllRecentReports() =>
-      Stream.value(const []);
+  Stream<List<SiteReport>> watchAllRecentReports() => Stream.value(const []);
   @override
   Stream<List<Site>> watchSites() => Stream.value(sites);
 }
@@ -229,7 +240,9 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(SpeedometerPanel)),
     );
-    container.read(cameraTimerProvider.notifier).start(
+    container
+        .read(cameraTimerProvider.notifier)
+        .start(
           targetTitle: 'Douglas Park → Marulan',
           distanceKm: 91,
           expectedSeconds: 3276,
@@ -238,10 +251,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('TIMING · Douglas Park → Marulan'), findsOneWidget);
-    expect(
-      find.textContaining('until passing the end camera'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('until passing the end camera'), findsOneWidget);
 
     // ~50 km driven since the session's odometer baseline over the 30 min
     // elapsed → the panel shows the session average (~100 km/h).

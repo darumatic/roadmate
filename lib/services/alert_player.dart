@@ -28,6 +28,11 @@ AudioContext alertAudioContext() => AudioContext(
 /// tests substitute a silent fake and never touch the audio/haptics plugins.
 abstract class AlertPlayer {
   Future<void> playOverLimit();
+
+  /// Sounds the site-approach prompt. Distinct call site from the over-limit
+  /// warning so the two can diverge (different sample, different urgency)
+  /// without touching either caller.
+  Future<void> playProximity();
 }
 
 /// Production player: a short bundled beep plus a haptic buzz. Best-effort —
@@ -58,9 +63,16 @@ class BeepAlertPlayer implements AlertPlayer {
   }
 
   @override
-  Future<void> playOverLimit() async {
+  Future<void> playOverLimit() => _beep(HapticFeedback.heavyImpact);
+
+  /// Same sample as the over-limit warning but a softer buzz: approaching a
+  /// site is information, not a breach.
+  @override
+  Future<void> playProximity() => _beep(HapticFeedback.mediumImpact);
+
+  Future<void> _beep(Future<void> Function() haptic) async {
     try {
-      await HapticFeedback.heavyImpact();
+      await haptic();
     } catch (_) {
       // Haptics unavailable — ignore.
     }

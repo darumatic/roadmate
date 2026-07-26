@@ -10,6 +10,7 @@ import '../services/rate_limit.dart';
 import '../services/site_repository.dart';
 import '../services/status_logic.dart';
 import '../theme/app_theme.dart';
+import 'edit_site_location_dialog.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
 
@@ -83,6 +84,22 @@ class SiteCard extends ConsumerWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Admin-only: fix or fill the site's coordinates.
+                      if (isAdmin)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(
+                            Icons.edit_location_alt_outlined,
+                            color: site.lat == null
+                                ? Colors.orangeAccent
+                                : AppTheme.textSecondary,
+                            size: 20,
+                          ),
+                          onPressed: () => _editLocation(context, ref),
+                          tooltip: site.lat == null
+                              ? 'Set coordinates (admin) — missing'
+                              : 'Edit coordinates (admin)',
+                        ),
                       // Admin-only: remove the site entirely (issue #13).
                       if (isAdmin)
                         IconButton(
@@ -215,6 +232,17 @@ class SiteCard extends ConsumerWidget {
       if (!context.mounted) return;
       _snack(context, 'Could not submit — please try again.');
     }
+  }
+
+  /// Admin: set or correct the site's coordinates. Community submissions may
+  /// arrive without them (the field is optional), and geocoded seed positions
+  /// are town-level — this is how they get pinned to the actual gate.
+  Future<void> _editLocation(BuildContext context, WidgetRef ref) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => EditSiteLocationDialog(site: site),
+    );
+    if (saved == true && context.mounted) _snack(context, 'Location updated');
   }
 
   /// Warns before permanently deleting the site + its reports (issue #13).

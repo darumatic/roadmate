@@ -112,6 +112,20 @@ class AdminRepository {
     });
   }
 
+  /// Sets (or clears) a site's map coordinates — admin-only per the security
+  /// rules, which allow admins to update a site freely.
+  ///
+  /// Written as plain numbers, exactly the shape every shipped client already
+  /// reads; passing nulls clears them, which old clients handle (they treat a
+  /// site without coordinates as simply not distance-rankable).
+  Future<void> updateSiteLocation(
+    String siteId, {
+    required double? lat,
+    required double? lng,
+  }) {
+    return _sites.doc(siteId).update({'lat': lat, 'lng': lng});
+  }
+
   /// Permanently removes a site and every report and rate-limit ledger doc
   /// under it (issue #13). Admin-only per the security rules; one atomic
   /// batch so a failure never leaves orphans behind a deleted site.

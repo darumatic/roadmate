@@ -82,6 +82,13 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RoadMate uses your location to show nearby inspection and compliance sites and to track your speed and distance during a trip.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>RoadMate uses your location to show nearby inspection and compliance sites and to track your speed and distance during a trip. Location is only accessed while you are using the app.</string>
+	<string>RoadMate uses your location to alert you as you approach an inspection or compliance site, and to track your speed and distance during a trip. Tracking continues while you drive with the app in the background.</string>
+	<!-- Site-approach alerts must still fire while the driver is in maps or has
+	     the phone in a pocket, so location updates continue in the background.
+	     iOS shows the blue location indicator throughout. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

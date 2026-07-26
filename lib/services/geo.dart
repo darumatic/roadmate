@@ -20,6 +20,46 @@ double distanceKm(double lat1, double lng1, double lat2, double lng2) {
 
 double _toRad(double deg) => deg * math.pi / 180.0;
 
+const double maxLatitude = 90.0;
+const double maxLongitude = 180.0;
+
+/// Parses a typed coordinate, returning null for blank, unparseable or
+/// out-of-range input. Pure — shared by Add Site and the admin location
+/// editor so both accept exactly the same things.
+double? parseCoordinate(String? raw, {required double maxAbs}) {
+  final text = raw?.trim();
+  if (text == null || text.isEmpty) return null;
+  final value = double.tryParse(text);
+  if (value == null || value.isNaN || value.abs() > maxAbs) return null;
+  return value;
+}
+
+/// Validation message for one coordinate field, or null when acceptable.
+/// **Blank is acceptable**: coordinates are optional — a site without them is
+/// simply absent from Nearby and never raises an approach prompt.
+String? coordinateFieldError(
+  String? raw, {
+  required double maxAbs,
+  required String label,
+}) {
+  final text = raw?.trim() ?? '';
+  if (text.isEmpty) return null;
+  if (parseCoordinate(text, maxAbs: maxAbs) == null) {
+    return '$label must be a number between ${-maxAbs} and $maxAbs';
+  }
+  return null;
+}
+
+/// Validation message for the lat/lng pair. Half a coordinate is useless —
+/// it would silently drop the site out of every distance calculation — so
+/// both are required together or not at all.
+String? coordinatePairError(String? lat, String? lng) {
+  final hasLat = (lat?.trim() ?? '').isNotEmpty;
+  final hasLng = (lng?.trim() ?? '').isNotEmpty;
+  if (hasLat == hasLng) return null;
+  return 'Enter both latitude and longitude, or leave both blank';
+}
+
 /// A site paired with its distance from a reference point.
 class SiteDistance {
   const SiteDistance(this.site, this.km);

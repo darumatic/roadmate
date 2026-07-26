@@ -6,6 +6,7 @@ import '../../models/site.dart';
 import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
+import '../proximity/proximity_controller.dart';
 import '../speedometer/speedometer_panel.dart';
 import 'closest_sites_card.dart';
 import '../speedometer/trip_controller.dart';
@@ -117,6 +118,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 6),
+              const _ProximityToggle(),
               const _SoundToggle(),
             ],
           ),
@@ -268,6 +270,26 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Beside the speaker: turns the site-approach prompt on/off. Enabled by
+/// default; the choice persists on device.
+class _ProximityToggle extends ConsumerWidget {
+  const _ProximityToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(proximityEnabledProvider);
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        enabled ? Icons.near_me : Icons.near_me_disabled,
+        color: enabled ? AppTheme.textPrimary : AppTheme.textSecondary,
+      ),
+      tooltip: enabled ? 'Turn off site alerts' : 'Turn on site alerts',
+      onPressed: ref.read(proximityEnabledProvider.notifier).toggle,
     );
   }
 }

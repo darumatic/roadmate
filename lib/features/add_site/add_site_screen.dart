@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../models/enums.dart';
 import '../../models/site.dart';
 import '../../services/auth_service.dart';
+import '../../services/geo.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/coordinate_fields.dart';
 
 /// Form for submitting a new community site. Validates required fields and
 /// writes through [siteRepositoryProvider].
@@ -24,6 +26,8 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
   final _name = TextEditingController();
   final _address = TextEditingController();
   final _suburb = TextEditingController();
+  final _lat = TextEditingController();
+  final _lng = TextEditingController();
   late AusState _state;
   SiteType _type = SiteType.checkingStation;
   String? _direction;
@@ -40,6 +44,8 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
     _name.dispose();
     _address.dispose();
     _suburb.dispose();
+    _lat.dispose();
+    _lng.dispose();
     super.dispose();
   }
 
@@ -59,6 +65,10 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
       state: _state,
       suburb: _suburb.text.trim(),
       address: _address.text.trim(),
+      // Optional: a blank or half-filled pair stays null, and the site simply
+      // won't be distance-ranked until someone sets it.
+      lat: parseCoordinate(_lat.text, maxAbs: maxLatitude),
+      lng: parseCoordinate(_lng.text, maxAbs: maxLongitude),
       direction: _direction,
     );
     try {
@@ -157,6 +167,9 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
+              const SizedBox(height: 16),
+              _label('GPS coordinates'),
+              CoordinateFields(latController: _lat, lngController: _lng),
               const SizedBox(height: 16),
               _label('Direction (optional)'),
               DropdownButtonFormField<String?>(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'features/proximity/proximity_prompt_card.dart';
 import 'router.dart';
 import 'services/keep_awake.dart';
 import 'services/min_version.dart';
@@ -47,8 +48,10 @@ class RoadMateApp extends ConsumerWidget {
                 theme: AppTheme.dark,
                 routerConfig: appRouter,
                 // Web: offer a one-tap refresh when a newer build is deployed.
-                builder: (context, child) =>
-                    UpdateGate(child: child ?? const SizedBox.shrink()),
+                // The approach prompt floats over whatever screen is showing.
+                builder: (context, child) => UpdateGate(
+                  child: ProximityGate(child: child ?? const SizedBox.shrink()),
+                ),
               ),
       ),
     );

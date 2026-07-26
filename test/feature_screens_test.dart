@@ -47,8 +47,7 @@ class FeatureFakeSiteRepository implements SiteRepository {
   Stream<Set<String>> watchFavourites() => Stream.value(favourites);
 
   @override
-  Stream<List<SiteReport>> watchAllRecentReports() =>
-      Stream.value(const []);
+  Stream<List<SiteReport>> watchAllRecentReports() => Stream.value(const []);
 
   @override
   Stream<List<Site>> watchSites() => Stream.value(sites);
@@ -255,6 +254,10 @@ void main() {
     testWidgets(
       'validates required fields and submits a trimmed pending site',
       (tester) async {
+        // Tall surface so every field-level error is on screen at once — the
+        // form grew a coordinates section.
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.binding.setSurfaceSize(const Size(1000, 2400));
         final repo = FeatureFakeSiteRepository();
         final router = GoRouter(
           initialLocation: '/add',

@@ -34,6 +34,12 @@ class FakeTripStore implements TripHistoryStore {
 
   @override
   Future<void> saveSoundEnabled(bool enabled) async {}
+
+  @override
+  Future<bool> loadProximityEnabled() async => true;
+
+  @override
+  Future<void> saveProximityEnabled(bool enabled) async {}
 }
 
 Trip _trip(int i) => Trip(

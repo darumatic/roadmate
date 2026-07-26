@@ -48,4 +48,52 @@ void main() {
       expect(nearestSites(sites, -33.8688, 151.2093, limit: 2).length, 2);
     });
   });
+
+  group('parseCoordinate', () {
+    test('parses signed decimals, ignoring surrounding whitespace', () {
+      expect(parseCoordinate(' -34.7123 ', maxAbs: maxLatitude), -34.7123);
+      expect(parseCoordinate('149', maxAbs: maxLongitude), 149);
+    });
+
+    test('blank, unparseable and out-of-range values are null', () {
+      expect(parseCoordinate('', maxAbs: maxLatitude), isNull);
+      expect(parseCoordinate(null, maxAbs: maxLatitude), isNull);
+      expect(parseCoordinate('south', maxAbs: maxLatitude), isNull);
+      expect(parseCoordinate('-91', maxAbs: maxLatitude), isNull);
+      expect(parseCoordinate('181', maxAbs: maxLongitude), isNull);
+      // 149.7 is a valid longitude but not a valid latitude.
+      expect(parseCoordinate('149.7', maxAbs: maxLatitude), isNull);
+    });
+  });
+
+  group('coordinate field validation', () {
+    test('blank passes — coordinates are optional', () {
+      expect(
+        coordinateFieldError('', maxAbs: maxLatitude, label: 'Latitude'),
+        isNull,
+      );
+    });
+
+    test('out-of-range explains the bounds', () {
+      expect(
+        coordinateFieldError('95', maxAbs: maxLatitude, label: 'Latitude'),
+        'Latitude must be a number between -90.0 and 90.0',
+      );
+    });
+
+    test('valid input passes', () {
+      expect(
+        coordinateFieldError('-34.71', maxAbs: maxLatitude, label: 'Latitude'),
+        isNull,
+      );
+    });
+
+    test('half a pair is rejected, both or neither passes', () {
+      expect(coordinatePairError('-34.7', ''), isNotNull);
+      expect(coordinatePairError('', '149.7'), isNotNull);
+      expect(coordinatePairError('-34.7', '149.7'), isNull);
+      expect(coordinatePairError('', ''), isNull);
+      expect(coordinatePairError(null, null), isNull);
+    });
+  });
 }

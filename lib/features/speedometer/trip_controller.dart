@@ -9,6 +9,7 @@ import '../../services/providers.dart';
 import '../../services/speed_alert.dart';
 import '../../services/trip_history_store.dart';
 import '../../services/trip_stats.dart';
+import '../proximity/proximity_controller.dart';
 
 /// Whether the always-on GPS stream is feeding the speedometer.
 enum GpsStatus { off, denied, active }
@@ -109,6 +110,9 @@ class TripController extends Notifier<TripState> {
       return;
     }
     _lastAlertAt = null;
+    // A restarted stream may resume anywhere; drop the approach history so the
+    // first new fix isn't compared against the last one before the gap.
+    ref.read(proximityControllerProvider.notifier).resetTracking();
     // A stream error (GPS dropout, service toggled) must not become an
     // unhandled exception; the subscription stays live and recovers.
     _sub = source.positions().listen(_onPosition, onError: (Object _) {});
@@ -184,6 +188,15 @@ class TripController extends Notifier<TripState> {
     );
     // Over-limit warning runs whenever GPS is live, trip or no trip (#6).
     _maybeAlert(avg.currentSpeedKmh);
+    // Site-approach prompt shares this one stream — never open a second
+    // listener for it (a parallel GPS subscription doubles battery drain).
+    ref
+        .read(proximityControllerProvider.notifier)
+        .onPosition(
+          lat: pos.latitude,
+          lng: pos.longitude,
+          speedKmh: avg.currentSpeedKmh,
+        );
   }
 
   void _maybeAlert(double speedKmh) {

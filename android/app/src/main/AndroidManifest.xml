@@ -3,6 +3,15 @@
     <!-- Foreground location for the Nearby ranking and the GPS speedometer. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Site-approach alerts keep tracking while the app is backgrounded. A
+         location-typed foreground service (declared by geolocator_android) is
+         how Android grants that WITHOUT ACCESS_BACKGROUND_LOCATION and its
+         Play review — the ongoing notification is the user-visible trade. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Android 13+: asking for the status of a site you're approaching. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Firebase Analytics pulls in AD_ID; the app has no ads and the Play
          Console declaration says advertising ID is not used, so strip it. -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove"/>

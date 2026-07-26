@@ -1,21 +1,59 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
-/// Stream settings for the trip speedometer. On web, [WebSettings.maximumAge]
-/// lets the browser serve a recent cached fix as the first event instead of
-/// blocking several seconds on a cold one (the browser default is
-/// maximumAge: 0 — cache forbidden). Trips normally start parked, so a
-/// ≤10 s-old first fix adds no meaningful distance error.
-LocationSettings tripLocationSettings({bool isWeb = kIsWeb}) => isWeb
-    ? WebSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 0,
-        maximumAge: const Duration(seconds: 10),
-      )
-    : const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 0,
-      );
+/// Stream settings for the trip speedometer and the site-approach alert.
+///
+/// - **Web**: [WebSettings.maximumAge] lets the browser serve a recent cached
+///   fix as the first event instead of blocking several seconds on a cold one
+///   (the browser default is maximumAge: 0 — cache forbidden). Trips normally
+///   start parked, so a ≤10 s-old first fix adds no meaningful distance error.
+/// - **Android**: a foreground service keeps the fixes coming while the app is
+///   backgrounded or the screen is off, so an approach alert still fires when
+///   the driver is using maps or has the phone in a pocket. The service's
+///   ongoing notification is the price of that (and is what Android requires
+///   in exchange for background location *without* the
+///   ACCESS_BACKGROUND_LOCATION permission and its Play review).
+/// - **iOS**: `allowBackgroundLocationUpdates` plus the `location` background
+///   mode does the same job; the blue status-bar indicator tells the driver
+///   the app is tracking. `automotiveNavigation` stops iOS pausing updates at
+///   a red light.
+LocationSettings tripLocationSettings({
+  bool isWeb = kIsWeb,
+  TargetPlatform? platform,
+}) {
+  if (isWeb) {
+    return WebSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+      maximumAge: const Duration(seconds: 10),
+    );
+  }
+  return switch (platform ?? defaultTargetPlatform) {
+    TargetPlatform.android => AndroidSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationTitle: 'RoadMate is watching the road',
+        notificationText: 'Live speed, trip logging and site alerts',
+        notificationChannelName: 'Live tracking',
+        enableWakeLock: true,
+      ),
+    ),
+    TargetPlatform.iOS || TargetPlatform.macOS => AppleSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+      activityType: ActivityType.automotiveNavigation,
+      pauseLocationUpdatesAutomatically: false,
+      allowBackgroundLocationUpdates: true,
+      showBackgroundLocationIndicator: true,
+    ),
+    _ => const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    ),
+  };
+}
 
 /// One-shot settings for "where am I, roughly" lookups (Nearby tab, the
 /// nearest-site card). A cached fix up to 2 minutes old is fine there and

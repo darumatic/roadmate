@@ -16,4 +16,22 @@ void main() {
       contains('<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>'),
     );
   });
+
+  test('background location mode is declared for site-approach alerts', () {
+    // AppleSettings(allowBackgroundLocationUpdates: true) throws at runtime
+    // unless the `location` background mode is in the plist — the alert would
+    // die the moment the driver switched to maps.
+    expect(plist, contains('<key>UIBackgroundModes</key>'));
+    expect(plist, contains('<string>location</string>'));
+  });
+
+  test('the Always usage string tells the driver tracking continues', () {
+    // App Review rejects background location whose purpose string only
+    // describes foreground use.
+    expect(
+      plist,
+      contains('<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>'),
+    );
+    expect(plist, contains('in the background'));
+  });
 }

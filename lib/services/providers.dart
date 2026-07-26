@@ -11,6 +11,7 @@ import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
+import 'proximity_notifier.dart';
 import 'refresh_logic.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
@@ -42,6 +43,12 @@ final locationSourceProvider = Provider<LocationSource>(
 
 /// Plays the over-limit warning (beep + haptic). Overridden with a fake in tests.
 final alertPlayerProvider = Provider<AlertPlayer>((ref) => BeepAlertPlayer());
+
+/// Raises the system notification for a site approach while the app is in the
+/// background. Overridden with a recorder in tests.
+final proximityNotifierProvider = Provider<ProximityNotifier>(
+  (ref) => LocalProximityNotifier(),
+);
 
 /// On-device store for saved trips and the manual speed limit.
 final tripHistoryStoreProvider = Provider<TripHistoryStore>(
