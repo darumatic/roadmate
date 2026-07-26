@@ -76,10 +76,14 @@ Checked in the live Console before the 0.1.48 upload:
   once a bundle declaring `FOREGROUND_SERVICE_LOCATION` has been uploaded. The
   ordering assumed above (declare, then upload) is not possible.
 
-**Recommended order instead:** upload build 48 to a **closed/internal testing**
-track first — that surfaces the declaration without touching production or
-starting a production review — fill in the text below, attach the video, and only
-then promote to production. `scripts/play_upload.py` hardcodes
+**Likely order instead** (inference, *not* verified — the form was never seen in
+any state, so which tracks trigger it is untested): upload build 48 to a
+**closed/internal testing** track first, on the assumption that any uploaded
+bundle surfaces the declaration without starting a production rollout, fill in the
+text below, attach the video, and only then promote to production. If an
+internal-track upload turns out not to surface it, the only route left is
+uploading to production and completing the declaration while the release sits in
+review. `scripts/play_upload.py` hardcodes
 `"track": "production"` (see `build_track`), so the testing-track upload is a
 manual Console upload unless the script is parameterised.
 
