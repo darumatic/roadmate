@@ -62,6 +62,30 @@ Upload unlisted to YouTube (or a publicly readable Drive link) and paste the URL
    buttons. Tapping the arrow icon on Home turns the feature off, which is worth
    showing as the user control.
 
+## Console findings, verified 26 Jul 2026 — the form does not exist yet
+
+Checked in the live Console before the 0.1.48 upload:
+
+- **App content → "Need attention" is empty**, and the **Actioned** tab lists 10
+  declarations (Advertising ID, Health apps, Financial features, Government apps,
+  Data safety, Target audience and content, Privacy policy, Sign in details,
+  Content ratings, Ads). **Foreground service permissions is not among them**, and
+  the direct `app-content/foreground-service-permissions` URL bounces to the app
+  list.
+- So the declaration **cannot be filed in advance**. Play only surfaces the form
+  once a bundle declaring `FOREGROUND_SERVICE_LOCATION` has been uploaded. The
+  ordering assumed above (declare, then upload) is not possible.
+
+**Recommended order instead:** upload build 48 to a **closed/internal testing**
+track first — that surfaces the declaration without touching production or
+starting a production review — fill in the text below, attach the video, and only
+then promote to production. `scripts/play_upload.py` hardcodes
+`"track": "production"` (see `build_track`), so the testing-track upload is a
+manual Console upload unless the script is parameterised.
+
+Production was on **0.1.47 (47)** at the time of checking, so versionCode 48 is
+free.
+
 ## Also worth checking while you are in App content
 
 The **Data safety** form may now need updating. Before v0.1.48 no location data
@@ -71,6 +95,14 @@ button changes that: it writes the captured latitude/longitude to Firestore unde
 the user's uid, and `sites/` is world-readable, so a submitted coordinate becomes
 public. It is optional and user-initiated, but it is precise location leaving the
 device — worth confirming your existing answers still describe the app.
+
+**Verified 26 Jul 2026:** the published Data safety section
+(`play.google.com/store/apps/datasafety?id=com.darumatic.roadmate`) declares
+Location as **Approximate location** only, plus App activity, Device or other IDs,
+and Personal info (Name, Email address, User IDs), with "No data shared with third
+parties". Add Site now sends a **precise** coordinate off the device, which the
+current answer does not cover — the owner should decide whether to add "Precise
+location" before this release goes out. Left unchanged pending that decision.
 
 ## Alternative considered
 
