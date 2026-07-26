@@ -236,8 +236,11 @@ class TripController extends Notifier<TripState> {
   /// The position stream failed. The subscription stays alive (geolocator
   /// recovers on its own), but the driver is told the feed is down instead of
   /// staring at a green badge over a frozen speedo.
+  /// No `_sub == null` guard here, unlike [_onPosition]: an error raised while
+  /// `listen` is still returning would be dropped by the very handler added to
+  /// stop errors being dropped. It only sets a flag, so there is no stale state
+  /// to resurrect.
   void _onStreamError(Object error) {
-    if (_sub == null) return;
     debugPrint('RoadMate: position stream error: $error');
     state = state.copyWith(gpsErrored: true);
   }

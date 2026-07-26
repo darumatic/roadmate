@@ -57,6 +57,19 @@ class HangingCancelLocationSource implements LocationSource {
   void emit(Position p) => controller.add(p);
 }
 
+/// A [LocationSource] that fails the instant it is listened to — the error
+/// lands while `listen` is still returning, before the subscription has been
+/// stored.
+class ImmediatelyFailingLocationSource implements LocationSource {
+  @override
+  Future<bool> ensurePermission() async => true;
+
+  @override
+  Stream<Position> positions() => Stream<Position>.multi(
+    (c) => c.addError(Exception('no location manager')),
+  );
+}
+
 /// A [TripHistoryStore] whose writes always fail.
 class ThrowingTripStore extends FakeTripStore {
   @override
@@ -577,6 +590,25 @@ void main() {
       expect(container.read(tripControllerProvider).signal, GpsSignal.live);
     },
   );
+
+  test('an error raised as the stream is listened to still shows up', () async {
+    final container = ProviderContainer(
+      overrides: [
+        locationSourceProvider.overrideWithValue(
+          ImmediatelyFailingLocationSource(),
+        ),
+        alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+        tripHistoryStoreProvider.overrideWithValue(FakeTripStore()),
+        siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(tripControllerProvider.notifier).ensureStarted();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(tripControllerProvider).signal, GpsSignal.lost);
+  });
 
   test('stop returns to idle and saves even if the GPS cancel hangs', () async {
     final loc = HangingCancelLocationSource();
