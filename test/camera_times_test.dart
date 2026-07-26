@@ -119,18 +119,12 @@ void main() {
 
   group('time-me maths', () {
     test('legalWaitSeconds counts down and clamps at zero', () {
-      expect(
-        legalWaitSeconds(expectedSeconds: 3276, elapsedSeconds: 0),
-        3276,
-      );
+      expect(legalWaitSeconds(expectedSeconds: 3276, elapsedSeconds: 0), 3276);
       expect(
         legalWaitSeconds(expectedSeconds: 3276, elapsedSeconds: 3000),
         276,
       );
-      expect(
-        legalWaitSeconds(expectedSeconds: 3276, elapsedSeconds: 5000),
-        0,
-      );
+      expect(legalWaitSeconds(expectedSeconds: 3276, elapsedSeconds: 5000), 0);
     });
 
     test('maxLegalAvgKmh is distance over expected time', () {
@@ -144,10 +138,7 @@ void main() {
 
     test('sessionAvgKmh handles zero time and reset baselines', () {
       expect(
-        sessionAvgKmh(
-          distanceKm: 50,
-          elapsed: const Duration(minutes: 30),
-        ),
+        sessionAvgKmh(distanceKm: 50, elapsed: const Duration(minutes: 30)),
         closeTo(100, 0.001),
       );
       expect(sessionAvgKmh(distanceKm: 50, elapsed: Duration.zero), isNull);
@@ -250,14 +241,12 @@ void main() {
 
   group('camera pages', () {
     final corridors = groupCorridors(
-      parseCameraTimesCsv(
-        File('assets/camera_times.csv').readAsStringSync(),
-      ),
+      parseCameraTimesCsv(File('assets/camera_times.csv').readAsStringSync()),
     );
 
     Widget host(Widget child) => ProviderScope(
-          child: MaterialApp(theme: AppTheme.dark, home: child),
-        );
+      child: MaterialApp(theme: AppTheme.dark, home: child),
+    );
 
     testWidgets('hub lists every corridor with totals', (tester) async {
       await tester.pumpWidget(host(CameraTimesPage(corridors: corridors)));
@@ -272,8 +261,9 @@ void main() {
       expect(find.text('732 km · 7h 19m 12s'), findsOneWidget);
     });
 
-    testWidgets('corridor page shows legs, total and direction toggle',
-        (tester) async {
+    testWidgets('corridor page shows legs, total and direction toggle', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         host(
           CameraCorridorPage(slug: 'sydney-melbourne', corridors: corridors),
@@ -301,10 +291,7 @@ void main() {
           ),
         ),
       );
-      expect(
-        find.text('227 km · incl. 16 km @ 60 km/h'),
-        findsOneWidget,
-      );
+      expect(find.text('227 km · incl. 16 km @ 60 km/h'), findsOneWidget);
     });
 
     testWidgets('unknown slug shows a not-found message', (tester) async {
@@ -314,8 +301,9 @@ void main() {
       expect(find.text('Route not found'), findsOneWidget);
     });
 
-    testWidgets('tap-to-select sums a partial run and can time it',
-        (tester) async {
+    testWidgets('tap-to-select sums a partial run and can time it', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         host(
           CameraCorridorPage(slug: 'sydney-melbourne', corridors: corridors),
@@ -377,8 +365,9 @@ void main() {
       );
     });
 
-    testWidgets('per-leg Time me starts that leg and rolls to the next',
-        (tester) async {
+    testWidgets('per-leg Time me starts that leg and rolls to the next', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         host(
           CameraCorridorPage(slug: 'sydney-melbourne', corridors: corridors),
@@ -397,8 +386,9 @@ void main() {
       expect(find.text('Next · One Tree → Coolac'), findsOneWidget);
     });
 
-    testWidgets('timer flips to Clear once the expected time has elapsed',
-        (tester) async {
+    testWidgets('timer flips to Clear once the expected time has elapsed', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         host(
           CameraCorridorPage(slug: 'sydney-melbourne', corridors: corridors),
@@ -407,7 +397,9 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(CameraCorridorPage)),
       );
-      container.read(cameraTimerProvider.notifier).start(
+      container
+          .read(cameraTimerProvider.notifier)
+          .start(
             targetTitle: 'Douglas Park → Marulan',
             distanceKm: 91,
             expectedSeconds: 3276,

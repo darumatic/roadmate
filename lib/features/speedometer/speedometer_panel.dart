@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/gps_signal.dart';
 import '../../services/speed_alert.dart';
 import '../../theme/app_theme.dart';
 import '../info/camera_timer.dart';
@@ -85,10 +86,7 @@ class _SpeedometerPanelState extends ConsumerState<SpeedometerPanel> {
           ],
         ),
         const SizedBox(height: 14),
-        _StatusLine(
-          gpsActive: state.gps == GpsStatus.active,
-          recording: state.isRecording,
-        ),
+        _StatusLine(signal: state.signal, recording: state.isRecording),
         // A running camera "Time me" session follows the driver to Home
         // (same panel as the Camera Times page — one source of truth).
         if (ref.watch(cameraTimerProvider) != null) ...[
@@ -252,33 +250,37 @@ class _StepButton extends StatelessWidget {
 }
 
 class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.gpsActive, required this.recording});
-  final bool gpsActive;
+  const _StatusLine({required this.signal, required this.recording});
+  final GpsSignal signal;
   final bool recording;
 
   @override
   Widget build(BuildContext context) {
-    if (!gpsActive) {
-      return const Text(
-        'GPS idle',
-        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+    if (signal == GpsSignal.off || signal == GpsSignal.denied) {
+      return Text(
+        gpsSignalLabel(signal),
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
       );
     }
+    // Green only once fixes are actually arriving — amber while waiting, red
+    // when the feed dropped. A frozen speedo then explains itself.
+    final dot = switch (signal) {
+      GpsSignal.live => _speedGreen,
+      GpsSignal.acquiring => _avgOrange,
+      _ => _speedOver,
+    };
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
           width: 8,
           height: 8,
-          decoration: const BoxDecoration(
-            color: _speedGreen,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        const Text(
-          'GPS active',
-          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        Text(
+          gpsSignalLabel(signal),
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
         ),
         if (recording) ...[
           const SizedBox(width: 10),

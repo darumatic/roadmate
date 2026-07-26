@@ -35,8 +35,7 @@ class FakeSiteRepository implements SiteRepository {
   Stream<List<Site>> watchSites() => Stream.value(sites);
 
   @override
-  Stream<List<SiteReport>> watchAllRecentReports() =>
-      Stream.value(const []);
+  Stream<List<SiteReport>> watchAllRecentReports() => Stream.value(const []);
 
   @override
   Future<void> vote(String siteId, SiteStatus status) async {}

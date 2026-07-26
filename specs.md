@@ -57,6 +57,18 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   the admin feed resolves site names from one cached sites fetch. Rules: the
   collection-group `reports` read was widened from admin-only to public — per-doc
   reads were already public, so nothing new is exposed.
+- **Trip time is wall-clock time (2026-07, from a 0.1.47 iOS report)** — the Trip
+  Logger's ELAPSED readout was derived from GPS *sample* time (last fix − first
+  fix) and only repainted when a fix arrived. Recorded indoors, where no fix ever
+  landed, it sat frozen on "0m 0s" for the whole trip. Now the running card ticks
+  once a second off `clock.now() − tripStartedAt`, and `stopAndSave` stores that
+  same wall-clock duration (and averages the distance over it) so the saved tile
+  agrees with what the driver watched. Time is read through `package:clock` so
+  the ticker is testable without waiting in real time. Related: the status line
+  no longer shows a green "GPS active" merely because the stream was subscribed —
+  `GpsSignal` (`lib/services/gps_signal.dart`) distinguishes *waiting for a first
+  fix* (amber) and *stream errored* (red), so a still speedometer explains itself
+  instead of looking broken.
 
 ## Architecture (as built)
 

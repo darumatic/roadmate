@@ -34,8 +34,9 @@ void main() {
   });
 
   test('launch screen storyboard uses the dark background, not white', () {
-    final storyboard =
-        File('ios/Runner/Base.lproj/LaunchScreen.storyboard').readAsStringSync();
+    final storyboard = File(
+      'ios/Runner/Base.lproj/LaunchScreen.storyboard',
+    ).readAsStringSync();
     expect(storyboard, contains('image="LaunchImage"'));
     expect(
       storyboard,

@@ -186,48 +186,45 @@ void main() {
         },
       );
 
-      test(
-        '5 actions succeed, the 6th is rate-limited and changes nothing '
-        '(issue #15 redux)',
-        () async {
-          await repo.addSite(_site('site-1'));
-          await repo.addSite(_site('site-2'));
+      test('5 actions succeed, the 6th is rate-limited and changes nothing '
+          '(issue #15 redux)', () async {
+        await repo.addSite(_site('site-1'));
+        await repo.addSite(_site('site-2'));
 
-          // 5 mixed actions across two sites — the window is global.
-          await repo.vote('site-1', SiteStatus.blitz);
-          await repo.vote('site-1', SiteStatus.open);
-          await repo.report('site-1', ActivityReportType.delays);
-          await repo.report('site-2', ActivityReportType.longQueue);
-          await repo.vote('site-2', SiteStatus.closed);
+        // 5 mixed actions across two sites — the window is global.
+        await repo.vote('site-1', SiteStatus.blitz);
+        await repo.vote('site-1', SiteStatus.open);
+        await repo.report('site-1', ActivityReportType.delays);
+        await repo.report('site-2', ActivityReportType.longQueue);
+        await repo.vote('site-2', SiteStatus.closed);
 
-          final uid = auth.currentUser!.uid;
-          final ledger = await firestore.doc('users/$uid/limits/actions').get();
-          expect(ledger.data()?['count'], 5);
+        final uid = auth.currentUser!.uid;
+        final ledger = await firestore.doc('users/$uid/limits/actions').get();
+        expect(ledger.data()?['count'], 5);
 
-          await expectLater(
-            repo.vote('site-1', SiteStatus.open),
-            throwsA(isA<RateLimitedException>()),
-          );
-          await expectLater(
-            repo.report('site-1', ActivityReportType.policePresent),
-            throwsA(isA<RateLimitedException>()),
-          );
+        await expectLater(
+          repo.vote('site-1', SiteStatus.open),
+          throwsA(isA<RateLimitedException>()),
+        );
+        await expectLater(
+          repo.report('site-1', ActivityReportType.policePresent),
+          throwsA(isA<RateLimitedException>()),
+        );
 
-          // The denied batches were atomic: no counter moved, no report or
-          // ledger increment landed.
-          final site1 = await firestore.collection('sites').doc('site-1').get();
-          expect(site1.data()?['blitzVotes'], 1);
-          expect(site1.data()?['openVotes'], 1);
-          final reports = await firestore
-              .collection('sites')
-              .doc('site-1')
-              .collection('reports')
-              .get();
-          expect(reports.docs, hasLength(3));
-          final after = await firestore.doc('users/$uid/limits/actions').get();
-          expect(after.data()?['count'], 5);
-        },
-      );
+        // The denied batches were atomic: no counter moved, no report or
+        // ledger increment landed.
+        final site1 = await firestore.collection('sites').doc('site-1').get();
+        expect(site1.data()?['blitzVotes'], 1);
+        expect(site1.data()?['openVotes'], 1);
+        final reports = await firestore
+            .collection('sites')
+            .doc('site-1')
+            .collection('reports')
+            .get();
+        expect(reports.docs, hasLength(3));
+        final after = await firestore.doc('users/$uid/limits/actions').get();
+        expect(after.data()?['count'], 5);
+      });
     },
   );
 }

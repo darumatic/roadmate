@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -102,7 +105,10 @@ class TripLoggerCard extends ConsumerWidget {
   }
 }
 
-class _InProgress extends StatelessWidget {
+/// The live card. Its clock is driven by a 1 s ticker off the wall clock, not
+/// by GPS fixes: parked (or indoors) the stream can go minutes without a fix,
+/// and the elapsed readout used to sit frozen at "0m 0s" for the whole trip.
+class _InProgress extends StatefulWidget {
   const _InProgress({
     required this.stats,
     required this.startedAt,
@@ -113,8 +119,34 @@ class _InProgress extends StatelessWidget {
   final TripController controller;
 
   @override
+  State<_InProgress> createState() => _InProgressState();
+}
+
+class _InProgressState extends State<_InProgress> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final started = startedAt;
+    final stats = widget.stats;
+    final controller = widget.controller;
+    final started = widget.startedAt;
+    final elapsed = started == null
+        ? Duration.zero
+        : clock.now().difference(started);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: _tripGreen.withValues(alpha: 0.06),
@@ -165,7 +197,10 @@ class _InProgress extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Row(
                   children: [
-                    _Metric(value: _elapsed(stats.duration), label: 'ELAPSED'),
+                    _Metric(
+                      value: formatTripElapsed(elapsed),
+                      label: 'ELAPSED',
+                    ),
                     _Divider(),
                     _Metric(
                       value: '${stats.distanceKm.toStringAsFixed(2)} km',
@@ -368,12 +403,4 @@ class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       Container(width: 1, height: 34, color: AppTheme.border);
-}
-
-String _elapsed(Duration d) {
-  final h = d.inHours;
-  final m = d.inMinutes.remainder(60);
-  final s = d.inSeconds.remainder(60);
-  if (h > 0) return '${h}h ${m}m';
-  return '${m}m ${s}s';
 }

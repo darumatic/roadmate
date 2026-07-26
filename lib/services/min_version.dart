@@ -63,10 +63,7 @@ List<StoreLink> storeLinksFor({
 /// Whether the "Support the app" (Buy Me a Coffee) donation UI may be shown.
 /// Hidden in the native iOS app: App Store guideline 3.1.1 forbids external
 /// donation mechanisms (rejection of 0.1.38). Android and web keep it.
-bool showDonationLink({
-  required bool isWeb,
-  required TargetPlatform platform,
-}) {
+bool showDonationLink({required bool isWeb, required TargetPlatform platform}) {
   return isWeb || platform != TargetPlatform.iOS;
 }
 

@@ -437,9 +437,7 @@ void main() {
     expect(find.textContaining('Could not submit'), findsNothing);
   });
 
-  testWidgets('rate-limited report shows the cooldown message', (
-    tester,
-  ) async {
+  testWidgets('rate-limited report shows the cooldown message', (tester) async {
     final repo = FakeSiteRepository()
       ..reportError = const RateLimitedException();
     await _pump(tester, repo);

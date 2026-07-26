@@ -168,7 +168,9 @@ List<CameraRoute> parseCameraTimesCsv(String csv) {
     if (segment.length != 2) {
       throw FormatException('Bad segment name: ${cells[1]}');
     }
-    legsByRoute.putIfAbsent(cells[0], () => []).add(
+    legsByRoute
+        .putIfAbsent(cells[0], () => [])
+        .add(
           CameraLeg(
             from: segment[0],
             to: segment[1],

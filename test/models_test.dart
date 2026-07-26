@@ -184,11 +184,11 @@ void main() {
     });
 
     test('accepts all four compass directions', () {
-      Site siteWithDirection(String? raw) => Site.fromNhvrStation({
-        'site_id': 'X-1',
-        'location': 'Somewhere',
-        'direction': raw,
-      }, state: AusState.nsw, facilityType: 'HVSS');
+      Site siteWithDirection(String? raw) => Site.fromNhvrStation(
+        {'site_id': 'X-1', 'location': 'Somewhere', 'direction': raw},
+        state: AusState.nsw,
+        facilityType: 'HVSS',
+      );
 
       expect(siteWithDirection('Northbound').direction, 'northbound');
       expect(siteWithDirection('Southbound').direction, 'southbound');

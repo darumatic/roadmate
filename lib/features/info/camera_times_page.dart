@@ -72,8 +72,7 @@ class CameraCorridorPage extends ConsumerStatefulWidget {
   final List<CameraCorridor>? corridors;
 
   @override
-  ConsumerState<CameraCorridorPage> createState() =>
-      _CameraCorridorPageState();
+  ConsumerState<CameraCorridorPage> createState() => _CameraCorridorPageState();
 }
 
 class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
@@ -84,13 +83,16 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
 
   void _startTimer(CameraRoute route, {LegRange? range}) {
     final end = range?.end ?? route.legs.length - 1;
-    ref.read(cameraTimerProvider.notifier).start(
+    ref
+        .read(cameraTimerProvider.notifier)
+        .start(
           targetTitle: range == null
               ? 'Full run · ${route.title}'
               : route.rangeTitle(range),
           distanceKm: range == null ? route.totalKm : route.rangeKm(range),
-          expectedSeconds:
-              range == null ? route.totalSeconds : route.rangeSeconds(range),
+          expectedSeconds: range == null
+              ? route.totalSeconds
+              : route.rangeSeconds(range),
           // The legs still ahead, so the panel can roll to the next camera.
           upcoming: route.legs.sublist(end + 1),
         );
@@ -112,7 +114,8 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
             InfoBlock(
               icon: Icons.error_outline_rounded,
               title: 'Route not found',
-              body: 'This camera route does not exist. Go back and pick one '
+              body:
+                  'This camera route does not exist. Go back and pick one '
                   'from the list.',
             ),
           ];
@@ -138,8 +141,7 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
               }),
               showSelectedIcon: false,
               style: SegmentedButton.styleFrom(
-                selectedBackgroundColor:
-                    AppTheme.accent.withValues(alpha: 0.2),
+                selectedBackgroundColor: AppTheme.accent.withValues(alpha: 0.2),
                 selectedForegroundColor: AppTheme.accent,
                 foregroundColor: AppTheme.textSecondary,
                 side: const BorderSide(color: AppTheme.border),
@@ -161,9 +163,8 @@ class _CameraCorridorPageState extends ConsumerState<CameraCorridorPage> {
             _LegRow(
               leg: leg,
               selected: selection?.contains(i) ?? false,
-              onTap: () => setState(
-                () => _selection = nextLegSelection(_selection, i),
-              ),
+              onTap: () =>
+                  setState(() => _selection = nextLegSelection(_selection, i)),
               onTimeMe: () => _startTimer(route, range: LegRange(i, i)),
             ),
           if (selection != null)
@@ -236,9 +237,9 @@ class _WhenLoaded extends StatelessWidget {
   }
 
   Widget _page(BuildContext context, List<CameraCorridor> data) => InfoSubPage(
-        title: titleOf?.call(data) ?? title,
-        children: builder(context, data),
-      );
+    title: titleOf?.call(data) ?? title,
+    children: builder(context, data),
+  );
 }
 
 /// One camera-to-camera leg: "From → To", distance (+ slow zone), time, and
@@ -266,9 +267,7 @@ class _LegRow extends StatelessWidget {
         color: selected
             ? AppTheme.accent.withValues(alpha: 0.10)
             : AppTheme.surface,
-        border: Border.all(
-          color: selected ? AppTheme.accent : AppTheme.border,
-        ),
+        border: Border.all(color: selected ? AppTheme.accent : AppTheme.border),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Material(

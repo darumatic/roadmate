@@ -5,10 +5,7 @@ import 'package:roadmate/services/min_version.dart';
 void main() {
   group('storeLinksFor', () {
     test('web offers both stores', () {
-      final links = storeLinksFor(
-        isWeb: true,
-        platform: TargetPlatform.linux,
-      );
+      final links = storeLinksFor(isWeb: true, platform: TargetPlatform.linux);
       expect(links, const [kPlayStoreLink, kAppStoreLink]);
     });
 
@@ -21,10 +18,7 @@ void main() {
     });
 
     test('iOS offers only the App Store', () {
-      final links = storeLinksFor(
-        isWeb: false,
-        platform: TargetPlatform.iOS,
-      );
+      final links = storeLinksFor(isWeb: false, platform: TargetPlatform.iOS);
       expect(links, const [kAppStoreLink]);
     });
 

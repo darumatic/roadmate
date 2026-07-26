@@ -23,17 +23,21 @@ void main() {
     FirebaseException fb(String code) =>
         FirebaseException(plugin: 'cloud_firestore', code: code);
 
-    test('rules denial and missing ledger doc both trigger the other shape',
-        () {
-      expect(shouldTryOtherShape(fb('permission-denied')), isTrue);
-      expect(shouldTryOtherShape(fb('not-found')), isTrue);
-    });
+    test(
+      'rules denial and missing ledger doc both trigger the other shape',
+      () {
+        expect(shouldTryOtherShape(fb('permission-denied')), isTrue);
+        expect(shouldTryOtherShape(fb('not-found')), isTrue);
+      },
+    );
 
-    test('transient or unrelated failures are not retried as the other shape',
-        () {
-      expect(shouldTryOtherShape(fb('unavailable')), isFalse);
-      expect(shouldTryOtherShape(StateError('boom')), isFalse);
-    });
+    test(
+      'transient or unrelated failures are not retried as the other shape',
+      () {
+        expect(shouldTryOtherShape(fb('unavailable')), isFalse);
+        expect(shouldTryOtherShape(StateError('boom')), isFalse);
+      },
+    );
 
     test('only permission-denied counts as a rules denial', () {
       expect(isRulesDenial(fb('permission-denied')), isTrue);
@@ -43,8 +47,7 @@ void main() {
     });
   });
 
-  test('constants match the firestore.rules enforcement (5 per 5 minutes)',
-      () {
+  test('constants match the firestore.rules enforcement (5 per 5 minutes)', () {
     expect(kMaxActionsPerWindow, 5);
     expect(kRateLimitWindow, const Duration(minutes: 5));
   });

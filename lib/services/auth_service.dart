@@ -29,7 +29,7 @@ const initialAdminEmails = {
   'r3procamel@gmail.com',
   'hello@adrian2045.com',
   'adrian@darumatic.com',
-  'leandropervieux@hotmail.com',  
+  'leandropervieux@hotmail.com',
 };
 
 enum AppUserRole { anonymous, truckie, admin }

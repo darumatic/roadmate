@@ -130,4 +130,43 @@ void main() {
       expect(stats.duration, const Duration(seconds: 30));
     });
   });
+
+  group('avgKmhOver', () {
+    test('divides distance by wall-clock time', () {
+      expect(
+        avgKmhOver(distanceKm: 50, elapsed: const Duration(minutes: 30)),
+        closeTo(100, 0.001),
+      );
+    });
+
+    test('a zero or negative clock can never produce an infinite average', () {
+      expect(avgKmhOver(distanceKm: 5, elapsed: Duration.zero), 0);
+      expect(
+        avgKmhOver(distanceKm: 5, elapsed: const Duration(seconds: -10)),
+        0,
+      );
+    });
+  });
+
+  group('formatTripElapsed', () {
+    test('counts seconds from the first tick', () {
+      expect(formatTripElapsed(Duration.zero), '0m 0s');
+      expect(formatTripElapsed(const Duration(seconds: 7)), '0m 7s');
+      expect(
+        formatTripElapsed(const Duration(minutes: 12, seconds: 30)),
+        '12m 30s',
+      );
+    });
+
+    test('switches to hours and minutes past the hour', () {
+      expect(
+        formatTripElapsed(const Duration(hours: 2, minutes: 5, seconds: 40)),
+        '2h 5m',
+      );
+    });
+
+    test('a clock skewed backwards shows zero, never a negative trip', () {
+      expect(formatTripElapsed(const Duration(seconds: -5)), '0m 0s');
+    });
+  });
 }

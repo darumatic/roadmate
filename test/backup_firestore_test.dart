@@ -9,15 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// part of `flutter test` so the release cycle covers it too.
 void main() {
   test('backup_firestore.py self-test suite passes', () {
-    final result = Process.runSync(
-      'python3',
-      ['scripts/backup_firestore_test.py'],
-      workingDirectory: Directory.current.path,
-    );
+    final result = Process.runSync('python3', [
+      'scripts/backup_firestore_test.py',
+    ], workingDirectory: Directory.current.path);
     expect(
       result.exitCode,
       0,
-      reason: 'scripts/backup_firestore_test.py failed:\n'
+      reason:
+          'scripts/backup_firestore_test.py failed:\n'
           '${result.stdout}\n${result.stderr}',
     );
   });

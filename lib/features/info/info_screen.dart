@@ -13,11 +13,7 @@ import '../../theme/app_theme.dart';
 /// sub-page within the tab — Useful Links, About, Credits, Support the app,
 /// Contact, Share, Disclaimer.
 class InfoScreen extends StatelessWidget {
-  const InfoScreen({
-    super.key,
-    this.isWeb = kIsWeb,
-    this.platform,
-  });
+  const InfoScreen({super.key, this.isWeb = kIsWeb, this.platform});
 
   /// Overridable in widget tests (which always run on the VM).
   final bool isWeb;

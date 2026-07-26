@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../models/trip.dart';
+import '../../services/gps_signal.dart';
 import '../../services/providers.dart';
 import '../../services/speed_alert.dart';
 import '../../services/trip_history_store.dart';
@@ -24,6 +26,8 @@ class TripState {
     this.avgStats = const TripStats.initial(),
     this.tripStats,
     this.tripStartedAt,
+    this.lastFixAt,
+    this.gpsErrored = false,
   });
 
   final GpsStatus gps;
@@ -38,8 +42,24 @@ class TripState {
   /// Wall-clock time the recording trip started.
   final DateTime? tripStartedAt;
 
+  /// When the last fix landed — null while the stream is subscribed but silent
+  /// (parked indoors). Kept separate from [avgStats] so RESET doesn't make the
+  /// status line claim we're waiting for a first fix again.
+  final DateTime? lastFixAt;
+
+  /// The position stream reported an error and hasn't recovered with a fix.
+  final bool gpsErrored;
+
   bool get isRecording => tripStats != null;
   double get currentSpeedKmh => avgStats.currentSpeedKmh;
+
+  /// What the status line should tell the driver about the GPS feed.
+  GpsSignal get signal => gpsSignal(
+    subscribed: gps == GpsStatus.active,
+    denied: gps == GpsStatus.denied,
+    hasFix: lastFixAt != null,
+    errored: gpsErrored,
+  );
 
   static const _unset = Object();
 
@@ -48,6 +68,8 @@ class TripState {
     TripStats? avgStats,
     Object? tripStats = _unset,
     Object? tripStartedAt = _unset,
+    Object? lastFixAt = _unset,
+    bool? gpsErrored,
   }) {
     return TripState(
       gps: gps ?? this.gps,
@@ -58,6 +80,10 @@ class TripState {
       tripStartedAt: identical(tripStartedAt, _unset)
           ? this.tripStartedAt
           : tripStartedAt as DateTime?,
+      lastFixAt: identical(lastFixAt, _unset)
+          ? this.lastFixAt
+          : lastFixAt as DateTime?,
+      gpsErrored: gpsErrored ?? this.gpsErrored,
     );
   }
 }
@@ -91,7 +117,7 @@ class TripController extends Notifier<TripState> {
   /// Re-prompts for permission after a denial (the Denied card's button).
   Future<void> retry() {
     if (_sub != null) return Future.value();
-    state = state.copyWith(gps: GpsStatus.off);
+    state = state.copyWith(gps: GpsStatus.off, gpsErrored: false);
     return ensureStarted();
   }
 
@@ -114,8 +140,10 @@ class TripController extends Notifier<TripState> {
     // first new fix isn't compared against the last one before the gap.
     ref.read(proximityControllerProvider.notifier).resetTracking();
     // A stream error (GPS dropout, service toggled) must not become an
-    // unhandled exception; the subscription stays live and recovers.
-    _sub = source.positions().listen(_onPosition, onError: (Object _) {});
+    // unhandled exception; the subscription stays live and recovers. It must
+    // not be swallowed either — a silently dead stream under a green "GPS
+    // active" badge is exactly what made the frozen-readout report a mystery.
+    _sub = source.positions().listen(_onPosition, onError: _onStreamError);
     state = state.copyWith(gps: GpsStatus.active);
   }
 
@@ -128,12 +156,13 @@ class TripController extends Notifier<TripState> {
 
   /// Begins recording a trip. GPS keeps running regardless. (The screen stays
   /// awake app-wide via KeepAwakeScope, trip or no trip — issue #14.)
-  Future<void> startTrip() async {
+  /// [startedAt] is injectable for tests.
+  Future<void> startTrip({DateTime? startedAt}) async {
     await ensureStarted();
     if (state.gps != GpsStatus.active || state.isRecording) return;
     state = state.copyWith(
       tripStats: const TripStats.initial(),
-      tripStartedAt: DateTime.now(),
+      tripStartedAt: startedAt ?? clock.now(),
     );
   }
 
@@ -147,17 +176,20 @@ class TripController extends Notifier<TripState> {
     state = state.copyWith(tripStats: null, tripStartedAt: null);
 
     // Save even if no GPS fix ever arrived (the design keeps zero-stat trips).
-    // Without samples the GPS duration is zero, so fall back to wall clock.
+    // Duration is wall clock from Start to Stop — the same clock the running
+    // card shows. GPS-sample span would disagree with it (it begins at the
+    // first fix, which may be minutes late or never come at all).
     if (startedAt != null) {
+      final elapsed = clock.now().difference(startedAt);
       final trip = Trip(
         id: startedAt.microsecondsSinceEpoch.toString(),
         startedAt: startedAt,
-        duration: s.hasStarted
-            ? s.duration
-            : DateTime.now().difference(startedAt),
+        duration: elapsed,
         distanceKm: s.distanceKm,
         maxSpeedKmh: s.maxSpeedKmh,
-        avgSpeedKmh: s.avgSpeedKmh,
+        // Averaged over the same elapsed time the tile displays, so the tile
+        // is internally consistent.
+        avgSpeedKmh: avgKmhOver(distanceKm: s.distanceKm, elapsed: elapsed),
       );
       try {
         await ref.read(tripHistoryStoreProvider).save(trip);
@@ -185,6 +217,8 @@ class TripController extends Notifier<TripState> {
       gps: GpsStatus.active,
       avgStats: avg,
       tripStats: state.tripStats?.addSample(sample),
+      lastFixAt: clock.now(),
+      gpsErrored: false, // a fix means the feed recovered
     );
     // Over-limit warning runs whenever GPS is live, trip or no trip (#6).
     _maybeAlert(avg.currentSpeedKmh);
@@ -197,6 +231,15 @@ class TripController extends Notifier<TripState> {
           lng: pos.longitude,
           speedKmh: avg.currentSpeedKmh,
         );
+  }
+
+  /// The position stream failed. The subscription stays alive (geolocator
+  /// recovers on its own), but the driver is told the feed is down instead of
+  /// staring at a green badge over a frozen speedo.
+  void _onStreamError(Object error) {
+    if (_sub == null) return;
+    debugPrint('RoadMate: position stream error: $error');
+    state = state.copyWith(gpsErrored: true);
   }
 
   void _maybeAlert(double speedKmh) {

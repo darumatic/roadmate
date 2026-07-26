@@ -24,7 +24,10 @@ void main() {
 
     test('a blank or missing note maps to null (field cleared)', () {
       expect(
-        activityReportEditData(ActivityReportType.delays, '   ')['activityNote'],
+        activityReportEditData(
+          ActivityReportType.delays,
+          '   ',
+        )['activityNote'],
         isNull,
       );
       expect(

@@ -64,12 +64,14 @@ void main() {
       expect(isBelowMinimum(current: '0.1.31', minimum: '0.1.30'), isFalse);
     });
 
-    test('fails open on absent or malformed minimum — never bricks the app',
-        () {
-      expect(isBelowMinimum(current: '0.1.29', minimum: null), isFalse);
-      expect(isBelowMinimum(current: '0.1.29', minimum: '  '), isFalse);
-      expect(isBelowMinimum(current: '0.1.29', minimum: 'garbage'), isFalse);
-    });
+    test(
+      'fails open on absent or malformed minimum — never bricks the app',
+      () {
+        expect(isBelowMinimum(current: '0.1.29', minimum: null), isFalse);
+        expect(isBelowMinimum(current: '0.1.29', minimum: '  '), isFalse);
+        expect(isBelowMinimum(current: '0.1.29', minimum: 'garbage'), isFalse);
+      },
+    );
   });
 
   testWidgets('AppVersionLabel renders the baked-in version', (tester) async {

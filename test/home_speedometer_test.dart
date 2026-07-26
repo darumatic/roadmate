@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +18,9 @@ import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/models/trip.dart';
 import 'package:roadmate/services/alert_player.dart';
+import 'package:roadmate/services/gps_signal.dart';
 import 'package:roadmate/services/location_source.dart';
+import 'package:roadmate/services/trip_stats.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/trip_history_store.dart';
@@ -222,11 +225,51 @@ void main() {
     expect(find.text('Tracking'), findsNothing);
 
     await tester.tap(find.text('Start New Trip'));
-    await tester.pumpAndSettle();
+    // pump, not pumpAndSettle: the in-progress card runs a 1 s clock ticker
+    // that never lets the tree go idle.
+    await tester.pump();
 
     expect(find.text('Trip in progress'), findsOneWidget);
     expect(find.text('Stop & Save Trip'), findsOneWidget);
     expect(find.text('Tracking'), findsOneWidget);
+
+    // Dispose to cancel the ticker.
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // The 0.1.47 bug report: recording indoors, ELAPSED sat on "0m 0s" for the
+  // whole trip because it was derived from GPS-sample time, and no fix ever
+  // arrived. The clock must run on wall time from the moment Start is pressed.
+  testWidgets('the trip clock ticks on wall time even with no GPS fix', (
+    tester,
+  ) async {
+    var now = DateTime(2026, 7, 26, 21, 49);
+    await withClock(Clock(() => now), () async {
+      final loc = FakeLocationSource();
+      await _pump(tester, location: loc);
+
+      // Subscribed, but not one fix has landed — say so instead of claiming
+      // "GPS active" over a frozen readout.
+      expect(find.text('Waiting for GPS fix…'), findsOneWidget);
+      expect(find.text('GPS active'), findsNothing);
+
+      await tester.tap(find.text('Start New Trip'));
+      await tester.pump();
+      expect(find.text('Trip in progress'), findsOneWidget);
+      expect(find.text('0m 0s'), findsOneWidget);
+
+      now = now.add(const Duration(seconds: 16));
+      await tester.pump(const Duration(seconds: 1)); // ticker fires
+      expect(find.text('0m 16s'), findsOneWidget);
+
+      now = now.add(const Duration(minutes: 2));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('2m 16s'), findsOneWidget);
+      // Distance and top speed correctly stay at zero — nothing was measured.
+      expect(find.text('0.00 km'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   testWidgets('camera Time me session shows on the Home speedometer', (
@@ -446,6 +489,94 @@ void main() {
     ); // wall-clock fallback
     expect(container.read(tripControllerProvider).isRecording, isFalse);
   });
+
+  test('a saved trip is timed on the wall clock, not on GPS-fix span', () async {
+    var now = DateTime(2026, 7, 26, 21, 49);
+    await withClock(Clock(() => now), () async {
+      final loc = FakeLocationSource();
+      final store = FakeTripStore();
+      final container = ProviderContainer(
+        overrides: [
+          locationSourceProvider.overrideWithValue(loc),
+          alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+          tripHistoryStoreProvider.overrideWithValue(store),
+          siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(loc.controller.close);
+
+      final controller = container.read(tripControllerProvider.notifier);
+      await controller.startTrip();
+      // A cold GPS takes a minute to produce its first fix, so the sample span
+      // is a minute shorter than the trip the driver actually made.
+      now = now.add(const Duration(minutes: 1));
+      loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+      await Future<void>.delayed(Duration.zero);
+      now = now.add(const Duration(minutes: 1));
+      loc.emit(
+        _pos(-33.01, 151.0, since: const Duration(seconds: 60), speed: 25),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      await controller.stopAndSave();
+
+      final trip = store.saved.single;
+      expect(trip.duration, const Duration(minutes: 2));
+      // The average is over that same clock, so the saved tile is consistent.
+      expect(
+        trip.avgSpeedKmh,
+        closeTo(
+          avgKmhOver(
+            distanceKm: trip.distanceKm,
+            elapsed: const Duration(minutes: 2),
+          ),
+          0.001,
+        ),
+      );
+    });
+  });
+
+  test(
+    'the GPS signal reports waiting, then live, then lost on error',
+    () async {
+      final loc = FakeLocationSource();
+      final container = ProviderContainer(
+        overrides: [
+          locationSourceProvider.overrideWithValue(loc),
+          alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+          tripHistoryStoreProvider.overrideWithValue(FakeTripStore()),
+          siteRepositoryProvider.overrideWithValue(FakeSites(const [])),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(loc.controller.close);
+
+      expect(container.read(tripControllerProvider).signal, GpsSignal.off);
+
+      await container.read(tripControllerProvider.notifier).ensureStarted();
+      expect(
+        container.read(tripControllerProvider).signal,
+        GpsSignal.acquiring,
+      );
+
+      loc.emit(_pos(-33.00, 151.0, since: Duration.zero, speed: 0));
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(tripControllerProvider).signal, GpsSignal.live);
+
+      // A dropout must not be swallowed under a green badge.
+      loc.controller.addError(Exception('location services turned off'));
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(tripControllerProvider).signal, GpsSignal.lost);
+
+      // Recovery: the next fix clears it.
+      loc.emit(
+        _pos(-33.00, 151.0, since: const Duration(seconds: 30), speed: 0),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(tripControllerProvider).signal, GpsSignal.live);
+    },
+  );
 
   test('stop returns to idle and saves even if the GPS cancel hangs', () async {
     final loc = HangingCancelLocationSource();

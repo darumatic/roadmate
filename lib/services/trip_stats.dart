@@ -1,5 +1,24 @@
 import 'geo.dart' as geo;
 
+/// Average speed (km/h) for [distanceKm] covered over [elapsed]. Zero when no
+/// time (or negative time) has passed, so a degenerate clock can't produce an
+/// infinite readout.
+double avgKmhOver({required double distanceKm, required Duration elapsed}) {
+  final seconds = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+  if (seconds <= 0) return 0;
+  return distanceKm / (seconds / 3600.0);
+}
+
+/// The running trip clock: "0m 7s", "12m 30s", "2h 5m". Counts wall-clock time
+/// since the driver pressed Start — never GPS-fix time, which stands still
+/// while the vehicle is parked or the sky is blocked.
+String formatTripElapsed(Duration d) {
+  if (d.isNegative) return '0m 0s';
+  final h = d.inHours;
+  if (h > 0) return '${h}h ${d.inMinutes.remainder(60)}m';
+  return '${d.inMinutes}m ${d.inSeconds.remainder(60)}s';
+}
+
 /// A single GPS fix fed into the trip accumulator. Kept Flutter/plugin-free so
 /// the trip maths can be unit-tested without a device (see the repo's pure-logic
 /// convention). [speedMps] is the platform GPS speed in metres/second when
@@ -62,11 +81,8 @@ class TripStats {
 
   /// Total distance divided by total elapsed time (trip-computer average;
   /// includes time spent stopped). Zero until time has elapsed.
-  double get avgSpeedKmh {
-    final seconds = duration.inMicroseconds / Duration.microsecondsPerSecond;
-    if (seconds <= 0) return 0;
-    return distanceKm / (seconds / 3600.0);
-  }
+  double get avgSpeedKmh =>
+      avgKmhOver(distanceKm: distanceKm, elapsed: duration);
 
   /// Folds [s] into the trip and returns the updated stats. The first sample
   /// only seeds the start position/time (no distance or speed yet).

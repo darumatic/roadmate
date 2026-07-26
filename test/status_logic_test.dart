@@ -151,10 +151,9 @@ void main() {
         _activity('fresh', now.subtract(const Duration(hours: 9, minutes: 59))),
         _activity('stale', now.subtract(const Duration(hours: 10, minutes: 1))),
       ];
-      expect(
-        recentActivityReports(reports, now: now).map((r) => r.id),
-        ['fresh'],
-      );
+      expect(recentActivityReports(reports, now: now).map((r) => r.id), [
+        'fresh',
+      ]);
     });
 
     test('drops status-only reports even when recent', () {
@@ -205,10 +204,9 @@ void main() {
         _activity('stale', now.subtract(const Duration(hours: 10, minutes: 1))),
         _activity('fresh', now.subtract(const Duration(hours: 9, minutes: 59))),
       ];
-      expect(
-        reportsWithinWindow(reports, now: now).map((r) => r.id),
-        ['fresh'],
-      );
+      expect(reportsWithinWindow(reports, now: now).map((r) => r.id), [
+        'fresh',
+      ]);
     });
 
     test('respects a custom window', () {
