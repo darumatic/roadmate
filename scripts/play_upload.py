@@ -30,6 +30,9 @@ UPLOAD_BASE = (
     "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/"
     f"applications/{PKG}"
 )
+# Play rejects a release whose notes exceed this, and it rejects it at :commit —
+# i.e. *after* the 59 MB bundle has already been uploaded. Check before that.
+PLAY_NOTES_MAX = 500
 DEFAULT_NOTES_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "store",
@@ -127,15 +130,31 @@ def upload_bundle(token: str, edit_id: str, aab_path: str) -> dict:
         return json.load(r)
 
 
-def build_track(name: str, version_code: int, notes: str, langs: list) -> dict:
-    """Production-track payload: full rollout of one release."""
+def build_track(
+    name: str,
+    version_code: int,
+    notes: str,
+    langs: list,
+    track: str = "production",
+    status: str = "completed",
+) -> dict:
+    """Track payload: one release on `track` with rollout state `status`.
+
+    `track` is the Play track id — "production", "internal", "alpha" (closed) or
+    "beta" (open). Defaults to production so release_android.sh is unaffected.
+
+    `status` is "completed" (full rollout) or "draft" (bundle saved to the track
+    but not released). A draft is the only way to *persist* a bundle when Play is
+    still blocking the commit — e.g. an undeclared foreground-service permission,
+    whose declaration form only appears once Play has seen the uploaded bundle.
+    """
     return {
-        "track": "production",
+        "track": track,
         "releases": [
             {
                 "name": name,
                 "versionCodes": [str(version_code)],
-                "status": "completed",
+                "status": status,
                 "releaseNotes": [
                     {"language": lang, "text": notes} for lang in langs
                 ],
@@ -152,6 +171,32 @@ def self_test() -> None:
     assert release["status"] == "completed"
     assert [n["language"] for n in release["releaseNotes"]] == ["en-US", "en-AU"]
 
+    # A non-production track must change ONLY the track id — a testing upload
+    # that silently kept status/versionCodes from production would be a
+    # production rollout wearing the wrong label.
+    internal = build_track("1.2.3 (45)", 45, "notes", ["en-US"], track="internal")
+    assert internal["track"] == "internal"
+    assert internal["releases"][0]["versionCodes"] == ["45"]
+    assert internal["releases"][0]["status"] == "completed"
+
+    # A draft must never roll out to users — it exists only to persist the bundle.
+    draft = build_track(
+        "1.2.3 (45)", 45, "notes", ["en-US"], track="internal", status="draft"
+    )
+    assert draft["releases"][0]["status"] == "draft"
+    assert draft["track"] == "internal"
+
+    # The real notes file, checked here because release_android.sh runs
+    # --self-test before every upload. Play only rejects over-long notes at
+    # :commit, after the bundle is uploaded, so catching it here is the
+    # difference between a fast failure and a wasted 59 MB round trip.
+    with open(DEFAULT_NOTES_FILE) as f:
+        real_notes = f.read().strip()
+    assert len(real_notes) <= PLAY_NOTES_MAX, (
+        f"{DEFAULT_NOTES_FILE} is {len(real_notes)} chars, "
+        f"Play's limit is {PLAY_NOTES_MAX}"
+    )
+
     sa = {"client_email": "x@y.iam.gserviceaccount.com"}
     jwt = make_jwt(sa, 1_700_000_000, lambda d: b"sig")
     header, claims, sig = jwt.split(".")
@@ -167,6 +212,17 @@ def main() -> None:
     p.add_argument("--aab", help="path to the signed .aab")
     p.add_argument("--name", help='release name, e.g. "0.1.40 (40)"')
     p.add_argument("--notes-file", default=DEFAULT_NOTES_FILE)
+    p.add_argument(
+        "--track",
+        default="production",
+        choices=["production", "beta", "alpha", "internal"],
+        help="Play track to roll out to (default: production)",
+    )
+    p.add_argument(
+        "--draft",
+        action="store_true",
+        help="save the bundle to the track as a draft instead of rolling it out",
+    )
     p.add_argument("--self-test", action="store_true")
     args = p.parse_args()
 
@@ -178,6 +234,11 @@ def main() -> None:
 
     with open(args.notes_file) as f:
         notes = f.read().strip()
+    if len(notes) > PLAY_NOTES_MAX:
+        p.error(
+            f"{args.notes_file} is {len(notes)} chars; Play's limit is "
+            f"{PLAY_NOTES_MAX}. Shorten it before uploading."
+        )
 
     token = get_token()
     edit_id = api(token, "POST", "/edits")["id"]
@@ -192,11 +253,24 @@ def main() -> None:
         api(
             token,
             "PUT",
-            f"/edits/{edit_id}/tracks/production",
-            body=build_track(args.name, version_code, notes, langs),
+            f"/edits/{edit_id}/tracks/{args.track}",
+            body=build_track(
+                args.name,
+                version_code,
+                notes,
+                langs,
+                args.track,
+                "draft" if args.draft else "completed",
+            ),
         )
         api(token, "POST", f"/edits/{edit_id}:commit")
-        print(f"==> Released {args.name} to Google Play production ({langs}).")
+        if args.draft:
+            print(
+                f"==> Saved {args.name} as a DRAFT on the {args.track} track "
+                "(not released to anyone)."
+            )
+        else:
+            print(f"==> Released {args.name} to Google Play {args.track} ({langs}).")
     except Exception:
         api(token, "DELETE", f"/edits/{edit_id}")
         print("edit rolled back after failure", file=sys.stderr)
