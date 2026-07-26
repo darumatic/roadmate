@@ -60,4 +60,26 @@ void main() {
       contains('android:name="google_analytics_adid_collection_enabled"'),
     );
   });
+
+  group('release build config', () {
+    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+
+    test(
+      'core library desugaring is enabled for flutter_local_notifications',
+      () {
+        // flutter_local_notifications (the off-screen site-approach alert) needs
+        // java.time desugared. Without these two lines *every* Android release
+        // build fails with "requires core library desugaring to be enabled" —
+        // and nothing else in the suite catches it, because the failure only
+        // surfaces at `flutter build appbundle`, never at `flutter test`.
+        expect(gradle, contains('isCoreLibraryDesugaringEnabled = true'));
+        expect(
+          gradle,
+          contains(
+            'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:',
+          ),
+        );
+      },
+    );
+  });
 }

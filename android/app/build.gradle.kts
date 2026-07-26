@@ -23,6 +23,11 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications (site-approach alerts fire as a system
+        // notification when the app is off screen) uses java.time, which needs
+        // core library desugaring to run on the older API levels we still
+        // support. Without it every release build fails outright.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -61,4 +66,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
