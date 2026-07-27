@@ -95,19 +95,34 @@ Checked in the live Console before the 0.1.48 upload:
   once a bundle declaring `FOREGROUND_SERVICE_LOCATION` has been uploaded. The
   ordering assumed above (declare, then upload) is not possible.
 
-**Likely order instead** (inference, *not* verified — the form was never seen in
-any state, so which tracks trigger it is untested): upload build 48 to a
-**closed/internal testing** track first, on the assumption that any uploaded
-bundle surfaces the declaration without starting a production rollout, fill in the
-text below, attach the video, and only then promote to production. If an
-internal-track upload turns out not to surface it, the only route left is
-uploading to production and completing the declaration while the release sits in
-review. `scripts/play_upload.py` hardcodes
-`"track": "production"` (see `build_track`), so the testing-track upload is a
-manual Console upload unless the script is parameterised.
-
 Production was on **0.1.47 (47)** at the time of checking, so versionCode 48 is
 free.
+
+### Verified 27 Jul 2026 — the declaration blocks the *commit*, not the upload
+
+Attempting the 0.1.50 (50) production upload with `scripts/release_android.sh`
+resolved the ordering question. The Publishing API accepts everything up to the
+final step and then refuses:
+
+```
+HTTP 403 on POST /edits/<id>:commit
+"You must let us know whether your app uses any Foreground Service permissions.."
+PERMISSION_DENIED
+```
+
+So: the **bundle uploads fine** (`POST /edits/{id}/bundles` succeeds, versionCode
+50 accepted) and the track/notes are applied to the edit, but the edit cannot be
+committed until the declaration exists. `play_upload.py` rolls the edit back on
+failure, so nothing is left half-published and the versionCode stays free for a
+retry.
+
+Practical consequence: **no bundle can be released on any track — production,
+internal or draft — until the form is filled in the Console.** The upload attempt
+itself is what tells Play the app declares `FOREGROUND_SERVICE_LOCATION`, so try
+the failing upload first, then go to **Monitor and improve → App content →
+Foreground service permissions**, complete it with the use case, description and
+video URL below, and re-run `./scripts/release_android.sh`. There is still no API
+endpoint for the declaration.
 
 ## Also worth checking while you are in App content
 
