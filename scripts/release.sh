@@ -45,6 +45,23 @@ git push
 echo "==> Build web"
 flutter build web --no-tree-shake-icons
 
+echo "==> Copy hosted media the web build drops"
+# `flutter build web` copies web/ into build/web but silently skips media files
+# (verified 27 Jul 2026: every file in web/ came through except the .mp4). One
+# of them is load-bearing: the Play Console's foreground-service declaration
+# stores https://roadmate.club/fgs-demo.mp4 as the demonstration video, and a
+# 404 there during review sinks the submission. So copy them back, and fail the
+# release rather than deploy a build that would break the link.
+for media in web/*.mp4; do
+  [ -e "$media" ] || continue
+  cp "$media" "build/web/$(basename "$media")"
+  if [ ! -f "build/web/$(basename "$media")" ]; then
+    echo "ERROR: could not stage $media into build/web" >&2
+    exit 1
+  fi
+  echo "    $(basename "$media")"
+done
+
 echo "==> Verify web plugin registrant"
 # Guard against a stale generated registrant (bit us in v1.0.9-v1.0.18: the
 # cached web_plugin_registrant.dart predated shared_preferences being added,

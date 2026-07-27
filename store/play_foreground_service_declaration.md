@@ -3,9 +3,13 @@
 ## Status: filed 27 Jul 2026, with 0.1.50 (50)
 
 - **Use case selected:** Background location updates → **Navigation**.
-- **Video link:** `https://roadmate.club/fgs-demo.mp4`, served from `web/fgs-demo.mp4`
-  (committed, so `flutter build web` keeps the URL alive — do not delete it while
-  the declaration references it).
+- **Video link:** `https://roadmate.club/fgs-demo.mp4`, served from
+  `web/fgs-demo.mp4` (committed). **`flutter build web` silently drops media
+  files** — every other file in `web/` is copied into `build/web`, the `.mp4` is
+  not — so `scripts/release.sh` stages `web/*.mp4` back into `build/web` after
+  the build and fails the release if it can't. Without that step the next web
+  release would 404 the link Play stored, mid-review. Do not delete the file or
+  that copy step while the declaration references it.
 - **The form has no free-text fields.** It is only the use-case checkboxes plus a
   single "Video link" box, so the description text kept below was never asked
   for. Keep it anyway: it is the reasoning behind the answer, and Play has asked
