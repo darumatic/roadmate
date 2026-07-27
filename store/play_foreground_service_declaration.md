@@ -1,5 +1,25 @@
 # Play Console — foreground service declaration (v0.1.48+)
 
+## Status: filed 27 Jul 2026, with 0.1.50 (50)
+
+- **Use case selected:** Background location updates → **Navigation**.
+- **Video link:** `https://roadmate.club/fgs-demo.mp4`, served from `web/fgs-demo.mp4`
+  (committed, so `flutter build web` keeps the URL alive — do not delete it while
+  the declaration references it).
+- **The form has no free-text fields.** It is only the use-case checkboxes plus a
+  single "Video link" box, so the description text kept below was never asked
+  for. Keep it anyway: it is the reasoning behind the answer, and Play has asked
+  for written justification in other flows.
+- **Data safety** updated in the same visit: Location now declares **Precise
+  location** alongside Approximate — collected, not shared, not ephemeral,
+  optional (users choose), purpose *App functionality*. That covers Add Site's
+  GPS capture writing a coordinate to the world-readable `sites/` collection.
+- With the declaration saved, the same `scripts/release_android.sh` upload that
+  had failed went through: **0.1.50 (50) uploaded and set to full rollout on
+  production**, and Publishing overview lists it plus the Data safety change as
+  "Changes in review" (managed publishing off, so it rolls out once review
+  passes). The declaration itself shows under "What you've told us".
+
 Required because `AndroidManifest.xml` declares `FOREGROUND_SERVICE_LOCATION`
 (the location-typed service `geolocator_android` runs so site-approach alerts
 survive the app being backgrounded). Console-only: **Monitor and improve → App
