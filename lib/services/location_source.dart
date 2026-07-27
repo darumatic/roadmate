@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:geolocator/geolocator.dart';
 
+import 'permission_queue.dart';
+
 /// Stream settings for the trip speedometer and the site-approach alert.
 ///
 /// - **Web**: [WebSettings.maximumAge] lets the browser serve a recent cached
@@ -89,7 +91,9 @@ class GeolocatorLocationSource implements LocationSource {
     if (!await Geolocator.isLocationServiceEnabled()) return false;
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
+      // Through the queue: raised while the notification dialog is up, this
+      // request comes straight back denied without ever being shown.
+      perm = await permissionQueue.run(Geolocator.requestPermission);
     }
     return perm != LocationPermission.denied &&
         perm != LocationPermission.deniedForever;

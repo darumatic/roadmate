@@ -42,6 +42,25 @@ en-route site alerts — not to watch a set of static boundaries.
 > batched or delayed updates are as bad as no updates: the alert would fire after
 > the driver has already passed the site.
 
+## Demonstration video — recorded 27 Jul 2026
+
+`scripts/record_fgs_demo.sh` drives an Android emulator through the whole shot
+list and writes a 59 s recording (1080x2400). It has been run once against the
+0.1.49 release APK; convert the .webm to .mp4 before uploading. Re-run it on the
+Mac (emulator + `adb`), not the VPS, and read the header first — the
+choreography (pre-granting POST_NOTIFICATIONS, granting location with a 7 px
+swipe rather than a tap, simulating movement with `geo fix ... <knots>` at a 2 s
+cadence) each cost a spoiled take to work out.
+
+The take covers shots 1-6 plus the optional 7: the approach alert is timed to
+fire while the app is backgrounded, so the shade shows the ongoing service
+notification *and* "Mt Boyce · 3.0 km ahead" together — which is the case for
+the service in one frame. Emulator captures are normally accepted here; if a
+reviewer pushes back, reshoot the same sequence on a real phone.
+
+Upload it unlisted to YouTube (or a publicly readable Drive link) and paste the
+URL into the declaration.
+
 ## Demonstration video — shot list
 
 Keep it under 60 s, no narration needed, screen recording of a real device.

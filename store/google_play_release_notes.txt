@@ -3,3 +3,6 @@
 • Only fires when you're driving toward a site, and at most once per site — no nagging when parked or heading away
 • Turn alerts on or off with the arrow icon on Home
 • Add Site now captures GPS coordinates with one tap
+• Trip timer now counts from the moment you press Start and keeps ticking, even before the first GPS fix arrives
+• The GPS status under the speedometer tells the truth: amber while it waits for a fix, red if the signal drops
+• Fixed: on a fresh install the location prompt could be swallowed behind the notifications prompt, leaving the app on "GPS idle"

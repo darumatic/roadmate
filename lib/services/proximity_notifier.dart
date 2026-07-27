@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/enums.dart';
+import 'permission_queue.dart';
 
 /// System notification for the site-approach prompt, used when the app is not
 /// on screen. Injectable (mirrors `AlertPlayer`/`LocationSource`) so tests
@@ -114,11 +115,17 @@ class LocalProximityNotifier implements ProximityNotifier {
           );
         },
       );
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+      // Queued: the speedometer asks for location on the same first frame, and
+      // Android silently cancels whichever request is raised second.
+      await permissionQueue.run(
+        () async =>
+            _plugin
+                .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin
+                >()
+                ?.requestNotificationsPermission() ??
+            Future<bool?>.value(),
+      );
       _ready = true;
     } catch (e) {
       // Plugin unavailable (or a test harness): stay silent, keep the in-app
