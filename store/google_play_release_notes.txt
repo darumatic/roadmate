@@ -1,7 +1,5 @@
-• Site alerts: RoadMate warns you as you approach an inspection site and asks for its status — one tap for OPEN, BLITZ or CLOSED
-• Alerts keep working in the background, phone in your pocket
-• Only fires driving toward a site, at most once per site
+• Site alerts now wait for you: the alert stays on screen until you answer or dismiss it, instead of vanishing after a few seconds
+• It counts the distance down as you close in, and clears itself once the site is behind you
+• Dismissed one? RoadMate asks again inside 100 m, when the site is in sight
+• Alerts still work in the background, phone in your pocket, and only fire when you're driving toward a site
 • Turn alerts on or off with the arrow icon on Home
-• Add Site captures GPS coordinates with one tap
-• Trip timer starts when you press Start, not at the first GPS fix
-• Fixed: the location prompt could be missed on a fresh install
