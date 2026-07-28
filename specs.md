@@ -197,6 +197,41 @@ They are approximate — verify exact site positions before production.
   - Firebase auto-provisions the Let's Encrypt cert after verification (~15 min–few h).
 - **Rules deploy:** `firebase deploy --only firestore:rules --project roadmate-b1551`.
 
+### iOS signing material
+
+Apple team **76UL6RCLTT** (DARUMATIC PTY LTD). `hello@darumatic.com` is the Account
+Holder and `adrian@darumatic.com` an Admin — **two logins into the same team**, not
+two teams, so the ASC API sees one shared set of certificates.
+
+Two pieces must be present on the release Mac, and both went missing before the
+0.1.51 release (28 Jul 2026): the team's only **Apple Distribution** certificate had
+been revoked, which cascaded and deleted every provisioning profile with it. The
+archive still built (automatic *development* signing) and the failure only appeared
+at the export step. `scripts/release_ios.sh` now preflights both:
+
+- **Identity** — `Apple Distribution: DARUMATIC PTY LTD (76UL6RCLTT)` in the login
+  keychain (`security find-identity -v -p codesigning`). A **.p12 backup** of the
+  current one lives at `~/.config/roadmate/apple_distribution_20260728.p12`
+  (passphrase `roadmate`) — a private key is *never* re-downloadable from Apple, so
+  losing it means minting a new certificate. Restore with
+  `security import <p12> -k ~/Library/Keychains/login.keychain-db -P <pass> -T /usr/bin/codesign`.
+- **Profile** — `RoadMate App Store` (App Store type, bundle `com.darumatic.roadmate`)
+  in `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. **Keep the name
+  stable** — `ios/ExportOptions.plist` matches it by name.
+
+To mint replacements headlessly (the ASC API key is Admin, so no Xcode sign-in or
+2FA is needed): `openssl genrsa` + `openssl req` for a CSR → `POST /v1/certificates`
+with `certificateType: DISTRIBUTION` → import → `POST /v1/profiles` with
+`profileType: IOS_APP_STORE`, related to the bundle id and the new certificate.
+Apple allows 2 distribution certificates per team; minting only revokes something if
+both slots are already full.
+
+**Export signing is manual on purpose.** `flutter build ipa` defaults to *automatic*
+export, which asks the Apple ID signed into Xcode.app for a distribution certificate —
+this Mac has no Xcode account (`No Accounts`), so the release script passes
+`--export-options-plist=ios/ExportOptions.plist`. Guarded by
+`test/ios_export_options_test.dart`.
+
 ## Hard constraints (still in force)
 - **Commits attributed to the owner only** — no `Co-Authored-By: Claude` trailer.
 - **Every feature ships with a unit test.**

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App Store export options for `flutter build ipa` (see scripts/release_ios.sh).
+
+  Manual signing on purpose. The default automatic export asks Xcode's signed-in
+  Apple ID for a distribution certificate, so it dies with "No Accounts / No
+  signing certificate iOS Distribution found" on a machine that builds from the
+  CLI and never signs into Xcode.app — which is how releases run here. Manual
+  export only needs the identity in the login keychain plus the named profile,
+  both of which the CLI can install.
+
+  Requires, on the release Mac:
+    - "Apple Distribution: DARUMATIC PTY LTD (76UL6RCLTT)" in the login keychain
+      (`security find-identity -v -p codesigning`)
+    - the "RoadMate App Store" profile in
+      ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
+  Keep the profile's name stable — this file matches it by name.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>76UL6RCLTT</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.darumatic.roadmate</key>
+		<string>RoadMate App Store</string>
+	</dict>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>destination</key>
+	<string>export</string>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>

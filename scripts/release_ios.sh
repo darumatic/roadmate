@@ -36,8 +36,29 @@ flutter test
 echo "==> Regenerate iOS build config"
 flutter build ios --config-only
 
+# Signing preflight. Both of these have gone missing once (the team's only
+# Apple Distribution certificate was revoked, which cascaded and took every
+# provisioning profile with it), and the failure only surfaced after a full
+# archive build. Fail fast with the fix instead.
+echo "==> Signing preflight"
+if ! security find-identity -v -p codesigning | grep -q "Apple Distribution: DARUMATIC PTY LTD"; then
+  echo "ERROR: no 'Apple Distribution: DARUMATIC PTY LTD' identity in the keychain." >&2
+  echo "       Import the .p12 backup, or mint a new certificate — see specs.md" >&2
+  echo "       ('iOS signing material')." >&2
+  exit 1
+fi
+if ! grep -qls "RoadMate App Store" \
+     "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision; then
+  echo "ERROR: the 'RoadMate App Store' provisioning profile is not installed." >&2
+  echo "       See specs.md ('iOS signing material') to recreate and install it." >&2
+  exit 1
+fi
+
+# Manual export options — the automatic export needs an Apple ID signed into
+# Xcode.app, which this CLI-only release path does not have. See the comments
+# in ios/ExportOptions.plist.
 echo "==> Build signed IPA"
-flutter build ipa
+flutter build ipa --export-options-plist=ios/ExportOptions.plist
 ipa="build/ios/ipa/roadmate.ipa"
 if [ ! -f "$ipa" ]; then
   echo "ERROR: expected IPA not found at ${ipa}" >&2
