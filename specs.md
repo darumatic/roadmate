@@ -211,10 +211,13 @@ at the export step. `scripts/release_ios.sh` now preflights both:
 
 - **Identity** — `Apple Distribution: DARUMATIC PTY LTD (76UL6RCLTT)` in the login
   keychain (`security find-identity -v -p codesigning`). A **.p12 backup** of the
-  current one lives at `~/.config/roadmate/apple_distribution_20260728.p12`
-  (passphrase `roadmate`) — a private key is *never* re-downloadable from Apple, so
-  losing it means minting a new certificate. Restore with
-  `security import <p12> -k ~/Library/Keychains/login.keychain-db -P <pass> -T /usr/bin/codesign`.
+  current one lives at `~/.config/roadmate/apple_distribution_20260728.p12`; its
+  passphrase is in the login keychain, **not in this repo** —
+  `security find-generic-password -s roadmate-dist-p12 -w`. A private key is *never*
+  re-downloadable from Apple, so losing it means minting a new certificate. Restore with
+  `security import <p12> -k ~/Library/Keychains/login.keychain-db -P "$(security find-generic-password -s roadmate-dist-p12 -w)" -T /usr/bin/codesign`.
+  (The p12 and the keychain item live on the same Mac, so keep an off-machine copy of
+  both if that Mac is the only one that can release.)
 - **Profile** — `RoadMate App Store` (App Store type, bundle `com.darumatic.roadmate`)
   in `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. **Keep the name
   stable** — `ios/ExportOptions.plist` matches it by name.
@@ -231,6 +234,20 @@ export, which asks the Apple ID signed into Xcode.app for a distribution certifi
 this Mac has no Xcode account (`No Accounts`), so the release script passes
 `--export-options-plist=ios/ExportOptions.plist`. Guarded by
 `test/ios_export_options_test.dart`.
+
+**Still unresolved:** *why* the certificate was revoked. It was valid to 2027-07-08 and
+had signed 0.1.49 days earlier. `leandropervieux@hotmail.com` was ruled out — his
+`provisioningAllowed` was already `false`, so he never had portal access (he was
+nonetheless reduced to `CUSTOMER_SUPPORT` on 28 Jul 2026 at the owner's request). That
+leaves the two portal-capable logins, `hello@darumatic.com` and `adrian@darumatic.com`;
+neither has been checked. 0.1.51 shipped on a **replacement** certificate — the cause is
+worked around, not found.
+
+**Also unguarded:** the *archive* step still uses automatic **development** signing, so
+it depends on `Apple Development: Felix Schmitz (7GHG36Y542)` (expires 2027-07-08) — the
+only development identity on this Mac. The preflight checks the distribution identity
+and profile, not that one; when it expires the archive will fail with no Xcode account
+to renew it.
 
 ## Hard constraints (still in force)
 - **Commits attributed to the owner only** — no `Co-Authored-By: Claude` trailer.
