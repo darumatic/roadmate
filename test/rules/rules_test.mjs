@@ -1,7 +1,8 @@
 // Verifies the vote/report shapes, admin-delete (issue #13), admin-publish
 // (issue #16) and the global per-user rate-limit ledger (issue #15 redux:
 // 5 actions per 5 minutes at users/{uid}/limits/actions, judged entirely by
-// request.time) rules in firestore.rules against the Firestore emulator.
+// request.time, admins exempt) rules in firestore.rules against the Firestore
+// emulator.
 // Run via scripts/test_rules.sh (needs Node and Java 21+) or the CI
 // rules-test job; not part of `flutter test`.
 import {
@@ -192,6 +193,9 @@ await check(
 );
 
 // ---- Rate-limit ledger (issue #15 redux) ----
+const admin = env
+  .authenticatedContext('admin1', { email: 'a@b.c' })
+  .firestore();
 const bob = env
   .authenticatedContext('bob', { firebase: { sign_in_provider: 'anonymous' } })
   .firestore();
@@ -239,6 +243,31 @@ await check(
   (async () => {
     await assertFails(stampedVote(bob, 'site-1', 'open', 'bob', stampIncrement));
     await assertSucceeds(stampedVote(bob, 'site-1', 'open', 'bob', stampReset));
+  })(),
+);
+
+// Admins are exempt from the cap: moderating a blitz is a burst of actions.
+// The first stamp still has to be a reset — an update() on a ledger doc that
+// does not exist yet fails the batch precondition, not the rules.
+await check(
+  'an admin keeps acting past the cap — no ledger limit at all',
+  (async () => {
+    await assertSucceeds(
+      stampedVote(admin, 'site-1', 'open', 'admin1', stampReset),
+    );
+    for (let i = 0; i < 4; i++) {
+      await assertSucceeds(
+        stampedVote(admin, 'site-1', 'blitz', 'admin1', stampIncrement),
+      );
+    }
+    // Actions 6, 7 and 8 — the ones the cap would refuse for anyone else.
+    await assertSucceeds(
+      stampedVote(admin, 'site-1', 'closed', 'admin1', stampIncrement),
+    );
+    await assertSucceeds(stampedReport(admin, 'site-1', 'admin1', stampIncrement));
+    await assertSucceeds(
+      stampedVote(admin, 'site-2', 'open', 'admin1', stampIncrement),
+    );
   })(),
 );
 
@@ -331,9 +360,6 @@ await check(
     })(),
   ),
 );
-const admin = env
-  .authenticatedContext('admin1', { email: 'a@b.c' })
-  .firestore();
 await check(
   'admin deletes a site with its reports and limits',
   assertSucceeds(

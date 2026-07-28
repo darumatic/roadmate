@@ -4,6 +4,11 @@ import 'package:firebase_core/firebase_core.dart';
 /// 5 actions (votes + activity reports combined) per 5 minutes, enforced by
 /// the `users/{uid}/limits/actions` rules in `firestore.rules`.
 ///
+/// Admins are exempt — the rules accept any ledger stamp from them, so this
+/// client path simply never sees a denial and [RateLimitedException] never
+/// fires for an admin. The exemption is deliberately server-side only: it
+/// then applies to already-shipped mobile builds too.
+///
 /// Deliberately clock-free: the 2026-07-07 rollback happened because the
 /// client picked the ledger's reset-vs-increment branch with the device
 /// clock, and clock skew produced false rejections. Now every time judgment

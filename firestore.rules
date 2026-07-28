@@ -122,13 +122,21 @@ service cloud.firestore {
       // choosing the reset-vs-increment branch caused the 2026-07-07 rollback
       // and must never decide again. Old released clients don't write the
       // ledger and stay unthrottled (retrocompat) until a future strict phase.
+      //
+      // Admins are exempt: moderating a blitz means a burst of votes/reports
+      // and the 5-per-5-minutes cap must never stand in their way. The
+      // exemption lives here (not in the client) so every shipped build gets
+      // it, and it sits LAST in the `||` chain so the ordinary in-window path
+      // short-circuits before the userRoles lookup. `create` needs no clause:
+      // it only ever carries the reset shape, which is always allowed.
       match /limits/actions {
         allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
         allow create: if signedIn() && request.auth.uid == uid
           && isLedgerReset();
         allow update: if signedIn() && request.auth.uid == uid
           && (isLedgerIncrement()
-            || (isLedgerReset() && ledgerWindowExpired()));
+            || (isLedgerReset() && ledgerWindowExpired())
+            || isAdmin());
         // Owner: account-deletion cleanup. Admin: moderation purge.
         allow delete: if signedIn()
           && (request.auth.uid == uid || isAdmin());

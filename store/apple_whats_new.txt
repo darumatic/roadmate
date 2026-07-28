@@ -1,13 +1,9 @@
 Welcome to RoadMate AU — know before you roll.
 
-New in this version — better site alerts:
+New in this version — cleaner site information:
 
-• Site alerts now wait for you: the alert stays on screen until you answer or dismiss it, instead of vanishing after a few seconds
-• It counts the distance down as you close in, and clears itself once the site is behind you
-• Dismissed one? RoadMate asks again inside 100 m, when the site is in sight
-• Alerts still work in the background, phone in your pocket, and only fire when you are driving toward a site
-• Turn alerts on or off with the arrow icon on Home
-• Permission requests are now asked one at a time, so the notification and location prompts no longer land on top of each other
+• Site moderators are no longer held back by the action limit, so bad reports and stale statuses get cleaned up faster
+• Small behind-the-scenes fixes
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
 

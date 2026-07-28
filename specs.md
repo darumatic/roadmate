@@ -117,7 +117,12 @@ unthrottled; a deliberate abuser can mimic that legacy shape until phase 2
 flips the rules to require
 `getAfter(/users/$(uid)/limits/actions).lastActionAt == request.time` once the
 min-version gate has pushed adoption. Legacy `sites/{id}/limits/{uid}` docs
-stay frozen (admin read/delete only). Covered by `test/rules/rules_test.mjs`
+stay frozen (admin read/delete only). **Admins are exempt from the cap** —
+their ledger accepts any stamp (`|| isAdmin()`, last in the `||` chain so an
+ordinary in-window action never pays for the `userRoles` lookup), so
+moderating a blitz can be a burst of votes/reports. The exemption is
+server-side only, which means it also reaches already-shipped mobile builds.
+Covered by `test/rules/rules_test.mjs`
 (run locally via `scripts/test_rules.sh`, and in CI by the `rules-test` job),
 pure unit tests (`test/rate_limit_test.dart`), and a device-gated emulator
 suite (`test/firebase/firestore_repository_emulator_test.dart`).
@@ -168,7 +173,7 @@ They are approximate — verify exact site positions before production.
 | Web public deploy (Firebase Hosting) | ✅ **LIVE — https://roadmate-b1551.web.app** |
 | Admin site removal (X on site card + warning popup; deletes site + its reports, issue #13) | ✅ Done — `AdminRepository.deleteSite`, rules allow `delete` for admins only |
 | Screen stays awake while app is foregrounded, web + native (issue #14) | ✅ Done — `KeepAwakeScope`/`KeepAwake` (`lib/services/keep_awake.dart`); re-acquires on resume; replaced the trip-only wakelock |
-| Vote/report rate limiting (issue #15) | ✅ **Done (redux)** — global 5 actions/5 min per user via a clock-free rules ledger (`users/{uid}/limits/actions`, retry-based branch selection); old mobile builds exempt until the phase-2 strict flip; forced-update gate shipped alongside (see rules note above) |
+| Vote/report rate limiting (issue #15) | ✅ **Done (redux)** — global 5 actions/5 min per user via a clock-free rules ledger (`users/{uid}/limits/actions`, retry-based branch selection); admins exempt entirely, and old mobile builds exempt until the phase-2 strict flip; forced-update gate shipped alongside (see rules note above) |
 | Admin adds sites pre-approved (issue #16) | ✅ Done — Add Site is role-aware (banner + "Publish site"); `addSite(approved: true)` allowed by rules for admins only |
 | Web update banner ("new version — Refresh") | ✅ Done — polls `/version.json` (5 min + on tab refocus) vs baked `appVersion`; Refresh clears SW + caches then reloads (`lib/services/update_checker.dart`, `widgets/update_banner.dart`); no-op on native |
 | Alert beep audible over music (issue #18) | ✅ Done — `alertAudioContext()` in `alert_player.dart`: Android alarm stream + transient duck; iOS `playback` category (ignores silent switch) + `duckOthers`; web unaffected |
