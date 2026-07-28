@@ -1,10 +1,13 @@
 Welcome to RoadMate AU — know before you roll.
 
-New in this version — trip timer fixes:
+New in this version — better site alerts:
 
-• The trip timer now counts from the moment you press Start and keeps ticking every second, even before the first GPS fix arrives. It could previously sit on "0m 0s" for a whole trip if you started somewhere with no signal
-• Saved trips record the real elapsed time of the run, including the wait for GPS at the start, so the log matches what you watched on screen
-• The GPS status under the speedometer now says what is really happening: amber while it waits for a fix, red if the signal drops. It used to show green as soon as tracking started, even when no fix had arrived
+• Site alerts now wait for you: the alert stays on screen until you answer or dismiss it, instead of vanishing after a few seconds
+• It counts the distance down as you close in, and clears itself once the site is behind you
+• Dismissed one? RoadMate asks again inside 100 m, when the site is in sight
+• Alerts still work in the background, phone in your pocket, and only fire when you are driving toward a site
+• Turn alerts on or off with the arrow icon on Home
+• Permission requests are now asked one at a time, so the notification and location prompts no longer land on top of each other
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
 
