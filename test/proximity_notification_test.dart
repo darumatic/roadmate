@@ -201,7 +201,7 @@ void main() {
       expect(find.textContaining('APPROACHING'), findsOneWidget);
     });
 
-    testWidgets('a prompt raised in the background does not expire unseen', (
+    testWidgets('a prompt raised in the background waits for the driver', (
       tester,
     ) async {
       final loc = FakeLocationSource();
@@ -218,18 +218,18 @@ void main() {
       await tester.pump();
       await _approach(tester, loc);
 
-      // Well past the on-screen timeout, but the app was never on screen.
-      await tester.pump(proximityPromptTimeout * 3);
+      // Minutes with the phone in a pocket: the prompt is still pending.
+      await tester.pump(const Duration(minutes: 10));
       expect(container.read(proximityControllerProvider), isNotNull);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
       expect(find.textContaining('APPROACHING'), findsOneWidget);
 
-      // The countdown starts from the moment they came back.
-      await tester.pump(proximityPromptTimeout + const Duration(seconds: 1));
+      // And it keeps waiting once they're looking at it, too.
+      await tester.pump(const Duration(minutes: 10));
       await tester.pumpAndSettle();
-      expect(find.textContaining('APPROACHING'), findsNothing);
+      expect(find.textContaining('APPROACHING'), findsOneWidget);
     });
 
     testWidgets('a vote action on the notification casts the vote', (

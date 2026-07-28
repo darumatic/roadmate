@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,11 +8,6 @@ import '../../theme/app_theme.dart';
 import '../../widgets/status_labels.dart';
 import 'proximity_controller.dart';
 import 'proximity_text.dart';
-
-/// How long the prompt stays up before dismissing itself. At 100 km/h the
-/// 3 km trigger radius is ~110 s from the gate, so an unanswered card clears
-/// well before the driver arrives instead of sitting over the app all day.
-const Duration proximityPromptTimeout = Duration(seconds: 45);
 
 /// Wraps the app (via `MaterialApp.router`'s builder, inside [UpdateGate]) and
 /// floats the approach prompt over the current screen.
@@ -33,9 +26,6 @@ class ProximityGate extends ConsumerStatefulWidget {
 
 class _ProximityGateState extends ConsumerState<ProximityGate>
     with WidgetsBindingObserver {
-  Timer? _timeout;
-  bool _foreground = true;
-
   @override
   void initState() {
     super.initState();
@@ -46,38 +36,19 @@ class _ProximityGateState extends ConsumerState<ProximityGate>
   /// see [ProximityController.setAppForeground].
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _foreground = state == AppLifecycleState.resumed;
     ref
         .read(proximityControllerProvider.notifier)
-        .setAppForeground(_foreground);
-    // Returning to the app starts the card's countdown from now: a prompt
-    // raised in the background must not expire unseen.
-    if (_foreground) _restartTimeout(ref.read(proximityControllerProvider));
+        .setAppForeground(state == AppLifecycleState.resumed);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _timeout?.cancel();
     super.dispose();
-  }
-
-  void _restartTimeout(ProximityPrompt? prompt) {
-    _timeout?.cancel();
-    // No countdown while the app is off screen — the notification is doing the
-    // talking, and its lifetime is the system's business.
-    if (prompt == null || !_foreground) return;
-    _timeout = Timer(proximityPromptTimeout, () {
-      if (mounted) ref.read(proximityControllerProvider.notifier).dismiss();
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<ProximityPrompt?>(
-      proximityControllerProvider,
-      (_, next) => _restartTimeout(next),
-    );
     final prompt = ref.watch(proximityControllerProvider);
 
     return Stack(
@@ -93,6 +64,9 @@ class _ProximityGateState extends ConsumerState<ProximityGate>
                 prompt: prompt,
                 onDismiss: () =>
                     ref.read(proximityControllerProvider.notifier).dismiss(),
+                onAnswered: () => ref
+                    .read(proximityControllerProvider.notifier)
+                    .markAnswered(),
               ),
             ),
           ),
@@ -108,10 +82,18 @@ class ProximityPromptCard extends ConsumerWidget {
     super.key,
     required this.prompt,
     required this.onDismiss,
+    this.onAnswered,
   });
 
   final ProximityPrompt prompt;
+
+  /// Closes the card with nothing reported — the site is asked about again
+  /// from close range.
   final VoidCallback onDismiss;
+
+  /// Closes the card because a vote was cast. Falls back to [onDismiss] when
+  /// the card is driven directly (tests, or a reuse with no tracker behind it).
+  final VoidCallback? onAnswered;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -224,7 +206,7 @@ class ProximityPromptCard extends ConsumerWidget {
     WidgetRef ref,
     SiteStatus status,
   ) async {
-    onDismiss();
+    (onAnswered ?? onDismiss)();
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await ref.read(siteRepositoryProvider).vote(prompt.site.id, status);

@@ -237,7 +237,9 @@ void main() {
     expect(find.textContaining('APPROACHING'), findsNothing);
   });
 
-  testWidgets('an unanswered prompt clears itself', (tester) async {
+  testWidgets('an unanswered prompt stays put, counting down the distance', (
+    tester,
+  ) async {
     final loc = FakeLocationSource();
     final repo = FakeSiteRepository([_site('marulan')]);
     await _pump(tester, location: loc, repo: repo);
@@ -246,11 +248,98 @@ void main() {
     await tester.pump();
     loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
     await tester.pump();
+    expect(find.textContaining('2.2 km ahead'), findsOneWidget);
+
+    // Minutes of driving later it is still there — nothing but the driver (or
+    // the site going behind them) takes it off screen.
+    await tester.pump(const Duration(minutes: 5));
+    loc.emit(_pos(-33.008, since: const Duration(minutes: 5)));
+    await tester.pump();
+    await tester.pump(); // the fix lands, then the card redraws
+    expect(find.textContaining('890 m ahead'), findsOneWidget);
+  });
+
+  testWidgets('the prompt retires itself once the site is behind you', (
+    tester,
+  ) async {
+    final loc = FakeLocationSource();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    await _pump(tester, location: loc, repo: repo);
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+    loc.emit(_pos(-33.0008, since: const Duration(minutes: 1)));
+    await tester.pump();
     expect(find.textContaining('APPROACHING'), findsOneWidget);
 
-    await tester.pump(proximityPromptTimeout + const Duration(seconds: 1));
+    // Past the gate and pulling away: the question is moot.
+    loc.emit(_pos(-32.9975, since: const Duration(minutes: 2)));
+    await tester.pump();
+    expect(find.textContaining('APPROACHING'), findsNothing);
+    expect(repo.votes, isEmpty);
+  });
+
+  testWidgets('a dismissed prompt asks once more from close range', (
+    tester,
+  ) async {
+    final loc = FakeLocationSource();
+    final alert = FakeAlertPlayer();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    await _pump(tester, location: loc, repo: repo, alert: alert);
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Dismiss'));
     await tester.pumpAndSettle();
     expect(find.textContaining('APPROACHING'), findsNothing);
+
+    // Halfway there: still quiet.
+    loc.emit(_pos(-33.01, since: const Duration(minutes: 1)));
+    await tester.pump();
+    expect(find.textContaining('APPROACHING'), findsNothing);
+
+    // Inside 100 m, with the site in sight, it asks again — once.
+    loc.emit(_pos(-33.0015, since: const Duration(minutes: 2)));
+    await tester.pump();
+    loc.emit(_pos(-33.0008, since: const Duration(seconds: 122)));
+    await tester.pump();
+    await tester.pump(); // the fix lands, then the card redraws
+    expect(find.textContaining('89 m ahead'), findsOneWidget);
+    expect(alert.proximity, 2);
+
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    loc.emit(_pos(-33.0004, since: const Duration(seconds: 124)));
+    await tester.pump();
+    expect(find.textContaining('APPROACHING'), findsNothing);
+  });
+
+  testWidgets('an answered prompt is not asked again from close range', (
+    tester,
+  ) async {
+    final loc = FakeLocationSource();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    await _pump(tester, location: loc, repo: repo);
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+    await tester.tap(find.text('Closed'));
+    await tester.pumpAndSettle();
+    expect(repo.votes, [('marulan', SiteStatus.closed)]);
+
+    loc.emit(_pos(-33.0015, since: const Duration(minutes: 2)));
+    await tester.pump();
+    loc.emit(_pos(-33.0008, since: const Duration(seconds: 122)));
+    await tester.pump();
+
+    expect(find.textContaining('APPROACHING'), findsNothing);
+    expect(repo.votes, hasLength(1));
   });
 
   testWidgets('a rejected vote still closes the card and explains itself', (

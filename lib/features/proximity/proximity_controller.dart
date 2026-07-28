@@ -16,6 +16,11 @@ class ProximityPrompt {
   final double km;
 }
 
+/// How much the distance must change before a live prompt is rewritten. Every
+/// fix moves the number a little; redrawing the card 50 m at a time keeps it
+/// honest without rebuilding it for every metre of jitter.
+const double proximityPromptStepKm = 0.05;
+
 /// Drives the Waze-style "you're coming up on X — what's the status?" prompt.
 ///
 /// Fed from the one existing GPS stream (`TripController` calls [onPosition]
@@ -23,6 +28,10 @@ class ProximityPrompt {
 /// pure [ProximityTracker]. Holds at most one pending prompt: a second site
 /// entering range while the driver is answering is ignored rather than
 /// stacked, and stays eligible because it was never marked as prompted.
+///
+/// A raised prompt has no timer on it — it stays until the driver answers it,
+/// dismisses it, or drives past the site (which [ProximityTracker.hasPassed]
+/// reports, and which retires the card here).
 class ProximityController extends Notifier<ProximityPrompt?> {
   final ProximityTracker _tracker = ProximityTracker();
   List<Site> _sites = const [];
@@ -74,9 +83,18 @@ class ProximityController extends Notifier<ProximityPrompt?> {
       speedKmh: speedKmh,
       now: now,
     );
+    _updatePending();
+
+    if (hit != null && state?.site.id == hit.site.id) {
+      // The card for this site is already up, so the second-chance prompt has
+      // nothing to add — spend it here rather than let it fire the instant the
+      // driver dismisses the one they're looking at.
+      _tracker.markPrompted(hit.site.id, now, near: hit.near);
+      return;
+    }
     if (hit == null || state != null || !_enabled) return;
 
-    _tracker.markPrompted(hit.site.id, now);
+    _tracker.markPrompted(hit.site.id, now, near: hit.near);
     // Set regardless of where it's announced: an unanswered prompt raised in
     // the background is exactly what the driver should find on screen when
     // they pick the phone up.
@@ -98,6 +116,23 @@ class ProximityController extends Notifier<ProximityPrompt?> {
     }
   }
 
+  /// Keeps the on-screen prompt in step with the truck: the distance counts
+  /// down as the site nears, and the card retires itself once the site is
+  /// behind them (the only thing that clears it besides an answer, a dismiss,
+  /// or the feature being switched off).
+  void _updatePending() {
+    final pending = state;
+    if (pending == null) return;
+    if (_tracker.hasPassed(pending.site.id)) {
+      dismiss();
+      return;
+    }
+    final km = _tracker.lastKmFor(pending.site.id);
+    if (km == null) return;
+    if ((pending.km - km).abs() < proximityPromptStepKm) return;
+    state = ProximityPrompt(site: pending.site, km: km);
+  }
+
   /// Tracks whether the app is on screen — set by [ProximityGate] from the
   /// app lifecycle. Off screen, an approach becomes a system notification
   /// instead of a card nobody would see.
@@ -113,6 +148,7 @@ class ProximityController extends Notifier<ProximityPrompt?> {
     ref.read(proximityNotifierProvider).cancel();
     final status = answer.status;
     if (status == null) return;
+    _tracker.markAnswered(answer.siteId);
     if (state?.site.id == answer.siteId) state = null;
     try {
       await ref.read(siteRepositoryProvider).vote(answer.siteId, status);
@@ -123,10 +159,20 @@ class ProximityController extends Notifier<ProximityPrompt?> {
     }
   }
 
-  /// Clears the pending prompt (answered, dismissed, or opened in full).
+  /// Clears the pending prompt without recording an answer. The site keeps its
+  /// second chance: dismissing at 3 km is "not now", not "nothing to report",
+  /// so it asks again from [proximityNearRadiusKm].
   void dismiss() {
     state = null;
     ref.read(proximityNotifierProvider).cancel();
+  }
+
+  /// Clears the prompt because the driver answered it — unlike [dismiss] this
+  /// ends the conversation about that site for the rest of the pass.
+  void markAnswered() {
+    final pending = state;
+    if (pending != null) _tracker.markAnswered(pending.site.id);
+    dismiss();
   }
 
   /// Drops all approach history — used when the GPS stream restarts, so a fix

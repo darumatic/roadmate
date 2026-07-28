@@ -19,6 +19,30 @@ Site _site(String id, {double? lat = -33.0, double? lng = 151.0}) => Site(
 
 final _now = DateTime(2026, 7, 26, 8, 0);
 
+/// Feeds a run of latitudes in two-second steps and returns the last hit, so a
+/// multi-fix approach reads as one line.
+ProximityHit? _drive(
+  ProximityTracker tracker,
+  List<Site> sites,
+  List<double> lats, {
+  double speedKmh = 90,
+  DateTime? start,
+}) {
+  ProximityHit? hit;
+  var at = start ?? _now;
+  for (final lat in lats) {
+    hit = tracker.update(
+      sites: sites,
+      lat: lat,
+      lng: 151.0,
+      speedKmh: speedKmh,
+      now: at,
+    );
+    at = at.add(const Duration(seconds: 2));
+  }
+  return hit;
+}
+
 void main() {
   group('ProximityTracker', () {
     test('never prompts on the first fix — closing is unknowable', () {
@@ -231,6 +255,94 @@ void main() {
       );
       expect(again, isNotNull);
     });
+
+    test('offers a close-range second chance after a dismissal', () {
+      final tracker = ProximityTracker();
+      final sites = [_site('a')];
+      _drive(tracker, sites, const [-33.025, -33.02]);
+      tracker.markPrompted('a', _now); // shown at ~2.2 km, then dismissed
+
+      // Still far out: one prompt per approach, not one per fix.
+      expect(_drive(tracker, sites, const [-33.015, -33.01]), isNull);
+
+      // Inside 100 m the question is worth asking again.
+      final near = _drive(tracker, sites, const [-33.0015, -33.0008]);
+      expect(near, isNotNull);
+      expect(near!.near, isTrue);
+      expect(near.km, closeTo(0.089, 0.01));
+    });
+
+    test('the close-range second chance fires only once', () {
+      final tracker = ProximityTracker();
+      final sites = [_site('a')];
+      _drive(tracker, sites, const [-33.025, -33.02]);
+      tracker.markPrompted('a', _now);
+      final near = _drive(tracker, sites, const [-33.0015, -33.0008]);
+      expect(near, isNotNull);
+      tracker.markPrompted('a', _now, near: true);
+
+      expect(_drive(tracker, sites, const [-33.0004]), isNull);
+    });
+
+    test('answering silences the site for the rest of the pass', () {
+      final tracker = ProximityTracker();
+      final sites = [_site('a')];
+      _drive(tracker, sites, const [-33.025, -33.02]);
+      tracker.markPrompted('a', _now);
+      tracker.markAnswered('a');
+
+      expect(_drive(tracker, sites, const [-33.0015, -33.0008]), isNull);
+    });
+
+    test('a crawl into the site still gets the close-range prompt', () {
+      final tracker = ProximityTracker();
+      final sites = [_site('a')];
+      _drive(tracker, sites, const [-33.025, -33.02]);
+      tracker.markPrompted('a', _now);
+
+      // Braking for the gate drops well under the moving threshold — which
+      // must not swallow the one prompt the driver can actually answer.
+      final near = _drive(tracker, sites, const [
+        -33.0015,
+        -33.0008,
+      ], speedKmh: 8);
+      expect(near?.near, isTrue);
+    });
+
+    test('reports the site as passed once it is behind you', () {
+      final tracker = ProximityTracker();
+      final sites = [_site('a')];
+      _drive(tracker, sites, const [-33.025, -33.02, -33.0008]);
+      expect(tracker.hasPassed('a'), isFalse);
+      expect(tracker.lastKmFor('a'), closeTo(0.089, 0.01));
+
+      // 100 m past the gate is still within GPS-wobble range of it.
+      _drive(tracker, sites, const [-32.9997]);
+      expect(tracker.hasPassed('a'), isFalse);
+
+      _drive(tracker, sites, const [-32.9975]);
+      expect(tracker.hasPassed('a'), isTrue);
+    });
+
+    test(
+      'leaving the radius counts as passed, and re-entering is a new pass',
+      () {
+        final tracker = ProximityTracker(cooldown: Duration.zero);
+        final sites = [_site('a')];
+        _drive(tracker, sites, const [-33.025, -33.02]);
+        tracker.markPrompted('a', _now);
+        expect(tracker.hasPassed('a'), isFalse);
+
+        _drive(tracker, sites, const [-33.05]); // 5.5 km out
+        expect(tracker.hasPassed('a'), isTrue);
+
+        // Turning around: a fresh approach prompts from scratch.
+        final again = _drive(tracker, sites, const [-33.025, -33.02]);
+        expect(again, isNotNull);
+        expect(again!.near, isFalse);
+        expect(tracker.hasPassed('a'), isFalse);
+      },
+    );
 
     test('reset drops the distance history so the next fix cannot prompt', () {
       final tracker = ProximityTracker();
