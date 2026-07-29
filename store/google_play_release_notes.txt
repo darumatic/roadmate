@@ -1,2 +1,4 @@
-• Site moderators are no longer held back by the action limit, so bad reports and stale statuses get cleaned up faster
+• Spam gets shut down faster: moderators can now suspend an account that floods the app with junk reports — for a day, or for good
+• A suspended account keeps full read access — live site status, alerts, speedo and trips — it just can't post
+• Moderators are no longer held back by the action limit, so bad reports and stale statuses get cleaned up faster
 • Small behind-the-scenes fixes
