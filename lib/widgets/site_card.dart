@@ -6,6 +6,7 @@ import '../models/site.dart';
 import '../models/site_report.dart';
 import '../services/auth_service.dart';
 import '../services/providers.dart';
+import '../services/ban_logic.dart';
 import '../services/rate_limit.dart';
 import '../services/site_repository.dart';
 import '../services/status_logic.dart';
@@ -202,6 +203,9 @@ class SiteCard extends ConsumerWidget {
       if (context.mounted) {
         _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
       }
+    } on BannedException catch (e) {
+      if (!context.mounted) return;
+      _snack(context, e.message);
     } on RateLimitedException {
       if (!context.mounted) return;
       _snack(context, kRateLimitMessage);
@@ -225,6 +229,9 @@ class SiteCard extends ConsumerWidget {
         reporterName: report.reporterName,
       );
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
+    } on BannedException catch (e) {
+      if (!context.mounted) return;
+      _snack(context, e.message);
     } on RateLimitedException {
       if (!context.mounted) return;
       _snack(context, kRateLimitMessage);

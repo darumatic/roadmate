@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../models/admin_report.dart';
 import '../../models/site.dart';
 import '../../models/site_report.dart';
+import '../../models/user_ban.dart';
 import '../../services/auth_service.dart';
+import '../../services/ban_logic.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
@@ -54,14 +56,17 @@ class _AdminTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.center,
             tabs: [
               Tab(icon: Icon(Icons.fact_check_outlined), text: 'Sites'),
               Tab(icon: Icon(Icons.how_to_vote_outlined), text: 'Reports'),
               Tab(icon: Icon(Icons.bolt_outlined), text: 'Activity'),
+              Tab(icon: Icon(Icons.block_outlined), text: 'Bans'),
             ],
           ),
           Expanded(
@@ -84,6 +89,7 @@ class _AdminTabs extends StatelessWidget {
                       'Recent long queue / delays / police reports will '
                       'appear here.',
                 ),
+                _BansTab(),
               ],
             ),
           ),
@@ -473,6 +479,22 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
                 ),
               ],
             ),
+            // Spam control: the ban acts on the poster, so it needs the uid a
+            // report carries. Very old reports were written without one and
+            // simply can't be traced back to an account.
+            if (report.uid != null && report.uid!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: const BorderSide(color: AppTheme.border),
+                  minimumSize: const Size.fromHeight(42),
+                ),
+                icon: const Icon(Icons.block_outlined, size: 18),
+                label: const Text('Ban this user'),
+                onPressed: _busy ? null : () => _banUser(report.uid!),
+              ),
+            ],
           ],
         ),
       ),
@@ -514,6 +536,28 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
     }
   }
 
+  Future<void> _banUser(String uid) async {
+    final choice = await showBanUserDialog(context, uid: uid);
+    if (choice == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(adminRepositoryProvider)
+          .banUser(uid, duration: choice.duration, reason: choice.reason);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('User banned (${choice.duration.label})')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not ban user: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _deleteReport() async {
     setState(() => _busy = true);
     try {
@@ -533,6 +577,241 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// Every ban, active or lapsed, with a one-tap lift. Expired 1-day bans stay
+/// listed (greyed) so an admin can see who has already served one — a repeat
+/// offender is exactly who gets the permanent ban next.
+class _BansTab extends ConsumerWidget {
+  const _BansTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bansAsync = ref.watch(bansProvider);
+    return bansAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, _) => const LoadError(),
+      data: (bans) {
+        if (bans.isEmpty) {
+          return const _EmptyAdminState(
+            icon: Icons.block_outlined,
+            title: 'Nobody is banned',
+            body: 'Ban a spammer from their report in the Reports or '
+                'Activity tab, and they will show up here.',
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(bansProvider),
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            itemCount: bans.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (_, index) => _BanCard(ban: bans[index]),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BanCard extends ConsumerStatefulWidget {
+  const _BanCard({required this.ban});
+
+  final UserBan ban;
+
+  @override
+  ConsumerState<_BanCard> createState() => _BanCardState();
+}
+
+class _BanCardState extends ConsumerState<_BanCard> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final ban = widget.ban;
+    final active = ban.isActiveAt(DateTime.now());
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border.all(color: AppTheme.border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  active ? Icons.block : Icons.block_outlined,
+                  color: active ? Colors.redAccent : AppTheme.textSecondary,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _banHeadline(ban, active),
+                    style: TextStyle(
+                      color: active
+                          ? AppTheme.textPrimary
+                          : AppTheme.textSecondary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            _MetaLine(icon: Icons.person_outline, text: ban.uid),
+            if (ban.reason?.trim().isNotEmpty ?? false)
+              _MetaLine(
+                icon: Icons.notes_outlined,
+                text: ban.reason!.trim(),
+              ),
+            if (ban.createdAt != null)
+              _MetaLine(
+                icon: Icons.schedule,
+                text: 'Banned ${_relativeTime(ban.createdAt!)}',
+              ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.accent,
+                side: const BorderSide(color: AppTheme.border),
+                minimumSize: const Size.fromHeight(42),
+              ),
+              icon: const Icon(Icons.lock_open_outlined, size: 18),
+              label: Text(active ? 'Lift ban' : 'Remove record'),
+              onPressed: _busy ? null : _unban,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _unban() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(adminRepositoryProvider).unbanUser(widget.ban.uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ban lifted')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not lift ban: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}
+
+String _banHeadline(UserBan ban, bool active) {
+  if (!active) return 'Ban expired';
+  if (ban.isPermanent) return 'Banned forever';
+  return 'Banned until ${banExpiryLabel(ban.until!)}';
+}
+
+/// The admin's choice from [showBanUserDialog].
+typedef BanChoice = ({BanDuration duration, String reason});
+
+/// Asks how long to ban [uid] for, with an optional reason. Returns null when
+/// the admin backs out. The caller performs the write.
+Future<BanChoice?> showBanUserDialog(
+  BuildContext context, {
+  required String uid,
+}) {
+  return showDialog<BanChoice>(
+    context: context,
+    builder: (_) => _BanUserDialog(uid: uid),
+  );
+}
+
+class _BanUserDialog extends StatefulWidget {
+  const _BanUserDialog({required this.uid});
+
+  final String uid;
+
+  @override
+  State<_BanUserDialog> createState() => _BanUserDialogState();
+}
+
+class _BanUserDialogState extends State<_BanUserDialog> {
+  BanDuration _duration = BanDuration.oneDay;
+  final TextEditingController _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ban user'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.uid,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final duration in BanDuration.values)
+            RadioListTile<BanDuration>(
+              value: duration,
+              // ignore: deprecated_member_use
+              groupValue: _duration,
+              contentPadding: EdgeInsets.zero,
+              title: Text(duration.label),
+              // ignore: deprecated_member_use
+              onChanged: (value) {
+                if (value != null) setState(() => _duration = value);
+              },
+            ),
+          const SizedBox(height: 4),
+          TextField(
+            controller: _reason,
+            maxLength: kBanReasonMaxLength, // matches isValidBan in the rules
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Reason',
+              hintText: 'Optional — for your own records',
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'They can still read the app, but cannot vote, report, add sites '
+            'or save favourites until the ban lifts.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+          onPressed: () => Navigator.of(
+            context,
+          ).pop((duration: _duration, reason: _reason.text)),
+          child: const Text('Ban'),
+        ),
+      ],
+    );
   }
 }
 

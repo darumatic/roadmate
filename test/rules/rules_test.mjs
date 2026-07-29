@@ -478,6 +478,193 @@ await check(
   })(),
 );
 
+// ---- Bans (spam control) ----
+// An admin writes bans/{uid}; while it is active that uid may not write
+// anything. Reads stay open, and so does everything the user needs to leave:
+// deleting favourites, the ledger and their own profile.
+const spammer = env
+  .authenticatedContext('spammer', {
+    firebase: { sign_in_provider: 'anonymous' },
+  })
+  .firestore();
+
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'users/spammer'), { isAnonymous: true });
+  await setDoc(doc(db, 'users/spammer/favourites/site-1'), {
+    favouritedAt: serverTimestamp(),
+  });
+});
+
+await check(
+  'an unbanned user posts normally',
+  (async () => {
+    await assertSucceeds(voteBatch(spammer, 'site-1', 'open', 'spammer'));
+    await assertSucceeds(reportBatch(spammer, 'site-1', 'spammer'));
+  })(),
+);
+
+await check(
+  'only an admin can write a ban, and the shape is validated',
+  (async () => {
+    // Self-service unbanning, or banning someone else, is not a thing.
+    await assertFails(
+      setDoc(doc(spammer, 'bans/alice'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'spammer',
+      }),
+    );
+    // createdBy must be the acting admin, and createdAt server time.
+    await assertFails(
+      setDoc(doc(admin, 'bans/spammer'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'someone-else',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(admin, 'bans/spammer'), {
+        createdAt: Timestamp.fromDate(new Date(0)),
+        createdBy: 'admin1',
+      }),
+    );
+    // No smuggling extra fields in, and the reason is capped.
+    await assertFails(
+      setDoc(doc(admin, 'bans/spammer'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'admin1',
+        role: 'admin',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(admin, 'bans/spammer'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'admin1',
+        reason: 'x'.repeat(201),
+      }),
+    );
+  })(),
+);
+
+// A one-day ban: mirrors AdminRepository.banUser(BanDuration.oneDay).
+await check(
+  'an admin bans a user for a day',
+  assertSucceeds(
+    setDoc(doc(admin, 'bans/spammer'), {
+      until: Timestamp.fromDate(new Date(Date.now() + 24 * 3_600_000)),
+      reason: 'vote spam',
+      createdAt: serverTimestamp(),
+      createdBy: 'admin1',
+    }),
+  ),
+);
+
+await check(
+  'a banned user cannot vote, report, add a site, save a favourite or '
+    + 'sync their profile',
+  (async () => {
+    await assertFails(voteBatch(spammer, 'site-1', 'blitz', 'spammer'));
+    await assertFails(reportBatch(spammer, 'site-1', 'spammer'));
+    await assertFails(
+      stampedVote(spammer, 'site-1', 'open', 'spammer', stampReset),
+    );
+    await assertFails(
+      setDoc(doc(collection(spammer, 'sites')), {
+        name: 'Spam Yard',
+        state: 'NSW',
+        type: 'checkingStation',
+        address: 'Nowhere',
+        approved: false,
+        createdBy: 'spammer',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(spammer, 'users/spammer/favourites/site-2'), {
+        favouritedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(
+        doc(spammer, 'users/spammer'),
+        { lastSeenAt: serverTimestamp() },
+        { merge: true },
+      ),
+    );
+  })(),
+);
+
+// The ban takes nothing away that the user needs to read the app — or to
+// leave it (App Store 5.1.1(v) deletion must never be blocked).
+await check(
+  'a banned user still reads sites, sees their own ban, and can delete their '
+    + 'account',
+  (async () => {
+    await assertSucceeds(getDoc(doc(spammer, 'sites/site-1')));
+    await assertSucceeds(getDoc(doc(spammer, 'bans/spammer')));
+    await assertSucceeds(
+      deleteDoc(doc(spammer, 'users/spammer/favourites/site-1')),
+    );
+    await assertSucceeds(deleteDoc(doc(spammer, 'users/spammer')));
+  })(),
+);
+
+await check(
+  'a ban is private to its owner and the admins',
+  (async () => {
+    await assertFails(getDoc(doc(alice, 'bans/spammer')));
+    await assertSucceeds(getDoc(doc(admin, 'bans/spammer')));
+  })(),
+);
+
+// An expired 1-day ban stops biting on its own — no admin action, no cron.
+await check(
+  'an expired ban lets the user post again',
+  (async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'bans/spammer'), {
+        until: Timestamp.fromDate(new Date(Date.now() - 60_000)),
+        createdAt: serverTimestamp(),
+        createdBy: 'admin1',
+      });
+    });
+    await assertSucceeds(voteBatch(spammer, 'site-1', 'open', 'spammer'));
+  })(),
+);
+
+// Forever: a doc with no `until` at all.
+await check(
+  'a permanent ban (no expiry) blocks posting until an admin lifts it',
+  (async () => {
+    await assertSucceeds(
+      setDoc(doc(admin, 'bans/spammer'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'admin1',
+      }),
+    );
+    await assertFails(voteBatch(spammer, 'site-1', 'open', 'spammer'));
+    await assertFails(deleteDoc(doc(spammer, 'bans/spammer')));
+    await assertSucceeds(deleteDoc(doc(admin, 'bans/spammer')));
+    await assertSucceeds(voteBatch(spammer, 'site-1', 'open', 'spammer'));
+  })(),
+);
+
+// RETROCOMPAT: everyone else's writes are untouched by the ban machinery —
+// shipped mobile builds know nothing about bans and must keep working.
+await check(
+  'an unbanned user is unaffected while someone else is banned',
+  (async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'bans/spammer'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'admin1',
+      });
+    });
+    // site-1, not site-2: the admin site-removal check above deletes site-2,
+    // and voting on a missing doc fails for its own unrelated reason.
+    await assertSucceeds(voteBatch(alice, 'site-1', 'blitz', 'alice'));
+    await assertSucceeds(reportBatch(alice, 'site-1', 'alice'));
+  })(),
+);
+
 // In-app account deletion (App Store 5.1.1(v)): a user erases their own
 // favourites and profile doc in one batch; strangers cannot touch either.
 const mallory = env

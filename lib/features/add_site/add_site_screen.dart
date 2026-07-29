@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/enums.dart';
 import '../../models/site.dart';
 import '../../services/auth_service.dart';
+import '../../services/ban_logic.dart';
 import '../../services/geo.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
@@ -84,6 +85,12 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
         ),
       );
       context.canPop() ? context.pop() : context.go('/home');
+    } on BannedException catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);

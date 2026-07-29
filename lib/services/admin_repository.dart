@@ -5,6 +5,8 @@ import '../models/admin_report.dart';
 import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
+import '../models/user_ban.dart';
+import 'ban_logic.dart';
 
 /// Whether the cached site-name map already resolves every referenced site.
 /// Empty ids (a report whose parent site cannot be determined) never force a
@@ -209,6 +211,53 @@ class AdminRepository {
     });
     await batch.commit();
   }
+
+  /// Every ban ever issued, newest first — expired ones included, since the
+  /// admin needs to see that a 1-day ban has already lapsed (and lift it early
+  /// if they change their mind). The collection holds one doc per banned user,
+  /// so it stays small enough to read whole.
+  Stream<List<UserBan>> watchBans() {
+    return _bans
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map((doc) => UserBan.fromMap(doc.id, _normalise(doc.data())))
+              .toList(),
+        );
+  }
+
+  /// Bans [uid] for [duration] (issue: spam control). Writes `bans/{uid}`,
+  /// which `firestore.rules` consults on every write that uid attempts.
+  ///
+  /// `set` rather than `update`: re-banning someone whose old ban lapsed
+  /// replaces the doc outright, so a stale `until` can never survive under a
+  /// new permanent ban.
+  Future<void> banUser(
+    String uid, {
+    required BanDuration duration,
+    String? reason,
+  }) {
+    final data = banEditData(
+      duration: duration,
+      now: DateTime.now(),
+      reason: reason,
+    );
+    final until = data['until'];
+    return _bans.doc(uid).set({
+      if (until is DateTime) 'until': Timestamp.fromDate(until),
+      if (data['reason'] != null) 'reason': data['reason'],
+      'createdAt': FieldValue.serverTimestamp(),
+      'createdBy': _adminMarker,
+    });
+  }
+
+  /// Lifts a ban — including a permanent one. Deleting the doc is what the
+  /// rules read as "not banned", so this is the whole of an unban.
+  Future<void> unbanUser(String uid) => _bans.doc(uid).delete();
+
+  CollectionReference<Map<String, dynamic>> get _bans =>
+      firestore.collection('bans');
 
   String get _adminMarker => auth.currentUser?.uid ?? 'admin';
 }

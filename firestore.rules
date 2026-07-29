@@ -30,6 +30,44 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/userRoles/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Spam control: an admin bans a uid by creating bans/{uid}. While the ban
+    // is active that uid may not WRITE anything — votes, reports, new sites,
+    // favourites, profile syncs. Reads are untouched, so a banned spammer can
+    // still use the app; they just can't post.
+    //
+    // exists() first, then get() only when a ban document is actually there —
+    // the same shape as isAdmin() above, and for the same reason: binding the
+    // get() result and null-checking it raises "Null value error" for everyone
+    // *without* a ban, which would deny every ordinary write (caught by the
+    // 'an unbanned user is unaffected' check in the rules suite). So the
+    // common case costs one lookup, a banned one costs two, and only ever on
+    // write paths — the read budget in CLAUDE.md is about listeners, which
+    // this never touches.
+    //
+    // A doc with no `until` is a permanent ban, and a malformed `until` is
+    // treated the same way: a half-written ban must fail CLOSED, never open.
+    function isBanned() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/bans/$(request.auth.uid))
+        && banAllowsNothing(
+             get(/databases/$(database)/documents/bans/$(request.auth.uid)).data
+           );
+    }
+
+    function banAllowsNothing(ban) {
+      return !('until' in ban)
+        || !(ban.until is timestamp)
+        || ban.until > request.time;
+    }
+
+    // Bans are visible to the banned user (so the app can say why a post was
+    // refused) and to admins; only admins write them.
+    match /bans/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin() && isValidBan();
+      allow delete: if isAdmin();
+    }
+
     match /sites/{siteId} {
       allow read: if true;
 
@@ -37,6 +75,7 @@ service cloud.firestore {
       // they only become visible after a moderator approves them. Admins may
       // create sites already approved — published immediately (issue #16).
       allow create: if signedIn()
+        && !isBanned()
         && isValidNewSite()
         && (request.resource.data.approved == false
           || (request.resource.data.approved == true && isAdmin()));
@@ -44,8 +83,9 @@ service cloud.firestore {
       // Two permitted update shapes:
       //  - a validated status vote (one counter +1, valid status), or
       //  - a bare lastReportAt touch (accompanies an activity report).
+      // isAdmin() comes first so a moderator's write never pays the ban read.
       allow update: if isAdmin()
-        || (signedIn() && (isValidVote() || isReportTouch()));
+        || (signedIn() && (isValidVote() || isReportTouch()) && !isBanned());
 
       // Admins may remove a site outright (issue #13); the client deletes the
       // reports/limits subcollections in the same batch (nested rules allow it).
@@ -53,7 +93,7 @@ service cloud.firestore {
 
       match /reports/{reportId} {
         allow read: if true;
-        allow create: if signedIn() && isValidReport(siteId);
+        allow create: if signedIn() && !isBanned() && isValidReport(siteId);
         // Admins may edit an activity report's content (type/note/name); the
         // result must still be a valid activity report and identity fields
         // (siteId/uid/createdAt) stay frozen. Status votes remain immutable —
@@ -103,16 +143,25 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create, update: if signedIn()
         && request.auth.uid == uid
+        && !isBanned()
         && request.resource.data.keys().hasOnly([
           'email', 'displayName', 'photoUrl', 'isAnonymous', 'lastSeenAt'
         ]);
       // In-app account deletion (App Store 5.1.1(v)): a user erases their
-      // own profile before deleting the Firebase account.
+      // own profile before deleting the Firebase account. NOT gated on the
+      // ban — a suspended user keeps the right to delete their account, and
+      // Apple requires that path to work unconditionally.
       allow delete: if signedIn() && request.auth.uid == uid;
 
-      // A user's favourite sites live under their own uid and are private to them.
+      // A user's favourite sites live under their own uid and are private to
+      // them. Adding one is a write and stops while banned; removing one does
+      // not, so nobody is left holding a star they cannot clear (and the
+      // deletion batch above keeps working).
       match /favourites/{siteId} {
-        allow read, write: if signedIn() && request.auth.uid == uid;
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && !isBanned();
       }
 
       // Global per-user action ledger (issue #15 redux): 5 votes/reports per
@@ -239,6 +288,20 @@ service cloud.firestore {
           || (d.reporterName is string
             && d.reporterName.size() > 0
             && d.reporterName.size() <= 80));
+    }
+
+    // A ban document (admin-written). `until` absent == permanent; `createdBy`
+    // is the issuing admin and `createdAt` is server time, so the audit trail
+    // can't be back-dated. Keys are capped so a ban can never smuggle in
+    // fields another rule might read.
+    function isValidBan() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['until', 'reason', 'createdAt', 'createdBy'])
+        && d.createdBy == request.auth.uid
+        && d.createdAt == request.time
+        && (!('until' in d.keys()) || d.until is timestamp)
+        && (!('reason' in d.keys())
+          || (d.reason is string && d.reason.size() <= 200));
     }
 
     // Shared shape for any client-created site; the create rule adds the

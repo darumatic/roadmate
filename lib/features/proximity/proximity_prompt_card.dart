@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/enums.dart';
 import '../../services/providers.dart';
+import '../../services/ban_logic.dart';
 import '../../services/rate_limit.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/status_labels.dart';
@@ -211,6 +212,8 @@ class ProximityPromptCard extends ConsumerWidget {
     try {
       await ref.read(siteRepositoryProvider).vote(prompt.site.id, status);
       _snack(messenger, 'Reported ${statusDisplayLabel(status)} — thanks!');
+    } on BannedException catch (e) {
+      _snack(messenger, e.message);
     } on RateLimitedException {
       _snack(messenger, kRateLimitMessage);
     } catch (e) {

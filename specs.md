@@ -127,6 +127,30 @@ Covered by `test/rules/rules_test.mjs`
 pure unit tests (`test/rate_limit_test.dart`), and a device-gated emulator
 suite (`test/firebase/firestore_repository_emulator_test.dart`).
 
+**Bans (spam control): LIVE, admin-issued, server-enforced.** An admin bans a
+uid by writing `bans/{uid}` — **1 day** (`until` timestamp) or **forever** (no
+`until` field at all). While the ban is active the rules refuse **every write**
+from that uid: votes, activity reports, new sites, adding a favourite, even the
+profile sync. Reads are untouched — a banned spammer keeps the map, the
+speedo and their trips, they just can't post. Two carve-outs are deliberate:
+**removing** a favourite and **deleting your own account** stay allowed, so
+nobody is trapped with content they can't clear and App Store 5.1.1(v) keeps
+working. A missing/malformed `until` reads as permanent — a half-written ban
+must **fail closed**. Enforcement is one `get()` per write (never `exists()` +
+`get()`, which would bill two) and only on write paths, so the listener read
+budget is untouched; `isAdmin()` is evaluated first wherever it appears, so a
+moderator's own writes never pay for the lookup. **Retrocompat:** nothing
+changes for unbanned users, so already-shipped mobile builds are unaffected;
+a banned old client simply sees its generic "Could not submit" error, while
+new clients read `bans/{uid}` on the denial path (one read, failure only) and
+show the real reason — "Your account is suspended until 30 Jul 2026, 2:15 pm"
+(`BannedException`, `lib/services/ban_logic.dart`). Admin UI: a **Ban this
+user** action on every report card in the Reports/Activity tabs (needs the
+report's uid) and a **Bans** tab listing every ban — active or lapsed, since a
+served 1-day ban is the evidence for handing out a permanent one — each with a
+one-tap **Lift ban**. Covered by `test/ban_logic_test.dart`,
+`test/admin_bans_test.dart` and the ban section of `test/rules/rules_test.mjs`.
+
 **Forced-update gate:** `config/app.minVersion` (Firestore, world-readable,
 console-edited only) is watched live; builds below it render a blocking
 "Update required" screen (store link / web refresh) — `lib/services/

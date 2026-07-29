@@ -4,7 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
+import '../models/user_ban.dart';
 import 'auth_service.dart';
+import 'ban_logic.dart';
 import 'rate_limit.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
@@ -77,6 +79,34 @@ class FirestoreSiteRepository implements SiteRepository {
       .collection('limits')
       .doc('actions');
 
+  /// The user's active ban, or null. Read **only after a write was refused**:
+  /// a ban is rare and the rules already enforce it, so paying a document read
+  /// on every vote to pre-empt one would be backwards. On the failure path it
+  /// costs one read and turns "Could not submit" into the real reason.
+  ///
+  /// Never throws: a lookup that itself fails (offline, rules changed) must
+  /// leave the original error to speak for itself.
+  Future<UserBan?> _activeBan(String uid) async {
+    try {
+      final snap = await firestore.collection('bans').doc(uid).get();
+      final data = snap.data();
+      if (!snap.exists || data == null) return null;
+      final ban = UserBan.fromMap(uid, _normalise(data));
+      return ban.isActiveAt(DateTime.now()) ? ban : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Turns a rules denial into the exception that explains it. A banned user
+  /// is banned whatever else is true, so that check comes first; [orElse] is
+  /// what the caller would otherwise have thrown.
+  Future<Never> _explainDenial(String uid, Object orElse) async {
+    final ban = await _activeBan(uid);
+    if (ban != null) throw BannedException(ban.until);
+    throw orElse;
+  }
+
   /// Commits [addOps] plus a rate-limit ledger stamp in one atomic batch
   /// (issue #15 redux — see rate_limit.dart for why this is clock-free).
   ///
@@ -117,7 +147,11 @@ class FirestoreSiteRepository implements SiteRepository {
       try {
         await attempt(LedgerShape.reset);
       } catch (e2) {
-        if (isRulesDenial(e2)) throw const RateLimitedException();
+        // Both shapes refused: either the window really is spent, or this uid
+        // is banned and every write of theirs is being denied.
+        if (isRulesDenial(e2)) {
+          await _explainDenial(uid, const RateLimitedException());
+        }
         rethrow;
       }
     }
@@ -174,16 +208,23 @@ class FirestoreSiteRepository implements SiteRepository {
   Future<void> addSite(Site site, {bool approved = false}) async {
     final uid = await ensureSignedIn(auth);
     final ref = site.id.isEmpty ? _sites.doc() : _sites.doc(site.id);
-    await ref.set({
-      ...site.toMap(),
-      // Pending moderation unless an admin publishes directly (issue #16;
-      // the rules reject approved == true from non-admins).
-      'approved': approved,
-      'createdBy': uid,
-      'createdAt': FieldValue.serverTimestamp(),
-      if (approved) 'approvedAt': FieldValue.serverTimestamp(),
-      if (approved) 'approvedBy': uid,
-    });
+    try {
+      await ref.set({
+        ...site.toMap(),
+        // Pending moderation unless an admin publishes directly (issue #16;
+        // the rules reject approved == true from non-admins).
+        'approved': approved,
+        'createdBy': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        if (approved) 'approvedAt': FieldValue.serverTimestamp(),
+        if (approved) 'approvedBy': uid,
+      });
+    } catch (e) {
+      // A denial here is almost always a ban (the shape is validated
+      // client-side first); anything else surfaces unchanged.
+      if (isRulesDenial(e)) await _explainDenial(uid, e);
+      rethrow;
+    }
   }
 
   @override
@@ -209,10 +250,18 @@ class FirestoreSiteRepository implements SiteRepository {
         .collection('favourites')
         .doc(siteId);
     final snap = await ref.get();
+    // Un-favouriting stays open to banned users: the rules only close the
+    // create/update side, so nobody is stuck with a starred site they can't
+    // remove (and account deletion keeps working).
     if (snap.exists) {
       await ref.delete();
-    } else {
+      return;
+    }
+    try {
       await ref.set({'favouritedAt': FieldValue.serverTimestamp()});
+    } catch (e) {
+      if (isRulesDenial(e)) await _explainDenial(uid, e);
+      rethrow;
     }
   }
 }

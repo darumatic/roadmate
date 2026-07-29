@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import '../models/admin_report.dart';
+import '../models/user_ban.dart';
 import 'admin_repository.dart';
 import 'alert_player.dart';
 import 'auth_service.dart';
@@ -115,4 +116,10 @@ final pendingSitesProvider = StreamProvider<List<Site>>((ref) {
 
 final recentAdminReportsProvider = StreamProvider<List<AdminReport>>((ref) {
   return ref.watch(adminRepositoryProvider).watchRecentReports();
+});
+
+/// Every ban, for the admin Bans tab. Admin-only by the rules, so this is
+/// only ever subscribed from that screen — never at app start.
+final bansProvider = StreamProvider<List<UserBan>>((ref) {
+  return ref.watch(adminRepositoryProvider).watchBans();
 });
