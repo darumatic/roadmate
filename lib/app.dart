@@ -7,6 +7,7 @@ import 'services/keep_awake.dart';
 import 'services/min_version.dart';
 import 'services/startup_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/announcement_banner.dart';
 import 'widgets/force_update_screen.dart';
 import 'widgets/update_banner.dart';
 
@@ -48,9 +49,15 @@ class RoadMateApp extends ConsumerWidget {
                 theme: AppTheme.dark,
                 routerConfig: appRouter,
                 // Web: offer a one-tap refresh when a newer build is deployed.
-                // The approach prompt floats over whatever screen is showing.
+                // Below it, the admin notice (when there is one) takes a strip
+                // off the top of every screen. The approach prompt floats over
+                // whatever screen is showing.
                 builder: (context, child) => UpdateGate(
-                  child: ProximityGate(child: child ?? const SizedBox.shrink()),
+                  child: AnnouncementGate(
+                    child: ProximityGate(
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                  ),
                 ),
               ),
       ),

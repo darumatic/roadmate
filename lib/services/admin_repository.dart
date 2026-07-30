@@ -6,6 +6,7 @@ import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import '../models/user_ban.dart';
+import 'announcement.dart';
 import 'ban_logic.dart';
 
 /// Whether the cached site-name map already resolves every referenced site.
@@ -255,6 +256,39 @@ class AdminRepository {
   /// Lifts a ban — including a permanent one. Deleting the doc is what the
   /// rules read as "not banned", so this is the whole of an unban.
   Future<void> unbanUser(String uid) => _bans.doc(uid).delete();
+
+  /// Publishes the admin notice every user sees banded across the top of the
+  /// app. One fixed document, so publishing replaces whatever was there —
+  /// there is only ever one current message.
+  ///
+  /// `set` without merge on purpose: an edit that drops the expiry must clear
+  /// the old `expiresAt` rather than leave it behind.
+  Future<void> publishAnnouncement({
+    required String message,
+    required AnnouncementSeverity severity,
+    DateTime? expiresAt,
+  }) {
+    final data = Announcement.editData(
+      message: message,
+      severity: severity,
+      expiresAt: expiresAt,
+    );
+    final expiry = data['expiresAt'];
+    return _announcement.set({
+      'message': data['message'],
+      'severity': data['severity'],
+      if (expiry is DateTime) 'expiresAt': Timestamp.fromDate(expiry),
+      'publishedAt': FieldValue.serverTimestamp(),
+      'publishedBy': _adminMarker,
+    });
+  }
+
+  /// Takes the notice down. Deleting the doc is what clients read as "nothing
+  /// to say", so this is the whole of a clear.
+  Future<void> clearAnnouncement() => _announcement.delete();
+
+  DocumentReference<Map<String, dynamic>> get _announcement =>
+      firestore.doc('announcements/current');
 
   CollectionReference<Map<String, dynamic>> get _bans =>
       firestore.collection('bans');

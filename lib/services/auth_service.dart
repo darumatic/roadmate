@@ -10,6 +10,7 @@ import 'display_mode_stub.dart'
     as display_mode;
 
 import '../firebase_options.dart';
+import 'report_eligibility.dart';
 
 /// The first-party domain native (iOS/Android) provider sign-in round-trips
 /// through, mirroring the web authDomain so no platform falls back to the
@@ -41,6 +42,25 @@ final authStateProvider = StreamProvider<User?>((ref) {
   if (Firebase.apps.isEmpty) return Stream.value(null);
   return ref.watch(firebaseAuthProvider).userChanges();
 });
+
+/// Whether the current identity may post reports and status votes — the
+/// client-side mirror of `isRegistered()` in `firestore.rules`, and the same
+/// source `FirestoreSiteRepository` enforces on, so the two never disagree.
+///
+/// Reads the restored session synchronously instead of going through
+/// [authStateProvider]: a driver can tap before that stream has emitted (an
+/// approach prompt is sometimes the first thing that happens after a cold
+/// start), and "not known yet" must never read as anonymous and refuse someone
+/// who is in fact signed in. In the rare window where the session is still being
+/// restored, the sign-in sheet closes itself as soon as auth reports a real
+/// account — see `sign_in_required_sheet.dart`.
+bool mayPostReports(FirebaseAuth auth) {
+  final user = auth.currentUser;
+  return canPostReports(
+    signedIn: user != null,
+    isAnonymous: user?.isAnonymous ?? true,
+  );
+}
 
 final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) async* {
   if (Firebase.apps.isEmpty) {
@@ -204,6 +224,7 @@ class AuthController {
     if (!isWeb) return;
     try {
       final result = await auth.getRedirectResult();
+      await _refreshClaims(result.user);
       await syncUser(result.user);
     } on FirebaseAuthException catch (e) {
       final credential = e.credential;
@@ -211,6 +232,7 @@ class AuthController {
               e.code == 'email-already-in-use') &&
           credential != null) {
         final signedIn = await auth.signInWithCredential(credential);
+        await _refreshClaims(signedIn.user);
         await syncUser(signedIn.user);
         return;
       }
@@ -240,8 +262,25 @@ class AuthController {
     }
 
     if (credential == null) return null; // redirecting — completes next load
+    await _refreshClaims(credential.user);
     await syncUser(credential.user);
     return credential;
+  }
+
+  /// Forces a fresh ID token after a sign-in or link.
+  ///
+  /// `firestore.rules` decides whether someone may post from the token's
+  /// claims (`isRegistered()`), and linking a provider onto an anonymous uid
+  /// keeps the same uid — so a cached token can still read as anonymous and get
+  /// the user's first post refused right after they signed in. Best effort: a
+  /// failed refresh must never turn a successful sign-in into an error, and the
+  /// token refreshes itself within the hour regardless.
+  Future<void> _refreshClaims(User? user) async {
+    try {
+      await user?.getIdToken(true);
+    } catch (e) {
+      debugPrint('RoadMate: token refresh after sign-in failed: $e');
+    }
   }
 
   // firebase_auth exposes the *Provider variants only on mobile/desktop; web

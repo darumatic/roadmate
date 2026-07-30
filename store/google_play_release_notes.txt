@@ -1,4 +1,6 @@
-• Spam gets shut down faster: moderators can now suspend an account that floods the app with junk reports — for a day, or for good
-• A suspended account keeps full read access — live site status, alerts, speedo and trips — it just can't post
-• Moderators are no longer held back by the action limit, so bad reports and stale statuses get cleaned up faster
+• Reports and status votes now need a free sign-in with Google or Apple — it keeps the reports trustworthy and makes spam accounts far harder to churn
+• Tap OPEN / BLITZ / CLOSED or Report activity while signed out and RoadMate asks once, then posts what you were sending — nothing to retype
+• Signing in keeps everything you already have: your favourites, your trips and your past reports all carry over
+• Browsing, Nearby, favourites and adding a site stay open to everyone, no account needed
+• New: important notices from the RoadMate team now appear as a banner at the top of the app
 • Small behind-the-scenes fixes

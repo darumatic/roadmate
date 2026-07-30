@@ -8,6 +8,8 @@ import '../models/admin_report.dart';
 import '../models/user_ban.dart';
 import 'admin_repository.dart';
 import 'alert_player.dart';
+import 'announcement.dart';
+import 'announcement_dismiss_store.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
@@ -55,6 +57,38 @@ final proximityNotifierProvider = Provider<ProximityNotifier>(
 final tripHistoryStoreProvider = Provider<TripHistoryStore>(
   (ref) => const PrefsTripHistoryStore(),
 );
+
+/// Remembers the last admin notice this device dismissed.
+final announcementDismissStoreProvider = Provider<AnnouncementDismissStore>(
+  (ref) => const PrefsAnnouncementDismissStore(),
+);
+
+/// The live admin broadcast, or null when there is nothing to say.
+///
+/// One document listener (`announcements/current`) — the cheapest read shape
+/// there is, and the reason this isn't a query. Reads are public in the rules so
+/// it works for anonymous users. Like the forced-update gate it **fails
+/// silently**: a stream error yields no value and the banner consumer treats
+/// that as "no notice", so a broken listener can never wedge a banner on screen.
+final announcementProvider = StreamProvider<Announcement?>((ref) {
+  if (Firebase.apps.isEmpty) return Stream.value(null);
+  return FirebaseFirestore.instance
+      .doc('announcements/current')
+      .snapshots()
+      .map((snap) {
+        final data = snap.data();
+        if (data == null) return null;
+        return Announcement.fromMap(
+          data.map((key, value) {
+            if (value is Timestamp) {
+              return MapEntry(key, value.toDate().toIso8601String());
+            }
+            return MapEntry(key, value);
+          }),
+        );
+      })
+      .handleError((Object _) {});
+});
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {
   return AdminRepository(

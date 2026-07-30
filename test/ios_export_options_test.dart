@@ -18,8 +18,11 @@ void main() {
   final script = File('scripts/release_ios.sh');
 
   test('export options use manual App Store signing', () {
-    expect(plist.existsSync(), isTrue,
-        reason: 'ios/ExportOptions.plist is required by scripts/release_ios.sh');
+    expect(
+      plist.existsSync(),
+      isTrue,
+      reason: 'ios/ExportOptions.plist is required by scripts/release_ios.sh',
+    );
     final xml = plist.readAsStringSync();
 
     // Manual signing is the whole point — automatic needs an Xcode account.
@@ -38,8 +41,11 @@ void main() {
     expect(script.existsSync(), isTrue);
     final sh = script.readAsStringSync();
 
-    expect(sh, contains('--export-options-plist=ios/ExportOptions.plist'),
-        reason: 'a bare `flutter build ipa` falls back to automatic signing');
+    expect(
+      sh,
+      contains('--export-options-plist=ios/ExportOptions.plist'),
+      reason: 'a bare `flutter build ipa` falls back to automatic signing',
+    );
 
     // Fail fast on missing signing material rather than after the archive.
     expect(sh, contains('security find-identity'));

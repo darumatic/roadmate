@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,11 +9,18 @@ import 'package:roadmate/features/proximity/proximity_text.dart';
 import 'package:roadmate/features/speedometer/speedometer_panel.dart';
 import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
+import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/proximity_notifier.dart';
 
 import 'proximity_prompt_test.dart'
-    show FakeAlertPlayer, FakeLocationSource, FakeSiteRepository, FakeStore;
+    show
+        FakeAlertPlayer,
+        FakeLocationSource,
+        FakeSiteRepository,
+        FakeFirebaseAuth,
+        FakeStore,
+        FakeUser;
 
 class RecordingNotifier implements ProximityNotifier {
   final shown = <(String, String, double, String)>[];
@@ -72,7 +80,11 @@ Future<ProviderContainer> _pump(
   required FakeSiteRepository repo,
   required RecordingNotifier notifier,
   FakeAlertPlayer? alert,
+  // Signed in by default: posting needs a real account, and these checks are
+  // about the notification plumbing, not the sign-in gate.
+  User? user,
 }) async {
+  final signedInUser = user ?? FakeUser();
   addTearDown(location.controller.close);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.binding.setSurfaceSize(const Size(900, 1600));
@@ -85,6 +97,8 @@ Future<ProviderContainer> _pump(
         tripHistoryStoreProvider.overrideWithValue(FakeStore()),
         siteRepositoryProvider.overrideWithValue(repo),
         proximityNotifierProvider.overrideWithValue(notifier),
+        firebaseAuthProvider.overrideWithValue(FakeFirebaseAuth(signedInUser)),
+        authStateProvider.overrideWith((ref) => Stream.value(signedInUser)),
       ],
       child: const MaterialApp(
         home: Scaffold(

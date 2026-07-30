@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +11,7 @@ import 'package:roadmate/services/admin_repository.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/rate_limit.dart';
+import 'package:roadmate/services/report_eligibility.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
 
@@ -22,9 +26,18 @@ class FakeSiteRepository implements SiteRepository {
   Object? voteError;
   Object? reportError;
 
+  /// When true, [voteError] / [reportError] fire once and are then cleared —
+  /// models a write that is refused while anonymous and succeeds after the user
+  /// signs in.
+  bool failOnce = false;
+
   @override
   Future<void> vote(String siteId, SiteStatus status) async {
-    if (voteError != null) throw voteError!;
+    final error = voteError;
+    if (error != null) {
+      if (failOnce) voteError = null;
+      throw error;
+    }
     votes.add((siteId, status));
   }
 
@@ -38,7 +51,11 @@ class FakeSiteRepository implements SiteRepository {
     String? activityNote,
     String? reporterName,
   }) async {
-    if (reportError != null) throw reportError!;
+    final error = reportError;
+    if (error != null) {
+      if (failOnce) reportError = null;
+      throw error;
+    }
     reports.add((siteId, activityType, activityNote, reporterName));
   }
 
@@ -81,16 +98,33 @@ const _site = Site(
 Site _siteWithLastReport(DateTime lastReportAt) =>
     _site.copyWith(lastReportAt: lastReportAt);
 
+/// Just enough User for the sign-in gate: the only thing anyone asks is
+/// whether the session is anonymous.
+class FakeUser implements User {
+  FakeUser({this.anonymous = false});
+
+  final bool anonymous;
+
+  @override
+  bool get isAnonymous => anonymous;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Future<void> _pump(
   WidgetTester tester,
   FakeSiteRepository repo, {
   Site site = _site,
   FakeAdminRepository? adminRepo,
+  Stream<User?>? authState,
 }) {
   return tester.pumpWidget(
     ProviderScope(
       overrides: [
         siteRepositoryProvider.overrideWithValue(repo),
+        if (authState != null)
+          authStateProvider.overrideWith((ref) => authState),
         // A non-null adminRepo pumps the card as a signed-in admin.
         if (adminRepo != null) ...[
           currentUserRoleProvider.overrideWith(
@@ -450,5 +484,116 @@ void main() {
 
     expect(find.text(kRateLimitMessage), findsOneWidget);
     expect(find.textContaining('Could not submit'), findsNothing);
+  });
+
+  // Posting needs a real account: an anonymous tap must raise the sign-in
+  // prompt rather than a failure snack, and must not record anything.
+  group('sign-in required to post', () {
+    testWidgets('an anonymous vote raises the sign-in sheet', (tester) async {
+      final repo = FakeSiteRepository()
+        ..voteError = const SignInRequiredException();
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+
+      expect(repo.votes, isEmpty);
+      expect(find.text(kSignInSheetTitle), findsOneWidget);
+      expect(find.text('Sign in with Google'), findsOneWidget);
+      // Not the generic failure, and not the rate limit.
+      expect(find.textContaining('Could not submit'), findsNothing);
+      expect(find.text(kRateLimitMessage), findsNothing);
+    });
+
+    testWidgets('an anonymous activity report raises the sign-in sheet', (
+      tester,
+    ) async {
+      final repo = FakeSiteRepository()
+        ..reportError = const SignInRequiredException();
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Report activity'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Submit'));
+      await tester.pumpAndSettle();
+
+      expect(repo.reports, isEmpty);
+      expect(find.text(kSignInSheetTitle), findsOneWidget);
+      expect(find.textContaining('Could not submit'), findsNothing);
+    });
+
+    testWidgets('signing in submits the vote the driver actually wanted', (
+      tester,
+    ) async {
+      final auth = StreamController<User?>();
+      addTearDown(auth.close);
+      final repo = FakeSiteRepository()
+        ..voteError = const SignInRequiredException()
+        ..failOnce = true;
+      await _pump(tester, repo, authState: auth.stream);
+      auth.add(FakeUser(anonymous: true));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+      expect(find.text(kSignInSheetTitle), findsOneWidget);
+
+      // The provider buttons round-trip through Firebase, so the sign-in itself
+      // is modelled by the auth stream emitting a linked account — which is
+      // exactly what closes the sheet and retries the write.
+      auth.add(FakeUser());
+      await tester.pumpAndSettle();
+
+      expect(find.text(kSignInSheetTitle), findsNothing);
+      expect(repo.votes, [('nsw-1', SiteStatus.open)]);
+    });
+
+    testWidgets('signing in re-sends the report without retyping it', (
+      tester,
+    ) async {
+      final auth = StreamController<User?>();
+      addTearDown(auth.close);
+      final repo = FakeSiteRepository()
+        ..reportError = const SignInRequiredException()
+        ..failOnce = true;
+      await _pump(tester, repo, authState: auth.stream);
+      auth.add(FakeUser(anonymous: true));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Report activity'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).at(0), // the note field
+        'Two rigs pulled up',
+      );
+      await tester.tap(find.text('Submit'));
+      await tester.pumpAndSettle();
+      expect(find.text(kSignInSheetTitle), findsOneWidget);
+
+      auth.add(FakeUser());
+      await tester.pumpAndSettle();
+
+      // The form is never shown again — what they typed is still there.
+      expect(repo.reports, hasLength(1));
+      expect(repo.reports.single.$3, 'Two rigs pulled up');
+    });
+
+    testWidgets('backing out of the sheet records nothing', (tester) async {
+      final repo = FakeSiteRepository()
+        ..voteError = const SignInRequiredException();
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+      // Tap the barrier: same as swiping the sheet away.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kSignInSheetTitle), findsNothing);
+      expect(repo.votes, isEmpty);
+    });
   });
 }

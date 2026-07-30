@@ -1,5 +1,6 @@
 // Verifies the vote/report shapes, admin-delete (issue #13), admin-publish
-// (issue #16) and the global per-user rate-limit ledger (issue #15 redux:
+// (issue #16), the admin broadcast notice (announcements/current) and the
+// global per-user rate-limit ledger (issue #15 redux:
 // 5 actions per 5 minutes at users/{uid}/limits/actions, judged entirely by
 // request.time, admins exempt) rules in firestore.rules against the Firestore
 // emulator.
@@ -475,6 +476,108 @@ await check(
     );
     await assertFails(setDoc(doc(alice, 'config/app'), { minVersion: '9.9.9' }));
     await assertFails(setDoc(doc(admin, 'config/app'), { minVersion: '9.9.9' }));
+  })(),
+);
+
+// ---- Admin broadcast (announcements/current) ----
+// One world-readable doc, written only by admins. Read must work pre-auth so
+// the banner shows for anonymous users; the shape is capped and server-stamped
+// exactly like a ban.
+const announcement = (extra = {}) => ({
+  message: 'Signing in is now required to report.',
+  severity: 'info',
+  publishedAt: serverTimestamp(),
+  publishedBy: 'admin1',
+  ...extra,
+});
+
+await check(
+  'anyone reads the admin notice, including pre-auth',
+  (async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'announcements/current'), {
+        message: 'seeded',
+        severity: 'info',
+      });
+    });
+    await assertSucceeds(
+      getDoc(doc(env.unauthenticatedContext().firestore(), 'announcements/current')),
+    );
+    await assertSucceeds(getDoc(doc(alice, 'announcements/current')));
+  })(),
+);
+
+await check(
+  'only an admin publishes or clears a notice',
+  (async () => {
+    await assertFails(setDoc(doc(alice, 'announcements/current'), announcement()));
+    await assertFails(deleteDoc(doc(alice, 'announcements/current')));
+    await assertSucceeds(
+      setDoc(doc(admin, 'announcements/current'), announcement()),
+    );
+    // Publishing again replaces the live notice — that is how a typo is fixed.
+    await assertSucceeds(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ message: 'Corrected.', severity: 'warning' }),
+      ),
+    );
+    await assertSucceeds(deleteDoc(doc(admin, 'announcements/current')));
+  })(),
+);
+
+await check(
+  'malformed notices are rejected in every variation',
+  (async () => {
+    // Empty and over-long messages.
+    await assertFails(
+      setDoc(doc(admin, 'announcements/current'), announcement({ message: '' })),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ message: 'x'.repeat(281) }),
+      ),
+    );
+    // Unknown severity, back-dated stamp, forged author, stray field.
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ severity: 'critical' }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ publishedAt: Timestamp.fromDate(new Date(0)) }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ publishedBy: 'alice' }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ pinned: true }),
+      ),
+    );
+    // expiresAt must be a timestamp when present.
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ expiresAt: 'next week' }),
+      ),
+    );
+    await assertSucceeds(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ expiresAt: Timestamp.fromDate(new Date('2099-01-01')) }),
+      ),
+    );
+    await assertSucceeds(deleteDoc(doc(admin, 'announcements/current')));
   })(),
 );
 

@@ -104,18 +104,27 @@ class FakeUser implements User {
   @override
   List<UserInfo> get providerData => providers;
 
+  /// Every forced (`true`) token refresh asked for on this user.
+  final tokenRefreshes = <bool>[];
+
+  @override
+  Future<String> getIdToken([bool forceRefresh = false]) async {
+    tokenRefreshes.add(forceRefresh);
+    return 'token';
+  }
+
   @override
   Future<UserCredential> linkWithPopup(AuthProvider provider) async {
     linkPopups++;
     linkedProviders.add(provider);
     if (linkPopupError != null) throw linkPopupError!;
-    return FakeUserCredential();
+    return FakeUserCredential(fakeUser: this);
   }
 
   @override
   Future<UserCredential> linkWithProvider(AuthProvider provider) async {
     linkedProviders.add(provider);
-    return FakeUserCredential();
+    return FakeUserCredential(fakeUser: this);
   }
 
   @override
@@ -402,6 +411,28 @@ void main() {
         throwsA(isA<FirebaseAuthException>()),
       );
       expect(auth.redirectSignIns, 0);
+    });
+
+    // The rules decide who may post from the ID token's claims
+    // (isRegistered()). Linking keeps the same uid, so a cached token can still
+    // look anonymous and refuse the user's very first post after signing in.
+    test('linking an anonymous account forces a fresh ID token', () async {
+      final anon = FakeUser(anonymous: true);
+      final auth = FakeFirebaseAuth()..current = anon;
+
+      await _controller(auth).signInWithGoogle();
+
+      expect(anon.linkPopups, 1);
+      expect(anon.tokenRefreshes, [true]);
+    });
+
+    test('a native link refreshes the token too', () async {
+      final anon = FakeUser(anonymous: true);
+      final auth = FakeFirebaseAuth()..current = anon;
+
+      await _controller(auth, isWeb: false).signInWithGoogle();
+
+      expect(anon.tokenRefreshes, [true]);
     });
 
     test('anonymous user with a blocked popup gets linkWithRedirect', () async {

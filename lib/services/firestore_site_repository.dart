@@ -8,6 +8,7 @@ import '../models/user_ban.dart';
 import 'auth_service.dart';
 import 'ban_logic.dart';
 import 'rate_limit.dart';
+import 'report_eligibility.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 
@@ -101,10 +102,25 @@ class FirestoreSiteRepository implements SiteRepository {
   /// Turns a rules denial into the exception that explains it. A banned user
   /// is banned whatever else is true, so that check comes first; [orElse] is
   /// what the caller would otherwise have thrown.
+  ///
+  /// An anonymous session comes second: once the rules require a real account
+  /// (`isRegistered()`), a denial that isn't a ban is almost certainly this —
+  /// and without the check the caller would blame the rate limit, which is what
+  /// `_commitWithLedgerStamp` falls back to.
   Future<Never> _explainDenial(String uid, Object orElse) async {
     final ban = await _activeBan(uid);
     if (ban != null) throw BannedException(ban.until);
+    if (!_mayPost) throw const SignInRequiredException();
     throw orElse;
+  }
+
+  /// Whether the current identity may post — see `report_eligibility.dart`.
+  bool get _mayPost {
+    final user = auth.currentUser;
+    return canPostReports(
+      signedIn: user != null,
+      isAnonymous: user?.isAnonymous ?? true,
+    );
   }
 
   /// Commits [addOps] plus a rate-limit ledger stamp in one atomic batch
@@ -160,6 +176,7 @@ class FirestoreSiteRepository implements SiteRepository {
   @override
   Future<void> vote(String siteId, SiteStatus status) async {
     final uid = await ensureSignedIn(auth);
+    if (!_mayPost) throw const SignInRequiredException();
     final reportRef = _sites.doc(siteId).collection('reports').doc();
     await _commitWithLedgerStamp(uid, (batch) {
       batch.set(reportRef, {
@@ -184,6 +201,7 @@ class FirestoreSiteRepository implements SiteRepository {
     String? reporterName,
   }) async {
     final uid = await ensureSignedIn(auth);
+    if (!_mayPost) throw const SignInRequiredException();
     final data = <String, dynamic>{
       'siteId': siteId,
       'activityType': activityType.wire,

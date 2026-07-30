@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/site.dart';
+import '../../services/auth_service.dart';
 import '../../services/proximity_alert.dart';
 import '../../services/proximity_notifier.dart';
 import '../../services/providers.dart';
@@ -148,6 +149,12 @@ class ProximityController extends Notifier<ProximityPrompt?> {
     ref.read(proximityNotifierProvider).cancel();
     final status = answer.status;
     if (status == null) return;
+    // Posting needs a real account and a notification has no UI to ask with,
+    // so an anonymous tap is left *unanswered*: the prompt stays pending and
+    // the in-app card raises the sign-in sheet when the driver next looks at
+    // the app. Consuming it here would silently drop the report instead.
+    //
+    if (!mayPostReports(ref.read(firebaseAuthProvider))) return;
     _tracker.markAnswered(answer.siteId);
     if (state?.site.id == answer.siteId) state = null;
     try {

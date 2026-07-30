@@ -25,7 +25,10 @@ void main() {
 
     test('a past expiry does not', () {
       expect(
-        banIsActive(until: _now.subtract(const Duration(minutes: 1)), now: _now),
+        banIsActive(
+          until: _now.subtract(const Duration(minutes: 1)),
+          now: _now,
+        ),
         isFalse,
       );
     });

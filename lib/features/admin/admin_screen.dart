@@ -6,11 +6,13 @@ import '../../models/admin_report.dart';
 import '../../models/site.dart';
 import '../../models/site_report.dart';
 import '../../models/user_ban.dart';
+import '../../services/announcement.dart';
 import '../../services/auth_service.dart';
 import '../../services/ban_logic.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
+import '../../widgets/announcement_banner.dart';
 import '../../widgets/load_error.dart';
 
 class AdminScreen extends ConsumerWidget {
@@ -56,7 +58,7 @@ class _AdminTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         children: [
           TabBar(
@@ -67,6 +69,7 @@ class _AdminTabs extends StatelessWidget {
               Tab(icon: Icon(Icons.how_to_vote_outlined), text: 'Reports'),
               Tab(icon: Icon(Icons.bolt_outlined), text: 'Activity'),
               Tab(icon: Icon(Icons.block_outlined), text: 'Bans'),
+              Tab(icon: Icon(Icons.campaign_outlined), text: 'Notice'),
             ],
           ),
           Expanded(
@@ -90,6 +93,7 @@ class _AdminTabs extends StatelessWidget {
                       'appear here.',
                 ),
                 _BansTab(),
+                NoticeTab(),
               ],
             ),
           ),
@@ -597,7 +601,8 @@ class _BansTab extends ConsumerWidget {
           return const _EmptyAdminState(
             icon: Icons.block_outlined,
             title: 'Nobody is banned',
-            body: 'Ban a spammer from their report in the Reports or '
+            body:
+                'Ban a spammer from their report in the Reports or '
                 'Activity tab, and they will show up here.',
           );
         }
@@ -667,10 +672,7 @@ class _BanCardState extends ConsumerState<_BanCard> {
             ),
             _MetaLine(icon: Icons.person_outline, text: ban.uid),
             if (ban.reason?.trim().isNotEmpty ?? false)
-              _MetaLine(
-                icon: Icons.notes_outlined,
-                text: ban.reason!.trim(),
-              ),
+              _MetaLine(icon: Icons.notes_outlined, text: ban.reason!.trim()),
             if (ban.createdAt != null)
               _MetaLine(
                 icon: Icons.schedule,
@@ -709,6 +711,180 @@ class _BanCardState extends ConsumerState<_BanCard> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// Admin → all users broadcast. Publishes the one `announcements/current`
+/// notice every client bands across the top of the app, and takes it down
+/// again. Public so a widget test can pump it on its own.
+///
+/// There is only ever one current message: publishing replaces whatever was
+/// there, which is also how a typo gets fixed. Editing re-shows the banner to
+/// people who had dismissed the previous version, because dismissal is keyed on
+/// `publishedAt` (see `announcement.dart`).
+class NoticeTab extends ConsumerStatefulWidget {
+  const NoticeTab({super.key});
+
+  @override
+  ConsumerState<NoticeTab> createState() => _NoticeTabState();
+}
+
+class _NoticeTabState extends ConsumerState<NoticeTab> {
+  final TextEditingController _message = TextEditingController();
+  AnnouncementSeverity _severity = AnnouncementSeverity.info;
+  DateTime? _expiresAt;
+  bool _busy = false;
+
+  /// The published notice already copied into the form, so the field is seeded
+  /// once (for editing) without fighting the admin's typing on every snapshot.
+  String? _loadedKey;
+
+  @override
+  void dispose() {
+    _message.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final live = ref.watch(announcementProvider).value;
+    if (live != null && live.dismissKey != _loadedKey) {
+      _loadedKey = live.dismissKey;
+      _message.text = live.message;
+      _severity = live.severity;
+      _expiresAt = live.expiresAt;
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        if (live != null) ...[
+          AnnouncementBanner(announcement: live, onDismiss: () {}),
+          const SizedBox(height: 8),
+          Text(
+            live.publishedAt == null
+                ? 'Live now.'
+                : 'Live since ${_relativeTime(live.publishedAt!)}.',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 20),
+        ],
+        TextField(
+          controller: _message,
+          maxLength: kAnnouncementMaxLength, // matches the rules' 280 cap
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Message',
+            hintText: 'Shown to every user at the top of every screen',
+          ),
+        ),
+        const SizedBox(height: 4),
+        SegmentedButton<AnnouncementSeverity>(
+          segments: const [
+            ButtonSegment(
+              value: AnnouncementSeverity.info,
+              icon: Icon(Icons.campaign_outlined, size: 18),
+              label: Text('Info'),
+            ),
+            ButtonSegment(
+              value: AnnouncementSeverity.warning,
+              icon: Icon(Icons.warning_amber_rounded, size: 18),
+              label: Text('Warning'),
+            ),
+          ],
+          selected: {_severity},
+          onSelectionChanged: (selection) =>
+              setState(() => _severity = selection.first),
+        ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          value: _expiresAt != null,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Auto-hide after 7 days'),
+          subtitle: const Text(
+            'Otherwise it stays up until you clear it.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          onChanged: (on) => setState(
+            () => _expiresAt = on
+                ? DateTime.now().add(const Duration(days: 7))
+                : null,
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+          icon: const Icon(Icons.send_outlined, size: 18),
+          label: Text(live == null ? 'Publish' : 'Update notice'),
+          onPressed: _busy ? null : _publish,
+        ),
+        if (live != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+              side: const BorderSide(color: AppTheme.border),
+              minimumSize: const Size.fromHeight(44),
+            ),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Clear notice'),
+            onPressed: _busy ? null : _clear,
+          ),
+        ],
+        const SizedBox(height: 12),
+        const Text(
+          'Delivered in the app, not as a push notification — users see it the '
+          'next time they open RoadMate. Builds older than 0.1.55 cannot show '
+          'notices at all.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _publish() async {
+    final message = _message.text.trim();
+    if (message.isEmpty) {
+      _snack('Type a message first');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(adminRepositoryProvider)
+          .publishAnnouncement(
+            message: message,
+            severity: _severity,
+            expiresAt: _expiresAt,
+          );
+      _snack('Notice published');
+    } catch (e) {
+      _snack('Could not publish: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _clear() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(adminRepositoryProvider).clearAnnouncement();
+      _message.clear();
+      _loadedKey = null;
+      _expiresAt = null;
+      _snack('Notice cleared');
+    } catch (e) {
+      _snack('Could not clear: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -762,10 +938,7 @@ class _BanUserDialogState extends State<_BanUserDialog> {
         children: [
           Text(
             widget.uid,
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 12,
-            ),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 12),
           for (final duration in BanDuration.values)

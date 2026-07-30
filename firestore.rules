@@ -199,6 +199,16 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+
+    // Admin -> all users broadcast: the one `announcements/current` doc every
+    // client bands across the top of the app. World-readable like config (the
+    // banner must work for anonymous users and before sign-in settles) and
+    // admin-written. Clearing a notice is a delete, so admins own that too.
+    match /announcements/{docId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidAnnouncement();
+      allow delete: if isAdmin();
+    }
     function affectedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
@@ -302,6 +312,25 @@ service cloud.firestore {
         && (!('until' in d.keys()) || d.until is timestamp)
         && (!('reason' in d.keys())
           || (d.reason is string && d.reason.size() <= 200));
+    }
+
+    // An admin notice. Same shape discipline as isValidBan: a capped key set so
+    // a notice can never smuggle in a field another rule might read,
+    // server-stamped `publishedAt` so it can't be back-dated, and `publishedBy`
+    // pinned to the issuing admin for the audit trail. The 280-char cap must
+    // stay in sync with kAnnouncementMaxLength in lib/services/announcement.dart.
+    function isValidAnnouncement() {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+          'message', 'severity', 'publishedAt', 'publishedBy', 'expiresAt'
+        ])
+        && d.message is string
+        && d.message.size() > 0
+        && d.message.size() <= 280
+        && d.severity in ['info', 'warning']
+        && d.publishedAt == request.time
+        && d.publishedBy == request.auth.uid
+        && (!('expiresAt' in d.keys()) || d.expiresAt is timestamp);
     }
 
     // Shared shape for any client-created site; the create rule adds the

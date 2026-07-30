@@ -24,8 +24,13 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   won for: first-class Flutter SDK (FlutterFire), built-in **anonymous auth**,
   realtime Firestore, and Hosting — fastest path, and small traffic fits the free
   tier. (Cloudflare would have meant hand-building auth + a REST API.)
-- **Anonymous auth, no login wall** — lowest friction for "report quickly" usage;
-  votes/saves/submissions are keyed by the anonymous uid.
+- **Anonymous auth, no login wall to *use* the app** — lowest friction for "report
+  quickly" usage; saves/submissions/trips are keyed by the anonymous uid. **Since
+  0.1.55 posting is the exception:** activity reports and status votes require a
+  linked Google/Apple account, because an anonymous identity is free and unlimited
+  (a banned spammer just reinstalls). Signing in *links* the provider onto the
+  existing anonymous uid, so nobody loses favourites, trips or report history.
+  Browsing, search, Nearby, favourites and Add Site stay account-free.
 - **Build the richer product** — implemented the community live-status app from the
   **screenshots/screen-recording** (voting, Nearby, Saved, BLITZ banner), not the
   thinner written brief; replaced "mock JSON" with the **real NHVR dataset** in
@@ -35,8 +40,9 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   Firestore swap is a single line in `providers.dart`.
 - **Status model** — displayed status = the most recent report within a 6 h window
   (pure, unit-tested in `status_logic.dart`).
-- **Security posture** — anonymous **but validated** writes (a vote must bump exactly
-  one counter by +1, fields locked); community **Add Site → pending** (moderated).
+- **Security posture** — **validated** writes (a vote must bump exactly
+  one counter by +1, fields locked); community **Add Site → pending** (moderated);
+  posting reports/votes needs a real account (see above).
 - **Coordinates** — absent from source NHVR data, **geocoded via OSM Nominatim**
   (town-level, approximate).
 - **iOS uses Swift Package Manager** for Firebase (not CocoaPods). The `ios` block in
@@ -90,15 +96,58 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
 - `sites/{siteId}/reports/{reportId}`: status vote and/or activityNote, uid,
   createdAt.
 - `users/{uid}/favourites/{siteId}`: a user's favourite sites (private to their uid).
+- `announcements/current`: the one admin broadcast every client bands across the
+  top of the app (see **Admin broadcast** below).
 
 ### Security rules (`firestore.rules` — DEPLOYED & HARDENED)
-Anonymous users may: read sites/reports; cast **validated** status votes (a vote
-must bump exactly one counter by +1, counters can't decrease, currentStatus must
-be a valid value, no other fields change); post activity reports (uid/createdAt
-validated); submit new sites **as pending** (`approved == false`, `createdBy` =
-own uid); manage their own favourites list. Deletes are disabled for regular
-users; **admins may delete sites** (and reports) — see admin site removal below.
-**Test mode closed; all four write paths verified live under these rules.**
+Signed-in users (anonymous or federated) may: read sites/reports; cast
+**validated** status votes (a vote must bump exactly one counter by +1, counters
+can't decrease, currentStatus must be a valid value, no other fields change);
+post activity reports (uid/createdAt validated); submit new sites **as pending**
+(`approved == false`, `createdBy` = own uid); manage their own favourites list.
+Deletes are disabled for regular users; **admins may delete sites** (and reports)
+— see admin site removal below. **Test mode closed; all four write paths verified
+live under these rules.**
+
+**Signed-in-only posting (spam control): client-side as of 0.1.55, server-side
+STILL OWED.** `report_eligibility.dart` (`canPostReports`) is the rule;
+`FirestoreSiteRepository.vote/report` is the single enforcement point and throws
+`SignInRequiredException`, which every UI path turns into a "Sign in to report"
+sheet (`widgets/sign_in_required_sheet.dart`, reusing `AccountActions`) and then
+retries the action the driver actually wanted — including an already-composed
+activity report, so nothing is retyped. The proximity card asks before it closes
+itself (no sheet can open from a dead context) and a notification answer by an
+anonymous user is left **pending** rather than silently dropped. Eligibility is
+read synchronously from `FirebaseAuth.currentUser` (`mayPostReports`), never from
+the auth *stream*, which may not have emitted when a driver taps after a cold
+start — "not known yet" must never read as anonymous. `AuthController` forces an
+ID-token refresh after a link so the rules see the new claims immediately.
+
+**The matching rules change is deliberately NOT deployed yet** — see the phased
+rollout below. When it lands it is: a new
+```
+function isRegistered() {
+  return signedIn()
+    && (request.auth.token.firebase.sign_in_provider != 'anonymous'
+      || ('identities' in request.auth.token.firebase
+        && request.auth.token.firebase.identities.keys().size() > 0));
+}
+```
+(the identities clause matters because linking a provider onto an anonymous uid
+can leave `sign_in_provider == 'anonymous'` in the token), swapped in for
+`signedIn()` at exactly two places: the `reports` create rule and the vote branch
+of the `sites` update rule. **Rollout order, and why:** shipped mobile builds
+can't be hot-updated, and a denial on 0.1.32–0.1.54 surfaces as the *wrong*
+message ("Easy there — 5 actions per 5 minutes", because
+`_commitWithLedgerStamp` maps a surviving denial to the rate limit). So:
+(1) ship 0.1.55 to web + Play + App Store with the client gate only — nothing
+breaks, old builds keep posting anonymously; (2) once 0.1.55 is *live in both
+stores*, arm `config/app.minVersion` (**create `config/app` with a harmless
+`0.1.0` first and confirm the app still runs** — the doc does not exist yet and a
+wrong value on a fresh doc blocks every client, including up-to-date ones), then
+raise it to `0.1.55`; (3) only then deploy the hardened rules. Covered by
+`test/report_eligibility_test.dart`, the sign-in group in
+`test/site_card_test.dart`, and `test/proximity_prompt_test.dart`.
 
 **Rate limiting (issue #15 redux): LIVE, global per user.** 5 actions (votes +
 activity reports combined, across all sites) per 5-minute window, enforced by
@@ -156,8 +205,32 @@ console-edited only) is watched live; builds below it render a blocking
 "Update required" screen (store link / web refresh) — `lib/services/
 min_version.dart`, `widgets/force_update_screen.dart`, gated in `app.dart`.
 Fails open on missing/malformed config. Limitation: only builds shipping the
-gate obey it; older builds are retired by the phase-2 strict rules above.
+gate obey it (**0.1.32+**); older builds are retired by the phase-2 strict rules
+above. **`config/app` does not exist yet** — verified 2026-07-30 against the REST
+API (404) — so the gate has never fired for anyone; arming it is step 2 of the
+signed-in-posting rollout above.
 (iOS App Store URL is a placeholder until the app is listed.)
+
+**Admin broadcast (`announcements/current`): LIVE as of 0.1.55.** One
+world-readable, admin-written document carrying `message` (≤280 chars, matching
+`kAnnouncementMaxLength`), `severity` (`info`/`warning`), server-stamped
+`publishedAt`/`publishedBy` and an optional `expiresAt`; validated by
+`isValidAnnouncement()` on the same discipline as `isValidBan()`. Every client
+holds **one document listener** (`announcementProvider` — the cheapest read shape
+there is, deliberately not a query) and `AnnouncementGate` bands the message
+across the top of every screen from the `MaterialApp.router` builder, beside
+`UpdateGate`. Dismissal is per-device (`SharedPreferences`, keyed on
+`publishedAt`), so editing a notice re-shows it to people who had closed the old
+one; clearing is an admin delete. Published from the admin **Notice** tab
+(`NoticeTab`, `admin_repository.publishAnnouncement/clearAnnouncement`).
+Pure logic + expiry in `lib/services/announcement.dart`; covered by
+`test/announcement_test.dart`, `test/announcement_banner_test.dart`,
+`test/admin_broadcast_test.dart` and the announcement checks in
+`test/rules/rules_test.mjs`. **Reach:** in-app only — there is no push channel
+(`flutter_local_notifications` is device-local, for the approach prompt; no
+`firebase_messaging`), so a notice is seen next time someone opens the app, and
+builds older than 0.1.55 have no listener and never show one at all. Fully
+additive, so those old builds are otherwise unaffected.
 
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual

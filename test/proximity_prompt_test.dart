@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,8 +13,11 @@ import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/models/trip.dart';
 import 'package:roadmate/services/alert_player.dart';
+import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/location_source.dart';
 import 'package:roadmate/services/providers.dart';
+import 'package:roadmate/services/proximity_notifier.dart';
+import 'package:roadmate/services/report_eligibility.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/trip_history_store.dart';
 
@@ -127,6 +131,33 @@ Site _site(String id, {DateTime? lastReportAt, SiteStatus? status}) => Site(
   lastReportAt: lastReportAt,
 );
 
+/// Just enough User for the sign-in gate: all anyone asks is whether the
+/// session is anonymous.
+class FakeUser implements User {
+  FakeUser({this.anonymous = false});
+
+  final bool anonymous;
+
+  @override
+  bool get isAnonymous => anonymous;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Just enough FirebaseAuth for [mayPostReports]: the restored session.
+class FakeFirebaseAuth implements FirebaseAuth {
+  FakeFirebaseAuth(this.current);
+
+  final User? current;
+
+  @override
+  User? get currentUser => current;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 /// Mounts the speedometer (which owns the GPS stream) under the same
 /// [ProximityGate] the real app wraps its router in.
 Future<ProviderContainer> _pump(
@@ -135,7 +166,11 @@ Future<ProviderContainer> _pump(
   required FakeSiteRepository repo,
   FakeAlertPlayer? alert,
   FakeStore? store,
+  // Signed in by default: posting needs a real account, so that is the state
+  // every existing check here means to exercise.
+  User? user,
 }) async {
+  final signedInUser = user ?? FakeUser();
   addTearDown(location.controller.close);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.binding.setSurfaceSize(const Size(900, 1600));
@@ -147,6 +182,8 @@ Future<ProviderContainer> _pump(
         alertPlayerProvider.overrideWithValue(alert ?? FakeAlertPlayer()),
         tripHistoryStoreProvider.overrideWithValue(store ?? FakeStore()),
         siteRepositoryProvider.overrideWithValue(repo),
+        firebaseAuthProvider.overrideWithValue(FakeFirebaseAuth(signedInUser)),
+        authStateProvider.overrideWith((ref) => Stream.value(signedInUser)),
       ],
       child: const MaterialApp(
         home: Scaffold(
@@ -360,6 +397,67 @@ void main() {
 
     expect(find.textContaining('APPROACHING'), findsNothing);
     expect(find.textContaining('Could not submit'), findsOneWidget);
+  });
+
+  testWidgets('an anonymous driver is asked to sign in instead of voting', (
+    tester,
+  ) async {
+    final loc = FakeLocationSource();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    await _pump(
+      tester,
+      location: loc,
+      repo: repo,
+      user: FakeUser(anonymous: true),
+    );
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+
+    await tester.tap(find.text('Blitz'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(kSignInSheetTitle), findsOneWidget);
+    expect(repo.votes, isEmpty);
+
+    // Backing out keeps the card: nothing the driver did is lost, and the
+    // prompt is still there to answer or dismiss.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('APPROACHING'), findsOneWidget);
+  });
+
+  testWidgets('an anonymous answer from the notification stays pending', (
+    tester,
+  ) async {
+    final loc = FakeLocationSource();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    final container = await _pump(
+      tester,
+      location: loc,
+      repo: repo,
+      user: FakeUser(anonymous: true),
+    );
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+    expect(find.textContaining('APPROACHING'), findsOneWidget);
+
+    // A notification has no UI to ask for sign-in with, so the answer must not
+    // be consumed: no vote, and the card is still waiting when they come back.
+    await container
+        .read(proximityControllerProvider.notifier)
+        .answerFromNotification(
+          const ProximityAnswer(siteId: 'marulan', status: SiteStatus.blitz),
+        );
+    await tester.pumpAndSettle();
+
+    expect(repo.votes, isEmpty);
+    expect(find.textContaining('APPROACHING'), findsOneWidget);
   });
 
   testWidgets('with the feature off no prompt appears', (tester) async {
