@@ -44,7 +44,14 @@ DEFAULT_NOTES_FILE = os.path.join(
 
 # Guideline 2.3.10: App Store metadata must not reference third-party
 # stores/platforms (0.1.38 rejection).
-FORBIDDEN_IN_WHATS_NEW = ("google play", "play store", "android")
+FORBIDDEN_IN_METADATA = ("google play", "play store", "android")
+
+# Localization fields this script never writes, so a violation can only have
+# been typed straight into App Store Connect. They are read back and checked
+# before submitting — 2.3.10 covers the whole product page, not just the
+# release notes. (whatsNew is not listed: it is checked from the notes file
+# before any writes, and the copy in ASC is about to be overwritten.)
+UNWRITTEN_LOCALIZATION_FIELDS = ("description", "promotionalText", "keywords")
 
 EDITABLE_STATES = {
     "PREPARE_FOR_SUBMISSION",
@@ -55,9 +62,19 @@ EDITABLE_STATES = {
 }
 
 
-def whats_new_violations(text: str) -> list:
-    low = text.lower()
-    return [w for w in FORBIDDEN_IN_WHATS_NEW if w in low]
+def metadata_violations(text: str) -> list:
+    low = (text or "").lower()
+    return [w for w in FORBIDDEN_IN_METADATA if w in low]
+
+
+def localization_violations(attributes: dict) -> list:
+    """[(field, [words])] for each unwritten field that trips 2.3.10."""
+    found = []
+    for field in UNWRITTEN_LOCALIZATION_FIELDS:
+        bad = metadata_violations(attributes.get(field))
+        if bad:
+            found.append((field, bad))
+    return found
 
 
 def _b64url(b: bytes) -> str:
@@ -192,6 +209,25 @@ def find_or_create_version(version: str, dry_run: bool) -> tuple:
     return out["data"]["id"], version
 
 
+def check_metadata(version_id: str) -> None:
+    """Refuse to submit if any ASC copy we don't write trips 2.3.10."""
+    status, out = request(
+        "GET",
+        f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations",
+    )
+    expect(status, out, "listing localizations for the metadata check")
+    problems = []
+    for loc in out.get("data", []):
+        locale = loc["attributes"].get("locale", "?")
+        for field, bad in localization_violations(loc["attributes"]):
+            problems.append(f"{locale}.{field} mentions {bad}")
+    if problems:
+        die("App Store metadata trips guideline 2.3.10:\n  "
+            + "\n  ".join(problems)
+            + "\nEdit it in App Store Connect and re-run.")
+    print(f"    {len(out.get('data', []))} localization(s) clean")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--version", help="marketing version, e.g. 0.1.40")
@@ -211,7 +247,7 @@ def main() -> None:
 
     with open(args.notes_file) as f:
         notes = f.read().strip()
-    bad = whats_new_violations(notes)
+    bad = metadata_violations(notes)
     if bad:
         die(f"What's New text mentions {bad} — Apple rejects this "
             f"(guideline 2.3.10). Edit {args.notes_file}.")
@@ -236,6 +272,9 @@ def main() -> None:
     if version_id is None:  # dry-run would-create path
         print("    (dry run: stopping before writes)")
         return
+
+    print("==> Metadata check (guideline 2.3.10)")
+    check_metadata(version_id)
 
     if args.dry_run:
         print(f"    would: rename to {args.version} (now {current_string}), "
@@ -316,10 +355,35 @@ def main() -> None:
 
 
 def self_test() -> None:
-    assert whats_new_violations("Bug fixes and improvements") == []
-    assert whats_new_violations("now on Google Play!") == ["google play"]
-    assert whats_new_violations("Web, App Store and Play Store links") == \
+    assert metadata_violations("Bug fixes and improvements") == []
+    assert metadata_violations("now on Google Play!") == ["google play"]
+    assert metadata_violations("Web, App Store and Play Store links") == \
         ["play store"]
+    # Never trips on the sign-in copy the notes legitimately carry: "Google"
+    # alone is a sign-in provider, not a store.
+    assert metadata_violations("Sign in with Apple or Google") == []
+    assert metadata_violations(None) == []
+
+    # 2.3.10 covers the whole product page, so the fields the script does not
+    # write are read back from ASC and checked too (the 0.1.55 release shipped
+    # with only whatsNew guarded).
+    assert localization_violations(
+        {"description": "Live NHVR site status", "keywords": "trucks,nhvr",
+         "promotionalText": ""}) == []
+    assert localization_violations({"description": "Also on Google Play"}) == \
+        [("description", ["google play"])]
+    assert localization_violations({"keywords": "android,trucks"}) == \
+        [("keywords", ["android"])]
+    assert localization_violations(
+        {"promotionalText": "Play Store users welcome"}) == \
+        [("promotionalText", ["play store"])]
+    # A violation in every field is reported in full, not just the first.
+    assert len(localization_violations(
+        {"description": "Google Play", "keywords": "android",
+         "promotionalText": "Play Store"})) == 3
+    # whatsNew is deliberately excluded here — it is validated from the notes
+    # file before any writes, and the ASC copy is about to be overwritten.
+    assert localization_violations({"whatsNew": "Now on Google Play"}) == []
 
     parts = jwt_parts(1_700_000_000, "KEYID", "issuer-uuid")
     header_b64, claims_b64 = parts.split(".")
