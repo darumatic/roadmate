@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/site.dart';
@@ -37,6 +38,11 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
 });
 
 final statusLogicProvider = Provider<StatusLogic>((ref) => const StatusLogic());
+
+/// Whether this build is the web app. A provider rather than a bare [kIsWeb]
+/// read so widget tests can pump the web-only admin surface (and assert it
+/// stays hidden in the native builds) without a real browser.
+final isWebProvider = Provider<bool>((ref) => kIsWeb);
 
 /// Device-location source for the trip speedometer. The single swap point;
 /// tests override this with a fake that emits a controlled position stream.

@@ -466,6 +466,63 @@ await check(
   })(),
 );
 
+// Bulk purge (AdminRepository.deleteRecentReportsByUser): the admin clears
+// every report one uid posted inside the 10h window. It needs three things
+// from the rules — the uid-filtered collectionGroup query, the per-doc
+// deletes, and the site-tally recount that rides in the same batch.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  for (const [id, siteId] of [
+    ['spam-1', 'site-1'],
+    ['spam-2', 'site-1'],
+  ]) {
+    await setDoc(doc(db, `sites/${siteId}/reports/${id}`), {
+      siteId,
+      status: 'blitz',
+      uid: 'spammer',
+      createdAt: Timestamp.now(),
+    });
+  }
+});
+await check(
+  'admin queries one user\'s recent reports across every site',
+  assertSucceeds(
+    getDocs(
+      query(
+        collectionGroup(admin, 'reports'),
+        where('uid', '==', 'spammer'),
+        where(
+          'createdAt',
+          '>=',
+          Timestamp.fromMillis(Date.now() - 10 * 60 * 60 * 1000),
+        ),
+      ),
+    ),
+  ),
+);
+await check(
+  'non-admin cannot delete someone else\'s report',
+  assertFails(deleteDoc(doc(alice, 'sites/site-1/reports/spam-1'))),
+);
+await check(
+  'admin purges a user\'s reports and recounts the site in one batch',
+  assertSucceeds(
+    (() => {
+      const b = writeBatch(admin);
+      b.delete(doc(admin, 'sites/site-1/reports/spam-1'));
+      b.delete(doc(admin, 'sites/site-1/reports/spam-2'));
+      b.update(doc(admin, 'sites/site-1'), {
+        openVotes: 1,
+        blitzVotes: 0,
+        closedVotes: 0,
+        currentStatus: 'open',
+        lastReportAt: Timestamp.now(),
+      });
+      return b.commit();
+    })(),
+  ),
+);
+
 // App config (forced-update gate): world-readable, never client-writable —
 // not even by admins; the doc is edited only in the console/Admin SDK.
 await check(

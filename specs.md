@@ -200,6 +200,35 @@ served 1-day ban is the evidence for handing out a permanent one — each with a
 one-tap **Lift ban**. Covered by `test/ban_logic_test.dart`,
 `test/admin_bans_test.dart` and the ban section of `test/rules/rules_test.mjs`.
 
+**Bulk report purge (spam cleanup): LIVE on web only, from 0.1.56.** A ban stops
+the *next* report but leaves everything already posted sitting on the map, so
+**Remove this user's reports** on any report card wipes every report and status
+vote that uid posted in the last **10 hours** (`purgeWindow`, deliberately equal
+to `statusFreshWindow` — older reports are already invisible to drivers and are
+kept as history). Confirmed by a dialog; irreversible. **Web only** by
+`showBulkReportPurge(isWeb:)` (`lib/services/report_purge.dart`, surfaced via
+`isWebProvider`): it is the most destructive tool in the admin surface and web
+is the build that can be rolled back in minutes, whereas a shipped Android/iOS
+binary sits on phones for months. Banning and single-report removal stay on
+every platform. Implementation: `AdminRepository.deleteRecentReportsByUser`
+runs **one uid-filtered `collectionGroup('reports')` query** (so a purge costs
+one read per report actually removed, not a scan of every recent report in the
+country — needs the new `reports` COLLECTION_GROUP index on `uid`+`createdAt`),
+groups the hits by site, and per site rewrites the denormalised
+`openVotes`/`blitzVotes`/`closedVotes`/`currentStatus`/`lastReportAt` from the
+survivors. Tallies are written as **absolute values, never decrements**, so a
+retry after a partial failure still lands on the right numbers; deletes are
+chunked below the 500-op batch limit with the recount riding in the final batch,
+so counters can never drop before the reports they count. The recount is shared
+with the existing single-report `deleteReport` (`talliesFrom`). **No rules
+change was needed** — `allow delete: if isAdmin()` on
+`sites/{id}/reports/{id}` and the world-readable collection-group match already
+covered it, so shipped mobile clients are untouched. Covered by
+`test/report_purge_test.dart`, `test/admin_purge_reports_test.dart` and three
+new checks in `test/rules/rules_test.mjs` (the uid-filtered query, the
+batch purge + recount, and a non-admin being refused a report delete — the
+admin report-delete path had no rules coverage before).
+
 **Forced-update gate:** `config/app.minVersion` (Firestore, world-readable,
 console-edited only) is watched live; builds below it render a blocking
 "Update required" screen (store link / web refresh) — `lib/services/

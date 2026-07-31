@@ -10,6 +10,7 @@ import '../../services/announcement.dart';
 import '../../services/auth_service.dart';
 import '../../services/ban_logic.dart';
 import '../../services/providers.dart';
+import '../../services/report_purge.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
 import '../../widgets/announcement_banner.dart';
@@ -498,6 +499,24 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
                 label: const Text('Ban this user'),
                 onPressed: _busy ? null : () => _banUser(report.uid!),
               ),
+              // Clearing the spam is separate from banning the spammer: a ban
+              // stops the next report but leaves everything already posted on
+              // the map. Web-only — see [showBulkReportPurge].
+              if (showBulkReportPurge(isWeb: ref.watch(isWebProvider))) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(color: AppTheme.border),
+                    minimumSize: const Size.fromHeight(42),
+                  ),
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                  label: const Text("Remove this user's reports"),
+                  onPressed: _busy
+                      ? null
+                      : () => _purgeUserReports(report.uid!),
+                ),
+              ],
             ],
           ],
         ),
@@ -557,6 +576,32 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Could not ban user: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _purgeUserReports(String uid) async {
+    final confirmed = await showPurgeUserReportsDialog(context, uid: uid);
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final removed = await ref
+          .read(adminRepositoryProvider)
+          .deleteRecentReportsByUser(uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            removed == 1 ? 'Removed 1 report' : 'Removed $removed reports',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not remove reports: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -892,6 +937,47 @@ String _banHeadline(UserBan ban, bool active) {
   if (!active) return 'Ban expired';
   if (ban.isPermanent) return 'Banned forever';
   return 'Banned until ${banExpiryLabel(ban.until!)}';
+}
+
+/// Confirms wiping every report [uid] posted inside [purgeWindow]. Returns
+/// true only on an explicit confirm; the caller performs the deletes.
+///
+/// Unlike a ban this cannot be undone — the reports are gone — so the count is
+/// deliberately vague ("all reports … in the last 10 hours") rather than
+/// pre-counted: pre-counting would double the reads for a destructive action
+/// the admin is about to take anyway.
+Future<bool?> showPurgeUserReportsDialog(
+  BuildContext context, {
+  required String uid,
+}) {
+  final hours = purgeWindow.inHours;
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: AppTheme.surface,
+      title: const Text(
+        "Remove this user's reports?",
+        style: TextStyle(color: AppTheme.textPrimary),
+      ),
+      content: Text(
+        'Deletes every report and status vote $uid has posted in the last '
+        '$hours hours, across all sites. Older reports are left alone. '
+        'This cannot be undone.',
+        style: const TextStyle(color: AppTheme.textSecondary, height: 1.35),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Remove reports'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// The admin's choice from [showBanUserDialog].

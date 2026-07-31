@@ -2,12 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/admin_report.dart';
-import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import '../models/user_ban.dart';
 import 'announcement.dart';
 import 'ban_logic.dart';
+import 'report_purge.dart';
 
 /// Whether the cached site-name map already resolves every referenced site.
 /// Empty ids (a report whose parent site cannot be determined) never force a
@@ -163,54 +163,92 @@ class AdminRepository {
     });
   }
 
-  Future<void> deleteReport(String siteId, String reportId) async {
+  Future<void> deleteReport(String siteId, String reportId) =>
+      _deleteReportsForSite(siteId, {reportId});
+
+  /// Removes every report [uid] has posted inside [window] — the moderation
+  /// answer to a spammer who has already sprayed a dozen sites, where removing
+  /// them one at a time is too slow to matter (issue: spam control).
+  ///
+  /// Bounded to the freshness window on purpose: anything older is already
+  /// invisible to drivers, so a purge only ever clears what is still on screen.
+  /// Returns the number of reports removed. Banning is a separate action —
+  /// this does not touch the user's account.
+  ///
+  /// The collection-group query is filtered server-side by uid, so a purge
+  /// costs one read per report actually removed rather than a scan of every
+  /// recent report in the country.
+  Future<int> deleteRecentReportsByUser(
+    String uid, {
+    Duration window = purgeWindow,
+    DateTime? now,
+  }) async {
+    final at = now ?? DateTime.now();
+    final snap = await firestore
+        .collectionGroup('reports')
+        .where('uid', isEqualTo: uid)
+        .where(
+          'createdAt',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(at.subtract(window)),
+        )
+        .get();
+
+    final bySite = groupReportIdsBySite([
+      for (final doc in snap.docs)
+        (
+          doc.reference.parent.parent?.id ??
+              (doc.data()['siteId'] as String? ?? ''),
+          doc.id,
+        ),
+    ]);
+
+    var removed = 0;
+    for (final entry in bySite.entries) {
+      await _deleteReportsForSite(entry.key, entry.value.toSet(), now: at);
+      removed += entry.value.length;
+    }
+    return removed;
+  }
+
+  /// Deletes [reportIds] under one site and rewrites the site's denormalised
+  /// tallies from what is left. Deletes are chunked below Firestore's batch
+  /// limit; the recount rides in the final batch so the counters can never be
+  /// updated before the reports they count are gone.
+  Future<void> _deleteReportsForSite(
+    String siteId,
+    Set<String> reportIds, {
+    DateTime? now,
+  }) async {
+    if (reportIds.isEmpty) return;
     final siteRef = _sites.doc(siteId);
     final reportsRef = siteRef.collection('reports');
-    final reportRef = reportsRef.doc(reportId);
     final allReports = await reportsRef.get();
-    final remainingReports = allReports.docs
-        .where((doc) => doc.id != reportId)
+    final remaining = allReports.docs
+        .where((doc) => !reportIds.contains(doc.id))
         .map((doc) => SiteReport.fromMap(doc.id, _normalise(doc.data())))
         .toList();
+    final tallies = talliesFrom(remaining, now: now ?? DateTime.now());
 
-    final statusCounts = {
-      SiteStatus.open: 0,
-      SiteStatus.blitz: 0,
-      SiteStatus.closed: 0,
-    };
-    DateTime? lastReportAt;
-    SiteStatus currentStatus = SiteStatus.open;
-    DateTime? currentStatusAt;
-    final cutoff = DateTime.now().subtract(const Duration(hours: 6));
-
-    for (final report in remainingReports) {
-      if (lastReportAt == null || report.createdAt.isAfter(lastReportAt)) {
-        lastReportAt = report.createdAt;
+    final chunks = chunked(reportIds.toList(), size: firestoreBatchLimit - 1);
+    for (final (i, chunk) in chunks.indexed) {
+      final batch = firestore.batch();
+      for (final id in chunk) {
+        batch.delete(reportsRef.doc(id));
       }
-      final status = report.status;
-      if (status == null) continue;
-      statusCounts[status] = statusCounts[status]! + 1;
-      if (report.createdAt.isAfter(cutoff) &&
-          (currentStatusAt == null ||
-              report.createdAt.isAfter(currentStatusAt))) {
-        currentStatus = status;
-        currentStatusAt = report.createdAt;
+      if (i == chunks.length - 1) {
+        batch.update(siteRef, {
+          'openVotes': tallies.openVotes,
+          'blitzVotes': tallies.blitzVotes,
+          'closedVotes': tallies.closedVotes,
+          'currentStatus': tallies.currentStatus.name,
+          if (tallies.lastReportAt == null)
+            'lastReportAt': FieldValue.delete()
+          else
+            'lastReportAt': Timestamp.fromDate(tallies.lastReportAt!),
+        });
       }
+      await batch.commit();
     }
-
-    final batch = firestore.batch();
-    batch.delete(reportRef);
-    batch.update(siteRef, {
-      'openVotes': statusCounts[SiteStatus.open],
-      'blitzVotes': statusCounts[SiteStatus.blitz],
-      'closedVotes': statusCounts[SiteStatus.closed],
-      'currentStatus': currentStatus.name,
-      if (lastReportAt == null)
-        'lastReportAt': FieldValue.delete()
-      else
-        'lastReportAt': Timestamp.fromDate(lastReportAt),
-    });
-    await batch.commit();
   }
 
   /// Every ban ever issued, newest first — expired ones included, since the
