@@ -8,7 +8,7 @@ import '../models/user_ban.dart';
 import 'auth_service.dart';
 import 'ban_logic.dart';
 import 'rate_limit.dart';
-import 'report_eligibility.dart';
+import 'report_proximity.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 
@@ -19,10 +19,18 @@ import 'status_logic.dart';
 ///   sites/{siteId}/reports/{reportId}
 ///   users/{uid}/favourites/{siteId}
 class FirestoreSiteRepository implements SiteRepository {
-  FirestoreSiteRepository({required this.firestore, required this.auth});
+  FirestoreSiteRepository({
+    required this.firestore,
+    required this.auth,
+    required this.locate,
+  });
 
   final FirebaseFirestore firestore;
   final FirebaseAuth auth;
+
+  /// Resolves the device position for the report proximity gate, asking for
+  /// permission if needed — see `report_proximity.dart`.
+  final DevicePositionResolver locate;
 
   CollectionReference<Map<String, dynamic>> get _sites =>
       firestore.collection('sites');
@@ -102,25 +110,30 @@ class FirestoreSiteRepository implements SiteRepository {
   /// Turns a rules denial into the exception that explains it. A banned user
   /// is banned whatever else is true, so that check comes first; [orElse] is
   /// what the caller would otherwise have thrown.
-  ///
-  /// An anonymous session comes second: once the rules require a real account
-  /// (`isRegistered()`), a denial that isn't a ban is almost certainly this —
-  /// and without the check the caller would blame the rate limit, which is what
-  /// `_commitWithLedgerStamp` falls back to.
   Future<Never> _explainDenial(String uid, Object orElse) async {
     final ban = await _activeBan(uid);
     if (ban != null) throw BannedException(ban.until);
-    if (!_mayPost) throw const SignInRequiredException();
     throw orElse;
   }
 
-  /// Whether the current identity may post — see `report_eligibility.dart`.
-  bool get _mayPost {
-    final user = auth.currentUser;
-    return canPostReports(
-      signedIn: user != null,
-      isAnonymous: user?.isAnonymous ?? true,
-    );
+  /// The proximity gate — see `report_proximity.dart`. Skips the position
+  /// lookup entirely for an un-geocoded site: there is nothing to measure
+  /// against, so the driver isn't asked for location they don't need to give.
+  Future<void> _ensureNearSite(Site site) async {
+    if (site.lat == null || site.lng == null) return;
+    final position = await locate();
+    switch (checkReportProximity(
+      siteLat: site.lat,
+      siteLng: site.lng,
+      position: position,
+    )) {
+      case ReportProximity.allowed:
+        return;
+      case ReportProximity.needsLocation:
+        throw const LocationRequiredException();
+      case ReportProximity.tooFar:
+        throw const TooFarException();
+    }
   }
 
   /// Commits [addOps] plus a rate-limit ledger stamp in one atomic batch
@@ -174,9 +187,10 @@ class FirestoreSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> vote(String siteId, SiteStatus status) async {
+  Future<void> vote(Site site, SiteStatus status) async {
     final uid = await ensureSignedIn(auth);
-    if (!_mayPost) throw const SignInRequiredException();
+    await _ensureNearSite(site);
+    final siteId = site.id;
     final reportRef = _sites.doc(siteId).collection('reports').doc();
     await _commitWithLedgerStamp(uid, (batch) {
       batch.set(reportRef, {
@@ -195,13 +209,14 @@ class FirestoreSiteRepository implements SiteRepository {
 
   @override
   Future<void> report(
-    String siteId,
+    Site site,
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
   }) async {
     final uid = await ensureSignedIn(auth);
-    if (!_mayPost) throw const SignInRequiredException();
+    await _ensureNearSite(site);
+    final siteId = site.id;
     final data = <String, dynamic>{
       'siteId': siteId,
       'activityType': activityType.wire,

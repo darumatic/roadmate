@@ -16,12 +16,14 @@ abstract class SiteRepository {
   /// rather than count-bounded so a busy day can never push data out.
   Stream<List<SiteReport>> watchAllRecentReports();
 
-  /// Record a status vote for a site.
-  Future<void> vote(String siteId, SiteStatus status);
+  /// Record a status vote for a site. Takes the whole [Site] (not just its
+  /// id) so the proximity gate can measure against its coordinates.
+  Future<void> vote(Site site, SiteStatus status);
 
-  /// Record an activity report for a site.
+  /// Record an activity report for a site. Takes the whole [Site] for the
+  /// same reason as [vote].
   Future<void> report(
-    String siteId,
+    Site site,
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,

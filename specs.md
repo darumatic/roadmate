@@ -109,45 +109,39 @@ Deletes are disabled for regular users; **admins may delete sites** (and reports
 — see admin site removal below. **Test mode closed; all four write paths verified
 live under these rules.**
 
-**Signed-in-only posting (spam control): client-side as of 0.1.55, server-side
-STILL OWED.** `report_eligibility.dart` (`canPostReports`) is the rule;
-`FirestoreSiteRepository.vote/report` is the single enforcement point and throws
-`SignInRequiredException`, which every UI path turns into a "Sign in to report"
-sheet (`widgets/sign_in_required_sheet.dart`, reusing `AccountActions`) and then
-retries the action the driver actually wanted — including an already-composed
-activity report, so nothing is retyped. The proximity card asks before it closes
-itself (no sheet can open from a dead context) and a notification answer by an
-anonymous user is left **pending** rather than silently dropped. Eligibility is
-read synchronously from `FirebaseAuth.currentUser` (`mayPostReports`), never from
-the auth *stream*, which may not have emitted when a driver taps after a cold
-start — "not known yet" must never read as anonymous. `AuthController` forces an
-ID-token refresh after a link so the rules see the new claims immediately.
-
-**The matching rules change is deliberately NOT deployed yet** — see the phased
-rollout below. When it lands it is: a new
-```
-function isRegistered() {
-  return signedIn()
-    && (request.auth.token.firebase.sign_in_provider != 'anonymous'
-      || ('identities' in request.auth.token.firebase
-        && request.auth.token.firebase.identities.keys().size() > 0));
-}
-```
-(the identities clause matters because linking a provider onto an anonymous uid
-can leave `sign_in_provider == 'anonymous'` in the token), swapped in for
-`signedIn()` at exactly two places: the `reports` create rule and the vote branch
-of the `sites` update rule. **Rollout order, and why:** shipped mobile builds
-can't be hot-updated, and a denial on 0.1.32–0.1.54 surfaces as the *wrong*
-message ("Easy there — 5 actions per 5 minutes", because
-`_commitWithLedgerStamp` maps a surviving denial to the rate limit). So:
-(1) ship 0.1.55 to web + Play + App Store with the client gate only — nothing
-breaks, old builds keep posting anonymously; (2) once 0.1.55 is *live in both
-stores*, arm `config/app.minVersion` (**create `config/app` with a harmless
-`0.1.0` first and confirm the app still runs** — the doc does not exist yet and a
-wrong value on a fresh doc blocks every client, including up-to-date ones), then
-raise it to `0.1.55`; (3) only then deploy the hardened rules. Covered by
-`test/report_eligibility_test.dart`, the sign-in group in
-`test/site_card_test.dart`, and `test/proximity_prompt_test.dart`.
+**Proximity-gated posting (trust control): client-side, from 0.1.57.** Posting
+is **account-free again** — the 0.1.55 sign-in gate lasted one release. The
+owner's call (2026-08-03): reports are trusted because they come from someone
+who can see the site, so the gate is **distance, not identity**: votes and
+activity reports are accepted only within **3 km** of the site — deliberately
+the same `proximityRadiusKm` at which the approach prompt starts asking
+"what's the status?", so the app never asks for an answer it would then
+refuse (`reportRadiusKm` in `lib/services/report_proximity.dart` is
+compile-time locked to it, and a unit test pins the equality).
+`checkReportProximity` (pure, Flutter/Firebase-free) is the rule;
+`FirestoreSiteRepository.vote/report` is the single enforcement point —
+`SiteRepository.vote/report` now take the whole `Site` so the gate can measure
+against its coordinates — and throws `TooFarException` or
+`LocationRequiredException`, which every UI path turns into an explanatory
+snack. The device fix comes from `LocationSource.currentPosition()` (one-shot,
+15 s-bounded `quickFix` lookup that first runs the permission ask — so "turn on
+location" is prompted by the OS at the moment of posting; the trip stream stays
+the app's only `getPositionStream`). Deliberate carve-outs: an **un-geocoded
+site is always reportable** (nothing to measure against — the position lookup
+is skipped entirely so nobody is asked for location the check can't use), and
+the approach prompt/notification answers pass by construction (GPS put the
+truck in range). Browsing, Nearby, favourites and Add Site remain account-free
+and ungated as before. The check is **client-side only** — rules cannot verify
+a GPS fix — which also means shipped 0.1.55/0.1.56 mobile builds simply keep
+their old client-side sign-in gate until updated, and pre-0.1.55 builds keep
+posting from anywhere; both write shapes stay accepted. The sign-in machinery
+this replaced (`report_eligibility.dart`, `sign_in_required_sheet.dart`,
+`mayPostReports`) is **deleted**, and the never-deployed `isRegistered()`
+rules hardening (with its minVersion-then-rules phased rollout, recorded in
+git history at 0.1.55) is **permanently shelved** — do not deploy it, or
+anonymous posting breaks again. Covered by `test/report_proximity_test.dart`,
+the proximity-gate group in `test/site_card_test.dart`, and the anonymous
+voting tests in `test/proximity_prompt_test.dart`.
 
 **Rate limiting (issue #15 redux): LIVE, global per user.** 5 actions (votes +
 activity reports combined, across all sites) per 5-minute window, enforced by
@@ -236,8 +230,9 @@ min_version.dart`, `widgets/force_update_screen.dart`, gated in `app.dart`.
 Fails open on missing/malformed config. Limitation: only builds shipping the
 gate obey it (**0.1.32+**); older builds are retired by the phase-2 strict rules
 above. **`config/app` does not exist yet** — verified 2026-07-30 against the REST
-API (404) — so the gate has never fired for anyone; arming it is step 2 of the
-signed-in-posting rollout above.
+API (404) — so the gate has never fired for anyone. (It was to be armed as step
+2 of the 0.1.55 signed-in-posting rollout, which the 0.1.57 proximity gate
+above made moot.)
 (iOS App Store URL is a placeholder until the app is listed.)
 
 **Admin broadcast (`announcements/current`): LIVE as of 0.1.55.** One

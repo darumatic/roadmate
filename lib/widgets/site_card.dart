@@ -8,12 +8,11 @@ import '../services/auth_service.dart';
 import '../services/providers.dart';
 import '../services/ban_logic.dart';
 import '../services/rate_limit.dart';
-import '../services/report_eligibility.dart';
+import '../services/report_proximity.dart';
 import '../services/site_repository.dart';
 import '../services/status_logic.dart';
 import '../theme/app_theme.dart';
 import 'edit_site_location_dialog.dart';
-import 'sign_in_required_sheet.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
 
@@ -195,31 +194,25 @@ class SiteCard extends ConsumerWidget {
   }
 
   /// Casts a status vote; a failed write surfaces as a snack, never a crash.
-  ///
-  /// [retry] guards the one recursive call: after the sign-in sheet succeeds we
-  /// re-submit the vote the user actually wanted, but a second refusal must
-  /// report itself rather than reopening the sheet forever.
+  /// The proximity gate's refusals arrive as exceptions from the repository —
+  /// the OS location prompt (if one was needed) has already been shown by the
+  /// time [LocationRequiredException] lands, so a snack is all that's left.
   Future<void> _vote(
     BuildContext context,
     SiteRepository repo,
-    SiteStatus status, {
-    bool retry = true,
-  }) async {
+    SiteStatus status,
+  ) async {
     try {
-      await repo.vote(site.id, status);
+      await repo.vote(site, status);
       if (context.mounted) {
         _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
       }
-    } on SignInRequiredException {
+    } on TooFarException catch (e) {
       if (!context.mounted) return;
-      if (!retry) {
-        _snack(context, kSignInToReportMessage);
-        return;
-      }
-      final signedIn = await showSignInRequiredSheet(context);
-      if (signedIn && context.mounted) {
-        await _vote(context, repo, status, retry: false);
-      }
+      _snack(context, e.message);
+    } on LocationRequiredException catch (e) {
+      if (!context.mounted) return;
+      _snack(context, e.message);
     } on BannedException catch (e) {
       if (!context.mounted) return;
       _snack(context, e.message);
@@ -241,33 +234,27 @@ class SiteCard extends ConsumerWidget {
     await _submitReport(context, repo, report);
   }
 
-  /// Submits an already-composed [report]. Split from [_reportActivity] so the
-  /// post-sign-in retry re-sends what the driver typed instead of making them
-  /// fill the form in again.
+  /// Submits an already-composed [report]. Split from [_reportActivity] so
+  /// submission failures never cost the driver what they typed.
   Future<void> _submitReport(
     BuildContext context,
     SiteRepository repo,
-    _ActivityReportDraft report, {
-    bool retry = true,
-  }) async {
+    _ActivityReportDraft report,
+  ) async {
     try {
       await repo.report(
-        site.id,
+        site,
         report.activityType,
         activityNote: report.activityNote,
         reporterName: report.reporterName,
       );
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
-    } on SignInRequiredException {
+    } on TooFarException catch (e) {
       if (!context.mounted) return;
-      if (!retry) {
-        _snack(context, kSignInToReportMessage);
-        return;
-      }
-      final signedIn = await showSignInRequiredSheet(context);
-      if (signedIn && context.mounted) {
-        await _submitReport(context, repo, report, retry: false);
-      }
+      _snack(context, e.message);
+    } on LocationRequiredException catch (e) {
+      if (!context.mounted) return;
+      _snack(context, e.message);
     } on BannedException catch (e) {
       if (!context.mounted) return;
       _snack(context, e.message);

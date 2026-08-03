@@ -17,7 +17,6 @@ import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/location_source.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/proximity_notifier.dart';
-import 'package:roadmate/services/report_eligibility.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/trip_history_store.dart';
 
@@ -29,6 +28,9 @@ class FakeLocationSource implements LocationSource {
 
   @override
   Stream<Position> positions() => controller.stream;
+
+  @override
+  Future<Position?> currentPosition() async => null;
 
   void emit(Position p) => controller.add(p);
 }
@@ -78,16 +80,16 @@ class FakeSiteRepository implements SiteRepository {
   Object? voteError;
 
   @override
-  Future<void> vote(String siteId, SiteStatus status) async {
+  Future<void> vote(Site site, SiteStatus status) async {
     if (voteError != null) throw voteError!;
-    votes.add((siteId, status));
+    votes.add((site.id, status));
   }
 
   @override
   Future<void> addSite(Site site, {bool approved = false}) async {}
   @override
   Future<void> report(
-    String siteId,
+    Site site,
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
@@ -131,7 +133,7 @@ Site _site(String id, {DateTime? lastReportAt, SiteStatus? status}) => Site(
   lastReportAt: lastReportAt,
 );
 
-/// Just enough User for the sign-in gate: all anyone asks is whether the
+/// Just enough User for the auth overrides: all anyone asks is whether the
 /// session is anonymous.
 class FakeUser implements User {
   FakeUser({this.anonymous = false});
@@ -145,7 +147,7 @@ class FakeUser implements User {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// Just enough FirebaseAuth for [mayPostReports]: the restored session.
+/// Just enough FirebaseAuth for the provider override: the restored session.
 class FakeFirebaseAuth implements FirebaseAuth {
   FakeFirebaseAuth(this.current);
 
@@ -166,8 +168,8 @@ Future<ProviderContainer> _pump(
   required FakeSiteRepository repo,
   FakeAlertPlayer? alert,
   FakeStore? store,
-  // Signed in by default: posting needs a real account, so that is the state
-  // every existing check here means to exercise.
+  // Posting is account-free (the proximity gate is what guards it), but the
+  // auth providers still need a session to hand out.
   User? user,
 }) async {
   final signedInUser = user ?? FakeUser();
@@ -399,7 +401,9 @@ void main() {
     expect(find.textContaining('Could not submit'), findsOneWidget);
   });
 
-  testWidgets('an anonymous driver is asked to sign in instead of voting', (
+  // Posting is account-free: the prompt only exists because GPS put the
+  // truck within the report radius, so an anonymous answer goes straight in.
+  testWidgets('an anonymous driver votes straight from the prompt', (
     tester,
   ) async {
     final loc = FakeLocationSource();
@@ -419,17 +423,12 @@ void main() {
     await tester.tap(find.text('Blitz'));
     await tester.pumpAndSettle();
 
-    expect(find.text(kSignInSheetTitle), findsOneWidget);
-    expect(repo.votes, isEmpty);
-
-    // Backing out keeps the card: nothing the driver did is lost, and the
-    // prompt is still there to answer or dismiss.
-    await tester.tapAt(const Offset(10, 10));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('APPROACHING'), findsOneWidget);
+    expect(repo.votes, [('marulan', SiteStatus.blitz)]);
+    expect(find.textContaining('APPROACHING'), findsNothing);
+    expect(find.textContaining('Reported Blitz'), findsOneWidget);
   });
 
-  testWidgets('an anonymous answer from the notification stays pending', (
+  testWidgets('an anonymous answer from the notification is applied', (
     tester,
   ) async {
     final loc = FakeLocationSource();
@@ -447,8 +446,6 @@ void main() {
     await tester.pump();
     expect(find.textContaining('APPROACHING'), findsOneWidget);
 
-    // A notification has no UI to ask for sign-in with, so the answer must not
-    // be consumed: no vote, and the card is still waiting when they come back.
     await container
         .read(proximityControllerProvider.notifier)
         .answerFromNotification(
@@ -456,8 +453,8 @@ void main() {
         );
     await tester.pumpAndSettle();
 
-    expect(repo.votes, isEmpty);
-    expect(find.textContaining('APPROACHING'), findsOneWidget);
+    expect(repo.votes, [('marulan', SiteStatus.blitz)]);
+    expect(find.textContaining('APPROACHING'), findsNothing);
   });
 
   testWidgets('with the feature off no prompt appears', (tester) async {

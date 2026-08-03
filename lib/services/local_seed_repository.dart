@@ -60,8 +60,9 @@ class LocalSeedSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> vote(String siteId, SiteStatus status) async {
+  Future<void> vote(Site site, SiteStatus status) async {
     await _ensureLoaded();
+    final siteId = site.id;
     _addReport(
       SiteReport(
         id: 'r${_seq++}',
@@ -86,7 +87,7 @@ class LocalSeedSiteRepository implements SiteRepository {
 
   @override
   Future<void> report(
-    String siteId,
+    Site site,
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
@@ -95,7 +96,7 @@ class LocalSeedSiteRepository implements SiteRepository {
     _addReport(
       SiteReport(
         id: 'r${_seq++}',
-        siteId: siteId,
+        siteId: site.id,
         createdAt: DateTime.now(),
         activityType: activityType,
         activityNote: activityNote?.trim().isEmpty ?? true

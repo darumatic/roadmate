@@ -31,7 +31,7 @@ class FeatureFakeSiteRepository implements SiteRepository {
 
   @override
   Future<void> report(
-    String siteId,
+    Site site,
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
@@ -41,7 +41,7 @@ class FeatureFakeSiteRepository implements SiteRepository {
   Future<void> toggleFavourite(String siteId) async {}
 
   @override
-  Future<void> vote(String siteId, SiteStatus status) async {}
+  Future<void> vote(Site site, SiteStatus status) async {}
 
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(favourites);

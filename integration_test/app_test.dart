@@ -20,6 +20,9 @@ class _DeniedLocationSource implements LocationSource {
 
   @override
   Stream<Position> positions() => const Stream.empty();
+
+  @override
+  Future<Position?> currentPosition() async => null;
 }
 
 void main() {

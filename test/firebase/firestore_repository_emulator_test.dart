@@ -48,7 +48,14 @@ void main() {
         firestore.useFirestoreEmulator('localhost', 8080);
         firestore.settings = const Settings(persistenceEnabled: false);
         await auth.useAuthEmulator('localhost', 9099);
-        repo = FirestoreSiteRepository(firestore: firestore, auth: auth);
+        repo = FirestoreSiteRepository(
+          firestore: firestore,
+          auth: auth,
+          // Test sites carry no coordinates, so the proximity gate never
+          // needs a fix; a null resolver also proves the gate skips the
+          // lookup for un-geocoded sites.
+          locate: () async => null,
+        );
       });
 
       setUp(() async {
@@ -81,7 +88,7 @@ void main() {
         () async {
           await repo.addSite(_site('site-1'));
 
-          await repo.vote('site-1', SiteStatus.blitz);
+          await repo.vote(_site('site-1'), SiteStatus.blitz);
 
           final site = await firestore.collection('sites').doc('site-1').get();
           expect(site.data()?['currentStatus'], 'blitz');
@@ -103,7 +110,7 @@ void main() {
         await repo.addSite(_site('site-1'));
 
         await repo.report(
-          'site-1',
+          _site('site-1'),
           ActivityReportType.delays,
           activityNote: '  Queue back to the ramp  ',
           reporterName: '  Sam  ',
@@ -175,7 +182,7 @@ void main() {
 
           // No ledger doc exists yet, so the increment attempt fails on the
           // missing-doc precondition and the reset retry must create it.
-          await repo.vote('site-1', SiteStatus.blitz);
+          await repo.vote(_site('site-1'), SiteStatus.blitz);
 
           final ledger = await firestore
               .doc('users/${auth.currentUser!.uid}/limits/actions')
@@ -192,22 +199,22 @@ void main() {
         await repo.addSite(_site('site-2'));
 
         // 5 mixed actions across two sites — the window is global.
-        await repo.vote('site-1', SiteStatus.blitz);
-        await repo.vote('site-1', SiteStatus.open);
-        await repo.report('site-1', ActivityReportType.delays);
-        await repo.report('site-2', ActivityReportType.longQueue);
-        await repo.vote('site-2', SiteStatus.closed);
+        await repo.vote(_site('site-1'), SiteStatus.blitz);
+        await repo.vote(_site('site-1'), SiteStatus.open);
+        await repo.report(_site('site-1'), ActivityReportType.delays);
+        await repo.report(_site('site-2'), ActivityReportType.longQueue);
+        await repo.vote(_site('site-2'), SiteStatus.closed);
 
         final uid = auth.currentUser!.uid;
         final ledger = await firestore.doc('users/$uid/limits/actions').get();
         expect(ledger.data()?['count'], 5);
 
         await expectLater(
-          repo.vote('site-1', SiteStatus.open),
+          repo.vote(_site('site-1'), SiteStatus.open),
           throwsA(isA<RateLimitedException>()),
         );
         await expectLater(
-          repo.report('site-1', ActivityReportType.policePresent),
+          repo.report(_site('site-1'), ActivityReportType.policePresent),
           throwsA(isA<RateLimitedException>()),
         );
 

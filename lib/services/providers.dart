@@ -31,9 +31,17 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
     return repo;
   }
 
+  final location = ref.watch(locationSourceProvider);
   return FirestoreSiteRepository(
     firestore: FirebaseFirestore.instance,
     auth: ref.watch(firebaseAuthProvider),
+    // The proximity gate's position source — adapted here so the repository
+    // stays geolocator-free (see `report_proximity.dart`).
+    locate: () async {
+      final position = await location.currentPosition();
+      if (position == null) return null;
+      return (lat: position.latitude, lng: position.longitude);
+    },
   );
 });
 

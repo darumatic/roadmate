@@ -36,6 +36,9 @@ class FakeLocationSource implements LocationSource {
   @override
   Stream<Position> positions() => controller.stream;
 
+  @override
+  Future<Position?> currentPosition() async => null;
+
   void emit(Position p) => controller.add(p);
 }
 
@@ -54,6 +57,9 @@ class HangingCancelLocationSource implements LocationSource {
   @override
   Stream<Position> positions() => controller.stream;
 
+  @override
+  Future<Position?> currentPosition() async => null;
+
   void emit(Position p) => controller.add(p);
 }
 
@@ -68,6 +74,9 @@ class ImmediatelyFailingLocationSource implements LocationSource {
   Stream<Position> positions() => Stream<Position>.multi(
     (c) => c.addError(Exception('no location manager')),
   );
+
+  @override
+  Future<Position?> currentPosition() async => null;
 }
 
 /// A [TripHistoryStore] whose writes always fail.
@@ -134,7 +143,7 @@ class FakeSites implements SiteRepository {
   Future<void> addSite(Site site, {bool approved = false}) async {}
   @override
   Future<void> report(
-    String siteId,
+    Site site,
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
@@ -142,7 +151,7 @@ class FakeSites implements SiteRepository {
   @override
   Future<void> toggleFavourite(String siteId) async {}
   @override
-  Future<void> vote(String siteId, SiteStatus status) async {}
+  Future<void> vote(Site site, SiteStatus status) async {}
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
   @override

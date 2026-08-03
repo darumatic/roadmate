@@ -78,6 +78,12 @@ abstract class LocationSource {
 
   /// A continuous stream of position fixes (each carries `speed` in m/s).
   Stream<Position> positions();
+
+  /// A single "where am I now" fix for the report proximity gate, asking for
+  /// permission if needed (that ask *is* the gate's "enable location" prompt).
+  /// Null when unavailable: services off, permission denied, or no fix in
+  /// time. Never throws — the caller turns null into the user-facing message.
+  Future<Position?> currentPosition();
 }
 
 /// Production [LocationSource] backed by `geolocator`. Permission gating mirrors
@@ -102,4 +108,19 @@ class GeolocatorLocationSource implements LocationSource {
   @override
   Stream<Position> positions() =>
       Geolocator.getPositionStream(locationSettings: tripLocationSettings());
+
+  @override
+  Future<Position?> currentPosition() async {
+    try {
+      if (!await ensurePermission()) return null;
+      // One-shot, not a stream — the trip stream stays the app's only
+      // getPositionStream. Bounded so a vote can't hang on a cold GPS fix;
+      // with a trip running the platform serves the live fix instantly.
+      return await Geolocator.getCurrentPosition(
+        locationSettings: quickFixLocationSettings(),
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      return null;
+    }
+  }
 }

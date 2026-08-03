@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/enums.dart';
-import '../../services/auth_service.dart';
 import '../../services/providers.dart';
 import '../../services/ban_logic.dart';
 import '../../services/rate_limit.dart';
-import '../../services/report_eligibility.dart';
+import '../../services/report_proximity.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/sign_in_required_sheet.dart';
 import '../../widgets/status_labels.dart';
 import 'proximity_controller.dart';
 import 'proximity_text.dart';
@@ -214,18 +212,16 @@ class ProximityPromptCard extends ConsumerWidget {
     // gate removes as soon as it is answered, taking its context with it.
     final messenger = ScaffoldMessenger.maybeOf(context);
 
-    // Sign-in is asked for *before* the card closes: no sheet can be opened
-    // from a dead context. Backing out leaves the card up — the driver can
-    // answer later or dismiss it themselves, and nothing they did is lost.
-    final mayPost = mayPostReports(ref.read(firebaseAuthProvider));
-    if (!mayPost && !await showSignInRequiredSheet(context)) return;
-
     (onAnswered ?? onDismiss)();
     try {
-      await ref.read(siteRepositoryProvider).vote(prompt.site.id, status);
+      // The proximity gate passes by construction here — this card only
+      // exists because GPS put the truck within the same 3 km radius.
+      await ref.read(siteRepositoryProvider).vote(prompt.site, status);
       _snack(messenger, 'Reported ${statusDisplayLabel(status)} — thanks!');
-    } on SignInRequiredException {
-      _snack(messenger, kSignInToReportMessage);
+    } on TooFarException catch (e) {
+      _snack(messenger, e.message);
+    } on LocationRequiredException catch (e) {
+      _snack(messenger, e.message);
     } on BannedException catch (e) {
       _snack(messenger, e.message);
     } on RateLimitedException {

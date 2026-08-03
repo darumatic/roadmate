@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/site.dart';
-import '../../services/auth_service.dart';
 import '../../services/proximity_alert.dart';
 import '../../services/proximity_notifier.dart';
 import '../../services/providers.dart';
@@ -149,16 +148,15 @@ class ProximityController extends Notifier<ProximityPrompt?> {
     ref.read(proximityNotifierProvider).cancel();
     final status = answer.status;
     if (status == null) return;
-    // Posting needs a real account and a notification has no UI to ask with,
-    // so an anonymous tap is left *unanswered*: the prompt stays pending and
-    // the in-app card raises the sign-in sheet when the driver next looks at
-    // the app. Consuming it here would silently drop the report instead.
-    //
-    if (!mayPostReports(ref.read(firebaseAuthProvider))) return;
+    // The notification only exists because GPS put the truck within prompt
+    // range, so the repository's proximity gate passes; the site must still
+    // be findable to vote on (it always is — the prompt came from _sites).
+    final site = _sites.where((s) => s.id == answer.siteId).firstOrNull;
+    if (site == null) return;
     _tracker.markAnswered(answer.siteId);
     if (state?.site.id == answer.siteId) state = null;
     try {
-      await ref.read(siteRepositoryProvider).vote(answer.siteId, status);
+      await ref.read(siteRepositoryProvider).vote(site, status);
     } catch (e) {
       // Rate-limited or offline: the site card is a tap away and the driver
       // has already left the notification behind — never crash on it.
