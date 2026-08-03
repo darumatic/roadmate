@@ -1,21 +1,12 @@
 Welcome to RoadMate AU — know before you roll.
 
-New in this version — trustworthy reports, better site alerts, and notices from the team:
+New in this version — reporting is open to every driver again:
 
-• Reports and status votes now need a free sign-in with Apple or Google, so every report comes from a real account
-• Tap OPEN / BLITZ / CLOSED or Report activity while signed out and RoadMate asks once, then posts what you were sending — nothing to retype
-• Signing in keeps everything you already have: your favourites, your trips and your past reports all carry over
-• Browsing, Nearby, favourites and adding a site stay open to everyone, no account needed
-• Important notices from the RoadMate team now appear as a banner at the top of the app
-• Site alerts now wait for you: the alert stays on screen until you answer or dismiss it, instead of vanishing after a few seconds
-• It counts the distance down as you close in, and clears itself once the site is behind you
-• Dismissed one? RoadMate asks again inside 100 m, when the site is in sight
-• Alerts still work in the background, phone in your pocket, and only fire when you are driving toward a site
-• Turn alerts on or off with the arrow icon on Home
-• Permission requests are now asked one at a time, so the notification and location prompts no longer land on top of each other
-• Site moderators can now suspend an account that floods the app with junk reports — for a day, or for good
-• A suspended account keeps full read access — live site status, alerts, speedo and trips — it just can't post
-• Site moderators are no longer held back by the action limit, so bad reports and stale statuses get cleaned up faster
+• No sign-in needed any more to tap OPEN / BLITZ / CLOSED or Report activity — posting is open to everyone again
+• To keep reports honest they now come from the road: posting works when you're within 3 km of a site, the same range where RoadMate starts asking "what's the status?"
+• RoadMate asks for your location as you post; if location is off or the site is too far away, a message tells you exactly why
+• Signing in stays optional — it still keeps your favourites, your trips and your past reports together under your account
+• Browsing, Nearby, favourites and adding a site are unchanged and open to everyone
 • Small behind-the-scenes fixes
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
