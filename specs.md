@@ -123,7 +123,13 @@ compile-time locked to it, and a unit test pins the equality).
 `SiteRepository.vote/report` now take the whole `Site` so the gate can measure
 against its coordinates — and throws `TooFarException` or
 `LocationRequiredException`, which every UI path turns into an explanatory
-snack. The device fix comes from `LocationSource.currentPosition()` (one-shot,
+snack. **Admins are exempt (0.1.58): only moderators may post remotely** —
+correcting a stale status can't wait for a site visit, and their named
+accounts stay on the audit trail. The exemption is `enforceReportProximity`
+(pure, unit-tested), and the `userRoles/{uid}` read that feeds `isAdmin` is
+paid **only after a refusal** (the `_activeBan` discipline), so an ordinary
+post near a site costs no extra read and an admin's remote one costs exactly
+one; no rules change (a user may already read their own `userRoles` doc). The device fix comes from `LocationSource.currentPosition()` (one-shot,
 15 s-bounded `quickFix` lookup that first runs the permission ask — so "turn on
 location" is prompted by the OS at the moment of posting; the trip stream stays
 the app's only `getPositionStream`). Deliberate carve-outs: an **un-geocoded

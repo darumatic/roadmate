@@ -102,6 +102,35 @@ void main() {
     });
   });
 
+  group('enforceReportProximity', () {
+    test('an admin passes every refusal — moderation happens remotely', () {
+      for (final decision in ReportProximity.values) {
+        expect(
+          () => enforceReportProximity(decision, isAdmin: true),
+          returnsNormally,
+        );
+      }
+    });
+
+    test('a non-admin gets the exception matching the refusal', () {
+      expect(
+        () => enforceReportProximity(ReportProximity.allowed, isAdmin: false),
+        returnsNormally,
+      );
+      expect(
+        () => enforceReportProximity(ReportProximity.tooFar, isAdmin: false),
+        throwsA(isA<TooFarException>()),
+      );
+      expect(
+        () => enforceReportProximity(
+          ReportProximity.needsLocation,
+          isAdmin: false,
+        ),
+        throwsA(isA<LocationRequiredException>()),
+      );
+    });
+  });
+
   test('the report radius is the approach-prompt radius', () {
     // The app must never *ask* "what's the status?" at a distance it would
     // then refuse to accept an answer from.

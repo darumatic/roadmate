@@ -61,6 +61,25 @@ ReportProximity checkReportProximity({
   return km <= radiusKm ? ReportProximity.allowed : ReportProximity.tooFar;
 }
 
+/// Turns a refusal into its exception — unless the poster is an admin.
+/// Moderators post from the desk: correcting a stale status or answering a
+/// driver's report can't wait for a site visit, and they *are* accountable
+/// (named accounts, and the audit trail keeps their uid). Regular users keep
+/// the full gate: a report is only worth believing from someone who can see
+/// the site. Pure — the caller resolves [isAdmin] however it likes (the
+/// repository reads `userRoles/{uid}` lazily, only after a refusal).
+void enforceReportProximity(ReportProximity decision, {required bool isAdmin}) {
+  if (isAdmin) return;
+  switch (decision) {
+    case ReportProximity.allowed:
+      return;
+    case ReportProximity.needsLocation:
+      throw const LocationRequiredException();
+    case ReportProximity.tooFar:
+      throw const TooFarException();
+  }
+}
+
 /// Snack/exception text for a refusal for distance.
 final String kTooFarToReportMessage =
     'Too far away — reports are accepted within '

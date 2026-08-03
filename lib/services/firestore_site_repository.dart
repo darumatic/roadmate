@@ -119,20 +119,35 @@ class FirestoreSiteRepository implements SiteRepository {
   /// The proximity gate — see `report_proximity.dart`. Skips the position
   /// lookup entirely for an un-geocoded site: there is nothing to measure
   /// against, so the driver isn't asked for location they don't need to give.
+  ///
+  /// Admins are exempt (moderation happens from the desk), but the
+  /// `userRoles/{uid}` read is paid **only after a refusal** — the same
+  /// discipline as [_activeBan], so an ordinary post near a site costs no
+  /// extra read and an admin's remote one costs exactly one.
   Future<void> _ensureNearSite(Site site) async {
     if (site.lat == null || site.lng == null) return;
     final position = await locate();
-    switch (checkReportProximity(
+    final decision = checkReportProximity(
       siteLat: site.lat,
       siteLng: site.lng,
       position: position,
-    )) {
-      case ReportProximity.allowed:
-        return;
-      case ReportProximity.needsLocation:
-        throw const LocationRequiredException();
-      case ReportProximity.tooFar:
-        throw const TooFarException();
+    );
+    if (decision == ReportProximity.allowed) return;
+    enforceReportProximity(decision, isAdmin: await _isAdmin());
+  }
+
+  /// Whether the current uid is an admin, straight from `userRoles/{uid}`
+  /// (readable by its owner — the same doc `currentUserRoleProvider` streams).
+  /// Never throws: an unreadable role must leave the gate's own refusal to
+  /// speak for itself.
+  Future<bool> _isAdmin() async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) return false;
+    try {
+      final snap = await firestore.collection('userRoles').doc(uid).get();
+      return snap.data()?['role'] == 'admin';
+    } catch (_) {
+      return false;
     }
   }
 
