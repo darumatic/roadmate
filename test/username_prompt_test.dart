@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/username_store.dart';
+import 'package:roadmate/widgets/account_panel.dart';
 import 'package:roadmate/widgets/username_prompt.dart';
 
 /// Tap-to-increment counter standing in for real app screens, so tests can
@@ -298,6 +299,67 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('PICK YOUR ROAD NAME'), findsNothing);
       expect(find.text('count: 1'), findsOneWidget);
+    });
+
+    testWidgets('editing via the account row starts from the current name '
+        'and saves the rename', (tester) async {
+      final store = MemoryUsernameStore(
+        initialProfile: const UserProfile(
+          isAnonymous: true,
+          username: 'Dusty Nomad',
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [usernameStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(home: Scaffold(body: RoadNameRow())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Posting as Dusty Nomad'), findsOneWidget);
+
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+
+      // The dialog edits the existing name — not a fresh random roll.
+      expect(find.text('Change your road name'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Dusty Nomad',
+      );
+
+      await tester.enterText(find.byType(TextField), 'Outback Legend');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Change your road name'), findsNothing);
+      expect(find.text('Posting as Outback Legend'), findsOneWidget);
+      // The old name was released for others to claim.
+      expect(await store.claimUsername('Dusty Nomad'), 'Dusty Nomad');
+    });
+
+    testWidgets('a first pick from the account row rolls a fresh name', (
+      tester,
+    ) async {
+      final store = MemoryUsernameStore(
+        initialProfile: const UserProfile(isAnonymous: true),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [usernameStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(home: Scaffold(body: RoadNameRow())),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set road name'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pick your road name'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isNotEmpty,
+      );
     });
 
     testWidgets('the dice rerolls the suggested name', (tester) async {

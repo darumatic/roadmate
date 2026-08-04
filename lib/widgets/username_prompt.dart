@@ -134,11 +134,16 @@ class UsernameForm extends ConsumerStatefulWidget {
     required this.onSaved,
     required this.onDismiss,
     this.dismissLabel = 'Not now',
+    this.initialName,
   });
 
   final ValueChanged<String> onSaved;
   final VoidCallback onDismiss;
   final String dismissLabel;
+
+  /// Pre-fills the field — the user's current name when editing, so a rename
+  /// starts from what they have; null (first pick) starts from a fresh roll.
+  final String? initialName;
 
   @override
   ConsumerState<UsernameForm> createState() => _UsernameFormState();
@@ -153,7 +158,9 @@ class _UsernameFormState extends ConsumerState<UsernameForm> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: generateUsername(_random));
+    _controller = TextEditingController(
+      text: widget.initialName ?? generateUsername(_random),
+    );
   }
 
   @override
@@ -265,15 +272,22 @@ class _UsernameFormState extends ConsumerState<UsernameForm> {
 }
 
 /// The post-time picker, for screens with a Navigator below them. Resolves to
-/// the claimed name, or null when the user backs out.
-Future<String?> showUsernameDialog(BuildContext context) {
+/// the claimed name, or null when the user backs out. Pass [initialName]
+/// (the current name) when editing, so the rename starts from it.
+Future<String?> showUsernameDialog(
+  BuildContext context, {
+  String? initialName,
+}) {
   return showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       backgroundColor: AppTheme.surface,
-      title: const Text('Pick your road name'),
+      title: Text(
+        initialName == null ? 'Pick your road name' : 'Change your road name',
+      ),
       content: UsernameForm(
         dismissLabel: 'Cancel',
+        initialName: initialName,
         onSaved: (name) => Navigator.pop(dialogContext, name),
         onDismiss: () => Navigator.pop(dialogContext),
       ),

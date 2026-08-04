@@ -385,7 +385,10 @@ class RoadNameRow extends ConsumerWidget {
             ),
           ),
           TextButton(
-            onPressed: () => showUsernameDialog(context),
+            // Editing starts from the current name; a first pick starts from
+            // a fresh roll.
+            onPressed: () =>
+                showUsernameDialog(context, initialName: profile.username),
             child: Text(profile.username == null ? 'Set road name' : 'Change'),
           ),
         ],
