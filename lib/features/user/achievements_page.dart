@@ -97,7 +97,8 @@ class AchievementsPage extends ConsumerWidget {
             // How points are earned
             Text(
               'Status votes earn $kPointsPerVote pts · activity reports earn '
-              '$kPointsPerReport pts. Posting works within 3 km of a site.',
+              '$kPointsPerReport pts. Posting works within 3 km of a site. '
+              'Adding a site to the map unlocks Trailblazer.',
               style: const TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 12,

@@ -21,7 +21,7 @@ void main() {
     tester,
   ) async {
     // 10 votes + 1 report = 60 pts -> Local Runner; unlocks First Vote,
-    // First Report and Spotter, leaving four badges locked.
+    // First Report and Spotter, leaving the other badges locked.
     await _pump(tester, const ParticipationStats(votes: 10, reports: 1));
     await tester.pumpAndSettle();
 
@@ -34,7 +34,10 @@ void main() {
       expect(find.text(badge.title), findsOneWidget);
     }
     expect(find.byIcon(Icons.emoji_events), findsNWidgets(3));
-    expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(4));
+    expect(
+      find.byIcon(Icons.lock_outline_rounded),
+      findsNWidgets(kBadges.length - 3),
+    );
   });
 
   testWidgets('a fresh user is a Rookie with everything locked', (

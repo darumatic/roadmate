@@ -18,38 +18,43 @@ library;
 const int kPointsPerVote = 5;
 const int kPointsPerReport = 10;
 
-/// The two participation actions that earn points today. Approved site
-/// submissions are a planned phase-2 addition (`sitesApproved`, additive).
-enum ParticipationAction { vote, report }
+/// The participation actions tracked today. Votes and reports earn points;
+/// adding a site earns the Trailblazer badge only — credited at *submission*
+/// time (a self-action, like the others), deliberately not at approval:
+/// approvals also happen straight in the Firebase console, where no client
+/// code runs to hand out the credit. Points for *approved* submissions
+/// remain a phase-2 idea.
+enum ParticipationAction { vote, report, addSite }
 
 /// The user's raw participation counters, mirroring the
 /// `users/{uid}/stats/participation` doc.
 class ParticipationStats {
-  const ParticipationStats({this.votes = 0, this.reports = 0});
+  const ParticipationStats({
+    this.votes = 0,
+    this.reports = 0,
+    this.sitesAdded = 0,
+  });
 
   final int votes;
   final int reports;
+  final int sitesAdded;
 
-  int get actions => votes + reports;
+  int get actions => votes + reports + sitesAdded;
   int get points => votes * kPointsPerVote + reports * kPointsPerReport;
 
   ParticipationStats after(ParticipationAction action) {
-    return switch (action) {
-      ParticipationAction.vote => ParticipationStats(
-        votes: votes + 1,
-        reports: reports,
-      ),
-      ParticipationAction.report => ParticipationStats(
-        votes: votes,
-        reports: reports + 1,
-      ),
-    };
+    return ParticipationStats(
+      votes: votes + (action == ParticipationAction.vote ? 1 : 0),
+      reports: reports + (action == ParticipationAction.report ? 1 : 0),
+      sitesAdded: sitesAdded + (action == ParticipationAction.addSite ? 1 : 0),
+    );
   }
 
   factory ParticipationStats.fromMap(Map<String, dynamic> map) {
     return ParticipationStats(
       votes: (map['votes'] as num?)?.toInt() ?? 0,
       reports: (map['reports'] as num?)?.toInt() ?? 0,
+      sitesAdded: (map['sitesAdded'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -127,13 +132,13 @@ int reporterLevelToStamp(
   return levelForPoints(stats.points).index1;
 }
 
-/// Payload for the stats write committed in the same batch as every vote and
-/// activity report (`set` with merge). Sentinels are injected so this stays
-/// testable without Firestore: [plusOne]/[plusZero] must be
-/// `FieldValue.increment(1)`/`increment(0)` and [serverTime]
-/// `FieldValue.serverTimestamp()` in production. Both counters always appear
-/// — `increment(0)` on the untouched one — so the create shape carries the
-/// full key set `isStatsSeed` validates in firestore.rules.
+/// Payload for the stats write committed in the same batch as every vote,
+/// activity report and site submission (`set` with merge). Sentinels are
+/// injected so this stays testable without Firestore: [plusOne]/[plusZero]
+/// must be `FieldValue.increment(1)`/`increment(0)` and [serverTime]
+/// `FieldValue.serverTimestamp()` in production. Every counter always
+/// appears — `increment(0)` on the untouched ones — so the create shape
+/// carries the full key set `isStatsSeed` validates in firestore.rules.
 Map<String, Object> statsIncrementPayload(
   ParticipationAction action, {
   required Object plusOne,
@@ -143,6 +148,7 @@ Map<String, Object> statsIncrementPayload(
   return {
     'votes': action == ParticipationAction.vote ? plusOne : plusZero,
     'reports': action == ParticipationAction.report ? plusOne : plusZero,
+    'sitesAdded': action == ParticipationAction.addSite ? plusOne : plusZero,
     'updatedAt': serverTime,
   };
 }
@@ -159,7 +165,7 @@ String formatPoints(int points) {
 }
 
 /// Which counter a badge watches.
-enum BadgeMetric { votes, reports, actions }
+enum BadgeMetric { votes, reports, sitesAdded, actions }
 
 /// A badge is a threshold on one counter — derived entirely from
 /// [ParticipationStats], zero extra storage.
@@ -182,6 +188,7 @@ class ParticipationBadge {
     final value = switch (metric) {
       BadgeMetric.votes => stats.votes,
       BadgeMetric.reports => stats.reports,
+      BadgeMetric.sitesAdded => stats.sitesAdded,
       BadgeMetric.actions => stats.actions,
     };
     return value >= threshold;
@@ -230,6 +237,13 @@ const List<ParticipationBadge> kBadges = [
     description: '50 activity reports',
     metric: BadgeMetric.reports,
     threshold: 50,
+  ),
+  ParticipationBadge(
+    id: 'trailblazer',
+    title: 'Trailblazer',
+    description: 'Add a site to the map',
+    metric: BadgeMetric.sitesAdded,
+    threshold: 1,
   ),
   ParticipationBadge(
     id: 'centuryClub',

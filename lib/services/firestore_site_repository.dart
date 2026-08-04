@@ -328,7 +328,12 @@ class FirestoreSiteRepository implements SiteRepository {
     final uid = await ensureSignedIn(auth);
     final ref = site.id.isEmpty ? _sites.doc() : _sites.doc(site.id);
     try {
-      await ref.set({
+      // One batch: the submission plus its sitesAdded credit (Trailblazer
+      // badge — earned at submission, deliberately not at approval, which
+      // can also happen in the Firebase console where no client code runs).
+      // No ledger stamp here: the 5/5min cap covers votes/reports only.
+      final batch = firestore.batch();
+      batch.set(ref, {
         ...site.toMap(),
         // Pending moderation unless an admin publishes directly (issue #16;
         // the rules reject approved == true from non-admins).
@@ -338,6 +343,9 @@ class FirestoreSiteRepository implements SiteRepository {
         if (approved) 'approvedAt': FieldValue.serverTimestamp(),
         if (approved) 'approvedBy': uid,
       });
+      _stampStats(batch, uid, ParticipationAction.addSite);
+      await batch.commit();
+      _bumpStats(uid, ParticipationAction.addSite);
     } catch (e) {
       // A denial here is almost always a ban (the shape is validated
       // client-side first); anything else surfaces unchanged.

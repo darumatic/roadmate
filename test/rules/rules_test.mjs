@@ -1032,6 +1032,77 @@ await check(
   })(),
 );
 
+// sitesAdded (0.1.60, Trailblazer badge): a site submission credits the
+// third counter in the same batch. The checks above pin the 0.1.59 shapes
+// (votes/reports only) — both directions must keep passing.
+function stampStatsSiteAdd(b, db, uid) {
+  b.set(
+    statsDoc(db, uid),
+    {
+      votes: increment(0),
+      reports: increment(0),
+      sitesAdded: increment(1),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+await check(
+  'adding a site credits sitesAdded in the same batch',
+  (async () => {
+    // dave's stats doc was purged by the delete check above, so this batch
+    // exercises the 4-key seed shape end-to-end.
+    const b = writeBatch(dave);
+    b.set(doc(dave, 'sites/pending-dave-1'), {
+      name: 'Dave Yard',
+      state: 'NSW',
+      type: 'checkingStation',
+      address: 'Hwy 1',
+      approved: false,
+      createdBy: 'dave',
+    });
+    stampStatsSiteAdd(b, dave, 'dave');
+    await assertSucceeds(b.commit());
+    // A 0.1.59-shaped increment (no sitesAdded key at all) still lands on
+    // the 4-key doc — get() defaults keep old web tabs posting.
+    await assertSucceeds(
+      updateDoc(statsDoc(dave, 'dave'), {
+        votes: increment(1),
+        reports: increment(0),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  })(),
+);
+
+await check(
+  'sitesAdded tampering is rejected in every variation',
+  (async () => {
+    await assertFails(
+      updateDoc(statsDoc(dave, 'dave'), {
+        sitesAdded: increment(5),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(statsDoc(dave, 'dave'), {
+        sitesAdded: increment(-1),
+        votes: increment(2),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(statsDoc(carol, 'carol'), {
+        votes: 0,
+        reports: 0,
+        sitesAdded: 50,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  })(),
+);
+
 // In-app account deletion (App Store 5.1.1(v)): a user erases their own
 // favourites and profile doc in one batch; strangers cannot touch either.
 const mallory = env

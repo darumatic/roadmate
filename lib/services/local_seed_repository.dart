@@ -123,6 +123,7 @@ class LocalSeedSiteRepository implements SiteRepository {
     await _ensureLoaded();
     _sites.add(site);
     _sitesController.add(List.unmodifiable(_sites));
+    _recordAction(ParticipationAction.addSite);
   }
 
   @override

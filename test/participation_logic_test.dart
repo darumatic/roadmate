@@ -11,11 +11,19 @@ void main() {
     });
 
     test('after() bumps exactly the acted counter', () {
-      const stats = ParticipationStats(votes: 2, reports: 7);
+      const stats = ParticipationStats(votes: 2, reports: 7, sitesAdded: 1);
       final voted = stats.after(ParticipationAction.vote);
-      expect((voted.votes, voted.reports), (3, 7));
+      expect((voted.votes, voted.reports, voted.sitesAdded), (3, 7, 1));
       final reported = stats.after(ParticipationAction.report);
-      expect((reported.votes, reported.reports), (2, 8));
+      expect((reported.votes, reported.reports, reported.sitesAdded), (2, 8, 1));
+      final added = stats.after(ParticipationAction.addSite);
+      expect((added.votes, added.reports, added.sitesAdded), (2, 7, 2));
+    });
+
+    test('adding a site earns no points but counts as an action', () {
+      const stats = ParticipationStats(votes: 1, sitesAdded: 3);
+      expect(stats.points, kPointsPerVote);
+      expect(stats.actions, 4);
     });
 
     test('fromMap tolerates missing and numeric fields', () {
@@ -24,7 +32,10 @@ void main() {
         'votes': 4,
         'reports': 1.0, // Firestore numbers can decode as double on web
       });
-      expect((stats.votes, stats.reports), (4, 1));
+      expect((stats.votes, stats.reports, stats.sitesAdded), (4, 1, 0));
+      // 0.1.59 docs have no sitesAdded key at all.
+      final withSites = ParticipationStats.fromMap(const {'sitesAdded': 2});
+      expect(withSites.sitesAdded, 2);
     });
   });
 
@@ -85,24 +96,46 @@ void main() {
   });
 
   group('stats payload (sentinels injected, rate_limit.dart pattern)', () {
-    test('vote bumps votes and always carries both counters', () {
+    test('vote bumps votes and always carries every counter', () {
       final payload = statsIncrementPayload(
         ParticipationAction.vote,
         plusOne: 'INC1',
         plusZero: 'INC0',
         serverTime: 'ST',
       );
-      expect(payload, {'votes': 'INC1', 'reports': 'INC0', 'updatedAt': 'ST'});
+      expect(payload, {
+        'votes': 'INC1',
+        'reports': 'INC0',
+        'sitesAdded': 'INC0',
+        'updatedAt': 'ST',
+      });
     });
 
-    test('report mirrors the vote shape', () {
-      final payload = statsIncrementPayload(
+    test('report and addSite mirror the vote shape', () {
+      final report = statsIncrementPayload(
         ParticipationAction.report,
         plusOne: 'INC1',
         plusZero: 'INC0',
         serverTime: 'ST',
       );
-      expect(payload, {'votes': 'INC0', 'reports': 'INC1', 'updatedAt': 'ST'});
+      expect(report, {
+        'votes': 'INC0',
+        'reports': 'INC1',
+        'sitesAdded': 'INC0',
+        'updatedAt': 'ST',
+      });
+      final addSite = statsIncrementPayload(
+        ParticipationAction.addSite,
+        plusOne: 'INC1',
+        plusZero: 'INC0',
+        serverTime: 'ST',
+      );
+      expect(addSite, {
+        'votes': 'INC0',
+        'reports': 'INC0',
+        'sitesAdded': 'INC1',
+        'updatedAt': 'ST',
+      });
     });
   });
 
@@ -124,6 +157,17 @@ void main() {
         const ParticipationStats(votes: 10, reports: 1),
       ).map((b) => b.id);
       expect(ids, ['firstVote', 'firstReport', 'spotter']);
+    });
+
+    test('one added site unlocks Trailblazer, approval not required', () {
+      expect(
+        badgesFor(const ParticipationStats()).map((b) => b.id),
+        isNot(contains('trailblazer')),
+      );
+      expect(
+        badgesFor(const ParticipationStats(sitesAdded: 1)).map((b) => b.id),
+        ['trailblazer'],
+      );
     });
 
     test('century club counts votes and reports combined', () {
