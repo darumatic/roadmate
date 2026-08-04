@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/services/auth_service.dart';
+import 'package:roadmate/services/participation_logic.dart';
+import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/widgets/account_panel.dart';
 
 class FakeAuthController implements AuthController {
@@ -188,6 +190,62 @@ void main() {
 
       expect(controller.deleteCalls, 1);
       expect(find.text('Your account has been deleted.'), findsOneWidget);
+    });
+  });
+
+  group('ParticipationSummary', () {
+    Future<void> pumpSummary(
+      WidgetTester tester,
+      ParticipationStats? stats,
+    ) {
+      return tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            myParticipationProvider.overrideWith(
+              (ref) => Stream.value(stats),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: ParticipationSummary()),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('shows level, points and progress to the next rung', (
+      tester,
+    ) async {
+      // 10 votes + 5 reports = 100 pts -> Local Runner, 50 to Highway Regular.
+      await pumpSummary(
+        tester,
+        const ParticipationStats(votes: 10, reports: 5),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Local Runner'), findsOneWidget);
+      expect(find.text('100 pts'), findsOneWidget);
+      expect(find.text('50 pts to Highway Regular'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('tops out without a next-rung caption', (tester) async {
+      // 250 reports = 2,500 pts — Outback Legend, the top of the ladder.
+      await pumpSummary(tester, const ParticipationStats(reports: 250));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Outback Legend'), findsOneWidget);
+      expect(find.text('2,500 pts'), findsOneWidget);
+      expect(find.textContaining('pts to'), findsNothing);
+    });
+
+    testWidgets('renders nothing while stats are null (signed out / error)', (
+      tester,
+    ) async {
+      await pumpSummary(tester, null);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.textContaining('pts'), findsNothing);
     });
   });
 }

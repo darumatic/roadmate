@@ -94,8 +94,21 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   note, currentStatus, openVotes/blitzVotes/closedVotes, lastReportAt, approved,
   createdBy.
 - `sites/{siteId}/reports/{reportId}`: status vote and/or activityNote, uid,
-  createdAt.
+  createdAt; activity reports from 0.1.59 also carry `reporterLevel` (the
+  author's participation-ladder index, denormalized at write time so report
+  rows show a level icon with zero extra reads — optional, old clients' docs
+  simply don't have it).
 - `users/{uid}/favourites/{siteId}`: a user's favourite sites (private to their uid).
+- `users/{uid}/stats/participation`: the two raw participation counters
+  (`votes`, `reports`, + server-stamped `updatedAt`), bumped by exactly one in
+  the same batch as every vote/report. Points (`votes*5 + reports*10`), the
+  6-rung level ladder (Rookie → Outback Legend) and all badges are **computed
+  client-side** (`lib/services/participation_logic.dart`) — no stored points,
+  so rules never validate arithmetic and rebalancing is a client release.
+  Anti-cheat is deliberately soft (owner-only, +1-per-write, banned users
+  refused); a scripted +1 earns no faster than scripted real votes, which the
+  ledger caps. Anonymous users lose their points if the app is reinstalled
+  (anon uid lost); signing in preserves them.
 - `announcements/current`: the one admin broadcast every client bands across the
   top of the app (see **Admin broadcast** below).
 
@@ -313,6 +326,7 @@ They are approximate — verify exact site positions before production.
 | Site-approach prompt (Waze-style) | ✅ Done — `services/proximity_alert.dart` (pure `ProximityTracker`) raises a prompt when a site is within **3 km**, the driver is doing **>20 km/h**, and the distance is **shrinking since the previous fix** (that closing test *is* the direction check — no compass maths, no reliance on the often-missing direction tag), at most **once per site per 2 h**. Fed from the existing speedometer GPS stream (`TripController._onPosition` → `ProximityController.onPosition`) — never a second listener. On screen: a card floating over the router (`ProximityGate` in `app.dart`) showing the live status + OPEN/BLITZ/CLOSED. **The card has no timer** — it stays (counting the distance down as you close in) until the driver answers it, dismisses it, or the site goes behind them (tracked per *pass* through the radius: `hasPassed` fires once they pull `proximityPassedMarginKm` back from their closest point, or leave the 3 km radius). A **dismissal** is "not now", so the site gets one **second-chance prompt inside 100 m** (`proximityNearRadiusKm`, no speed or cooldown gate — braking for the gate is exactly when the answer is best); an **answer** ends the conversation for that pass. Off screen: a system notification with the same three vote actions (`services/proximity_notifier.dart`); the pending prompt is kept so the card is waiting when the app is reopened. Toggle: `near_me` icon on Home, persisted like the sound switch |
 | Background site alerts | ✅ Done (Android verified locally; **iOS needs on-device verification on the Mac**) — Android runs a location-typed **foreground service** (`AndroidSettings.foregroundNotificationConfig`, wake lock on) which is what grants background location *without* `ACCESS_BACKGROUND_LOCATION` and its Play review; the ongoing "RoadMate is watching the road" notification is the visible trade. iOS uses `AppleSettings(allowBackgroundLocationUpdates, showBackgroundLocationIndicator, pauseLocationUpdatesAutomatically: false, automotiveNavigation)` + `UIBackgroundModes: location` in `Info.plist`. Manifest/plist keys are guarded by `android_manifest_test.dart` / `ios_info_plist_test.dart` |
 | GPS coordinates on Add Site + admin location editor | ✅ Done — `widgets/coordinate_fields.dart` (shared by both) offers "Use my current location" plus editable lat/lng. **Optional by design**, but validated: half a pair or an out-of-range value is rejected rather than silently dropped (`parseCoordinate`/`coordinateFieldError`/`coordinatePairError` in `geo.dart`). Admins get an `edit_location_alt` action on every site card — amber when the site has no pin — writing through `AdminRepository.updateSiteLocation` (existing admin-update rule; no rules change) |
+| Participation points, levels & badges (virtual rewards) | ✅ Done (0.1.59, **web-first** — mobile earns/shows levels only after its next store release; old builds keep working, they just don't participate) — counters in `users/{uid}/stats/participation` written in the same atomic batch as each vote/report; level icon + title + progress in the User tab's account panel (`ParticipationSummary`); Achievements page (`/user/achievements`) with the badge grid; level icon beside reporter names on report rows via the denormalized `reporterLevel`. Deferred to phase 2: points for approved Add-Site submissions (console approvals would skip the credit), historical backfill, level-up snack |
 | Google sign-in popup-blocked fallback | ✅ Done — a blocked popup falls back to `signInWithRedirect`/`linkWithRedirect`; the return leg completes at startup (`AuthController.completeRedirectSignIn`), incl. the link-conflict case; `ensureSignedIn` waits for the restored session first. Web `authDomain` = `roadmate.club` (first-party redirects — Safari/incognito safe; the OAuth redirect URI was added in Google Cloud 2026-07-07). **Installed PWAs skip the popup entirely** and use redirect from the start (`display_mode_web.dart` detects standalone display) — a PWA "popup" is an opener-less custom tab where the Firebase handler hangs blank (Firefox shortcut-app bug, diagnosed from screen recording 2026-07-08) |
 
 ## Deployment & domain

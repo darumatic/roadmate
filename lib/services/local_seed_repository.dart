@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
+import 'participation_logic.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 
@@ -24,10 +25,12 @@ class LocalSeedSiteRepository implements SiteRepository {
   final _favourites = <String>{};
   bool _loaded = false;
   int _seq = 0;
+  var _stats = const ParticipationStats();
 
   final _sitesController = StreamController<List<Site>>.broadcast();
   final _favouritesController = StreamController<Set<String>>.broadcast();
   final _allReportsController = StreamController<List<SiteReport>>.broadcast();
+  final _statsController = StreamController<ParticipationStats?>.broadcast();
 
   Future<void> _ensureLoaded() async {
     if (_loaded) return;
@@ -83,6 +86,7 @@ class LocalSeedSiteRepository implements SiteRepository {
       );
       _sitesController.add(List.unmodifiable(_sites));
     }
+    _recordAction(ParticipationAction.vote);
   }
 
   @override
@@ -105,8 +109,13 @@ class LocalSeedSiteRepository implements SiteRepository {
         reporterName: reporterName?.trim().isEmpty ?? true
             ? null
             : reporterName!.trim(),
+        reporterLevel: reporterLevelToStamp(
+          _stats,
+          ParticipationAction.report,
+        ),
       ),
     );
+    _recordAction(ParticipationAction.report);
   }
 
   @override
@@ -114,6 +123,17 @@ class LocalSeedSiteRepository implements SiteRepository {
     await _ensureLoaded();
     _sites.add(site);
     _sitesController.add(List.unmodifiable(_sites));
+  }
+
+  @override
+  Stream<ParticipationStats?> watchMyStats() async* {
+    yield _stats;
+    yield* _statsController.stream;
+  }
+
+  void _recordAction(ParticipationAction action) {
+    _stats = _stats.after(action);
+    _statsController.add(_stats);
   }
 
   @override
@@ -138,5 +158,6 @@ class LocalSeedSiteRepository implements SiteRepository {
     _sitesController.close();
     _favouritesController.close();
     _allReportsController.close();
+    _statsController.close();
   }
 }

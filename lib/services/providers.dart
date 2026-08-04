@@ -15,6 +15,7 @@ import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
+import 'participation_logic.dart';
 import 'proximity_notifier.dart';
 import 'refresh_logic.dart';
 import 'site_repository.dart';
@@ -122,6 +123,15 @@ final sitesProvider = StreamProvider<List<Site>>((ref) {
 
 final favouriteSiteIdsProvider = StreamProvider<Set<String>>((ref) {
   return ref.watch(siteRepositoryProvider).watchFavourites();
+});
+
+/// The current user's participation counters (points/levels/badges derive
+/// client-side in participation_logic.dart). One single-doc listener whose
+/// only writer is the user themself; first subscribed from the User tab.
+/// Fails silent: consumers render nothing on null/error, so a broken stream
+/// can never wedge the account panel. Not part of [refreshSiteData].
+final myParticipationProvider = StreamProvider<ParticipationStats?>((ref) {
+  return ref.watch(siteRepositoryProvider).watchMyStats();
 });
 
 /// One shared Firestore listener for every report inside the 10h freshness

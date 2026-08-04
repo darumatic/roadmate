@@ -17,6 +17,7 @@ import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/min_version.dart';
+import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/site_stats.dart';
 import 'package:roadmate/services/startup_service.dart';
@@ -53,6 +54,9 @@ class FakeSiteRepository implements SiteRepository {
 
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
+
+  @override
+  Stream<ParticipationStats?> watchMyStats() => Stream.value(null);
 
   @override
   Future<void> toggleFavourite(String siteId) async {}

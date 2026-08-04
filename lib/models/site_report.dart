@@ -39,6 +39,7 @@ class SiteReport {
     this.activityType,
     this.activityNote,
     this.reporterName,
+    this.reporterLevel,
     this.uid,
   });
 
@@ -49,6 +50,12 @@ class SiteReport {
   final ActivityReportType? activityType;
   final String? activityNote;
   final String? reporterName;
+
+  /// The author's participation level (1-based ladder index), denormalized
+  /// into the doc at write time so report rows can show a level icon without
+  /// any per-author profile read. Absent on docs from older clients.
+  final int? reporterLevel;
+
   final String? uid;
 
   bool get isActivityReport => activityType != null;
@@ -66,6 +73,7 @@ class SiteReport {
       activityType: ActivityReportType.fromName(map['activityType'] as String?),
       activityNote: map['activityNote'] as String?,
       reporterName: map['reporterName'] as String?,
+      reporterLevel: (map['reporterLevel'] as num?)?.toInt(),
       uid: map['uid'] as String?,
     );
   }
@@ -78,6 +86,7 @@ class SiteReport {
       'activityType': activityType?.wire,
       'activityNote': activityNote,
       'reporterName': reporterName,
+      'reporterLevel': reporterLevel,
       'uid': uid,
     };
   }

@@ -1,6 +1,7 @@
 import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
+import 'participation_logic.dart';
 
 /// Abstraction over site storage so the app can run against bundled seed data
 /// today and swap in a Firestore-backed implementation once Firebase is wired,
@@ -33,6 +34,12 @@ abstract class SiteRepository {
   /// admins pass [approved] = true to publish immediately (issue #16 — the
   /// rules only accept an approved create from an admin).
   Future<void> addSite(Site site, {bool approved = false});
+
+  /// The current user's participation counters (points/levels/badges are
+  /// derived client-side — see `participation_logic.dart`). Null while signed
+  /// out; zero counters when the user simply hasn't posted yet. One cheap
+  /// single-doc listener, first subscribed from the User tab.
+  Stream<ParticipationStats?> watchMyStats();
 
   /// IDs of sites the current user has favourited.
   Stream<Set<String>> watchFavourites();

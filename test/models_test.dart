@@ -124,6 +124,35 @@ void main() {
       expect(restored.reporterName, 'Sam');
       expect(restored.isActivityReport, isTrue);
     });
+
+    test('round-trips reporterLevel and tolerates its absence', () {
+      final report = SiteReport(
+        id: 'r3',
+        siteId: 's1',
+        createdAt: DateTime(2026, 8, 4, 9),
+        activityType: ActivityReportType.delays,
+        reporterName: 'Sam',
+        reporterLevel: 3,
+      );
+      final restored = SiteReport.fromMap(report.id, report.toMap());
+      expect(restored.reporterLevel, 3);
+
+      // Docs written by older clients have no reporterLevel at all; web can
+      // also decode Firestore ints as doubles.
+      final legacy = SiteReport.fromMap('r4', {
+        'siteId': 's1',
+        'createdAt': '2026-08-04T09:00:00',
+        'activityType': 'delays',
+      });
+      expect(legacy.reporterLevel, isNull);
+      final fromDouble = SiteReport.fromMap('r5', {
+        'siteId': 's1',
+        'createdAt': '2026-08-04T09:00:00',
+        'activityType': 'delays',
+        'reporterLevel': 2.0,
+      });
+      expect(fromDouble.reporterLevel, 2);
+    });
   });
 
   group('parseNhvrNationalData', () {

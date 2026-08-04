@@ -6,7 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../services/auth_service.dart';
+import '../services/participation_logic.dart';
+import '../services/providers.dart';
 import '../theme/app_theme.dart';
+import 'level_badge.dart';
 
 const _deleteRed = Color(0xFFEF4444);
 
@@ -51,6 +54,7 @@ class AccountPanel extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _AccountSummary(user: user, role: roleAsync.value),
+            const ParticipationSummary(),
             const AdminEntryLink(),
             const SizedBox(height: 12),
             AccountActions(user: user),
@@ -341,6 +345,96 @@ class _AccountSummary extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The user's participation level: badge, title, points and progress toward
+/// the next rung; taps into the Achievements page. Self-gating (watches
+/// [myParticipationProvider]) and fail-silent — nothing renders while stats
+/// are loading, missing or erroring, so a broken stream can never wedge the
+/// account panel.
+class ParticipationSummary extends ConsumerWidget {
+  const ParticipationSummary({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stats = ref.watch(myParticipationProvider).value;
+    if (stats == null) return const SizedBox.shrink();
+
+    final level = levelForPoints(stats.points);
+    final next = nextLevelForPoints(stats.points);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.push('/user/achievements'),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  LevelBadge(level: level),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          level.title,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '${formatPoints(stats.points)} pts',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppTheme.textSecondary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: progressToNextLevel(stats.points),
+                  minHeight: 4,
+                  backgroundColor: AppTheme.border,
+                  color: AppTheme.accent,
+                ),
+              ),
+              if (next != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '${formatPoints(next.minPoints - stats.points)} pts to '
+                  '${next.title}',
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

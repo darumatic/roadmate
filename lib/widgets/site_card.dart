@@ -13,6 +13,7 @@ import '../services/site_repository.dart';
 import '../services/status_logic.dart';
 import '../theme/app_theme.dart';
 import 'edit_site_location_dialog.dart';
+import 'level_badge.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
 
@@ -522,13 +523,21 @@ class _ActivityReportTile extends StatelessWidget {
             Text(note, style: const TextStyle(color: AppTheme.textSecondary)),
           ],
           const SizedBox(height: 4),
-          Text(
-            reporter,
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              ReporterLevelIcon(reporterLevel: report.reporterLevel),
+              Flexible(
+                child: Text(
+                  reporter,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

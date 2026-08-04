@@ -12,6 +12,7 @@ import 'features/info/info_screen.dart';
 import 'features/nearby/nearby_screen.dart';
 import 'features/favourites/favourites_screen.dart';
 import 'features/state_detail/state_detail_screen.dart';
+import 'features/user/achievements_page.dart';
 import 'features/user/user_screen.dart';
 import 'widgets/app_shell.dart';
 
@@ -58,6 +59,12 @@ final appRouter = GoRouter(
               path: '/user',
               name: 'user',
               builder: (_, _) => const UserScreen(),
+              routes: [
+                GoRoute(
+                  path: 'achievements',
+                  builder: (_, _) => const AchievementsPage(),
+                ),
+              ],
             ),
           ],
         ),

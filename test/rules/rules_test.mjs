@@ -825,6 +825,213 @@ await check(
   })(),
 );
 
+// ---- Participation stats (points/levels — purely cosmetic) ----
+// New clients bump users/{uid}/stats/participation by exactly one action in
+// the same batch as every vote/report, and stamp the author's level into
+// activity reports as reporterLevel. Old clients do neither; both shapes
+// must pass forever (retrocompat), which the legacy checks above already pin.
+const statsDoc = (db, uid) => doc(db, `users/${uid}/stats/participation`);
+
+// Mirrors the statsIncrementPayload(...) write in FirestoreSiteRepository:
+// set(merge) + increments, both counters always present.
+function stampStats(b, db, uid, kind) {
+  b.set(
+    statsDoc(db, uid),
+    {
+      votes: increment(kind === 'vote' ? 1 : 0),
+      reports: increment(kind === 'report' ? 1 : 0),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+// The complete new-client shapes: action + site touch + ledger + stats.
+async function fullVote(db, siteId, status, uid, stamp) {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, `sites/${siteId}/reports`)), {
+    siteId,
+    status,
+    uid,
+    createdAt: serverTimestamp(),
+  });
+  b.update(doc(db, `sites/${siteId}`), {
+    [`${status}Votes`]: increment(1),
+    currentStatus: status,
+    lastReportAt: serverTimestamp(),
+  });
+  stamp(b, db, uid);
+  stampStats(b, db, uid, 'vote');
+  return b.commit();
+}
+
+async function fullReport(db, siteId, uid, stamp, reporterLevel) {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, `sites/${siteId}/reports`)), {
+    siteId,
+    activityType: 'delays',
+    uid,
+    createdAt: serverTimestamp(),
+    ...(reporterLevel === undefined ? {} : { reporterLevel }),
+  });
+  b.update(doc(db, `sites/${siteId}`), { lastReportAt: serverTimestamp() });
+  stamp(b, db, uid);
+  stampStats(b, db, uid, 'report');
+  return b.commit();
+}
+
+const dave = env
+  .authenticatedContext('dave', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+
+await check(
+  'new-client vote and report batches (ledger + stats + reporterLevel) pass',
+  (async () => {
+    await assertSucceeds(fullVote(dave, 'site-1', 'open', 'dave', stampReset));
+    await assertSucceeds(
+      fullReport(dave, 'site-1', 'dave', stampIncrement, 1),
+    );
+    // A report without reporterLevel stays valid — stats alone don't force it.
+    await assertSucceeds(
+      fullReport(dave, 'site-1', 'dave', stampIncrement, undefined),
+    );
+  })(),
+);
+
+await check(
+  'a forged reporterLevel is rejected in every variation',
+  (async () => {
+    await assertFails(fullReport(dave, 'site-1', 'dave', stampIncrement, 0));
+    await assertFails(fullReport(dave, 'site-1', 'dave', stampIncrement, 100));
+    await assertFails(
+      fullReport(dave, 'site-1', 'dave', stampIncrement, 'Legend'),
+    );
+    // Status votes never carry a level — no author row ever shows one.
+    await assertFails(
+      (() => {
+        const b = writeBatch(dave);
+        b.set(doc(collection(dave, 'sites/site-1/reports')), {
+          siteId: 'site-1',
+          status: 'open',
+          uid: 'dave',
+          createdAt: serverTimestamp(),
+          reporterLevel: 2,
+        });
+        b.update(doc(dave, 'sites/site-1'), {
+          openVotes: increment(1),
+          currentStatus: 'open',
+          lastReportAt: serverTimestamp(),
+        });
+        return b.commit();
+      })(),
+    );
+  })(),
+);
+
+await check(
+  'stats tampering is rejected in every variation',
+  (async () => {
+    // Seeding a fat counter from nothing.
+    await assertFails(
+      setDoc(statsDoc(carol, 'carol'), {
+        votes: 500,
+        reports: 0,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    // dave sits at votes:1, reports:2 — jumps, decrements, stray keys and
+    // client-chosen clocks are all refused.
+    await assertFails(
+      updateDoc(statsDoc(dave, 'dave'), {
+        votes: increment(5),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(statsDoc(dave, 'dave'), {
+        votes: increment(-1),
+        reports: increment(2),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(statsDoc(dave, 'dave'), {
+        votes: increment(1),
+        legend: true,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(statsDoc(dave, 'dave'), {
+        votes: increment(1),
+        updatedAt: Timestamp.fromDate(new Date(0)),
+      }),
+    );
+  })(),
+);
+
+await check(
+  'a standalone +1 passes — the documented soft-validation ceiling',
+  // No getAfter() linkage is possible retrocompatibly (see the rules
+  // comment); a scripted +1 earns points no faster than a scripted real
+  // vote, which the ledger caps. This check pins the accepted tradeoff.
+  assertSucceeds(
+    updateDoc(statsDoc(dave, 'dave'), {
+      votes: increment(1),
+      reports: increment(0),
+      updatedAt: serverTimestamp(),
+    }),
+  ),
+);
+
+await check(
+  'stats are private to their owner (plus admins) and untouchable by others',
+  (async () => {
+    await assertSucceeds(getDoc(statsDoc(dave, 'dave')));
+    await assertSucceeds(getDoc(statsDoc(admin, 'dave')));
+    await assertFails(getDoc(statsDoc(carol, 'dave')));
+    await assertFails(
+      setDoc(statsDoc(carol, 'dave'), {
+        votes: increment(1),
+        reports: increment(0),
+        updatedAt: serverTimestamp(),
+      }, { merge: true }),
+    );
+  })(),
+);
+
+await check(
+  'a banned user earns nothing: full new-shape batch and bare stats refused',
+  (async () => {
+    // spammer holds the permanent ban re-created by the retrocompat check.
+    await assertFails(fullVote(spammer, 'site-1', 'open', 'spammer', stampReset));
+    await assertFails(
+      setDoc(statsDoc(spammer, 'spammer'), {
+        votes: 1,
+        reports: 0,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  })(),
+);
+
+await check(
+  'owner and admin can delete a stats doc (account deletion / purge)',
+  (async () => {
+    await assertFails(deleteDoc(statsDoc(carol, 'dave')));
+    await assertSucceeds(deleteDoc(statsDoc(dave, 'dave')));
+    // Recreate legitimately, then an admin purges it.
+    await assertSucceeds(
+      setDoc(statsDoc(dave, 'dave'), {
+        votes: 0,
+        reports: 1,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertSucceeds(deleteDoc(statsDoc(admin, 'dave')));
+  })(),
+);
+
 // In-app account deletion (App Store 5.1.1(v)): a user erases their own
 // favourites and profile doc in one batch; strangers cannot touch either.
 const mallory = env
@@ -848,9 +1055,10 @@ await check(
     (() => {
       const b = writeBatch(alice);
       b.delete(doc(alice, 'users/alice/favourites/site-1'));
-      // Blind ledger delete, mirroring AuthController.deleteAccount — alice
-      // never stamped one, so this also proves absent-doc deletes pass.
+      // Blind ledger + stats deletes, mirroring AuthController.deleteAccount —
+      // alice never stamped either, so this also proves absent-doc deletes pass.
       b.delete(ledgerDoc(alice, 'alice'));
+      b.delete(statsDoc(alice, 'alice'));
       b.delete(doc(alice, 'users/alice'));
       return b.commit();
     })(),

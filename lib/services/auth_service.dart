@@ -139,8 +139,10 @@ class AuthController {
     for (final favourite in favourites.docs) {
       batch.delete(favourite.reference);
     }
-    // Rate-limit ledger (issue #15): blind delete — a no-op when absent.
+    // Rate-limit ledger (issue #15) and participation stats: blind deletes —
+    // no-ops when absent.
     batch.delete(userDoc.collection('limits').doc('actions'));
+    batch.delete(userDoc.collection('stats').doc('participation'));
     batch.delete(userDoc);
     await batch.commit();
 

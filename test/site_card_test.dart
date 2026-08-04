@@ -9,7 +9,9 @@ import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/rate_limit.dart';
 import 'package:roadmate/services/report_proximity.dart';
+import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
+import 'package:roadmate/widgets/level_badge.dart';
 import 'package:roadmate/widgets/site_card.dart';
 
 /// Records calls so the widget's wiring can be asserted. Set [voteError] /
@@ -57,6 +59,9 @@ class FakeSiteRepository implements SiteRepository {
 
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
+
+  @override
+  Stream<ParticipationStats?> watchMyStats() => Stream.value(null);
 }
 
 /// Records site deletions; every other member is unused by the widget under
@@ -285,6 +290,42 @@ void main() {
     expect(find.text('Alex'), findsOneWidget);
     expect(find.text('Anonymous'), findsNWidgets(4));
     expect(find.text('Zoe'), findsNothing); // qld-9's report stays off nsw-1
+  });
+
+  testWidgets('a report row shows the level icon only when stamped', (
+    tester,
+  ) async {
+    final repo = FakeSiteRepository()
+      ..watchedReports = [
+        SiteReport(
+          id: 'stamped',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now(),
+          activityType: ActivityReportType.longQueue,
+          reporterName: 'Alex',
+          reporterLevel: 3, // Highway Regular
+        ),
+        // Written by an older client — no reporterLevel, no icon.
+        SiteReport(
+          id: 'legacy',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 5)),
+          activityType: ActivityReportType.delays,
+          reporterName: 'Sam',
+        ),
+      ];
+    await _pump(tester, repo);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Highway Regular'), findsOneWidget);
+    // Exactly one marker across both rows: the legacy row renders nothing.
+    expect(
+      find.descendant(
+        of: find.byType(ReporterLevelIcon),
+        matching: find.byType(Icon),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('activity reports expire from the card after 10 hours', (

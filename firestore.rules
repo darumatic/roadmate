@@ -190,6 +190,35 @@ service cloud.firestore {
         allow delete: if signedIn()
           && (request.auth.uid == uid || isAdmin());
       }
+
+      // Participation stats (points/levels/badges — purely cosmetic). A new
+      // path no shipped client writes, so everything here is additive: old
+      // 2-op/3-op vote+report batches carry no stats write and keep passing.
+      // New clients bump exactly one counter by 1 in the same batch as the
+      // vote/report (set with merge, FieldValue.increment), so create carries
+      // the full seeded shape too.
+      //
+      // Anti-cheat is deliberately soft: owner-only, +1-per-write, banned
+      // users refused, updatedAt server-stamped — and nothing more.
+      // getAfter() linkage is not viable in either direction (old clients'
+      // batches have no stats write; the report doc ID is random), and a
+      // scripted standalone +1 earns points no faster than scripting real
+      // votes, which the action ledger above already caps at 5/5min. A
+      // future strict phase could require
+      // getAfter(limits/actions).lastActionAt == request.time here.
+      match /stats/participation {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow create: if signedIn() && request.auth.uid == uid
+          && !isBanned()
+          && isStatsSeed();
+        allow update: if signedIn() && request.auth.uid == uid
+          && !isBanned()
+          && isStatsIncrement();
+        // Owner: account-deletion cleanup. Admin: moderation purge.
+        // Un-banned like limits/actions so the deletion batch keeps working.
+        allow delete: if signedIn()
+          && (request.auth.uid == uid || isAdmin());
+      }
     }
 
     // Public app configuration (e.g. minVersion for the forced-update gate).
@@ -240,6 +269,29 @@ service cloud.firestore {
         && request.time <= resource.data.windowStart + duration.value(5, 'm');
     }
 
+    // Participation stats shapes. The doc only ever holds the two raw
+    // counters (+ server-stamped updatedAt) — points/levels/badges are all
+    // computed client-side (lib/services/participation_logic.dart), so the
+    // rules never validate arithmetic beyond "+1 to exactly one counter".
+    function isStatsSeed() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['votes', 'reports', 'updatedAt'])
+        && d.votes is int && d.reports is int
+        && d.votes >= 0 && d.reports >= 0
+        && d.votes + d.reports == 1
+        && d.updatedAt == request.time;
+    }
+
+    function isStatsIncrement() {
+      let a = resource.data;
+      let b = request.resource.data;
+      return affectedKeys().hasOnly(['votes', 'reports', 'updatedAt'])
+        && b.votes >= a.votes
+        && b.reports >= a.reports
+        && (b.votes + b.reports) == (a.votes + a.reports) + 1
+        && b.updatedAt == request.time;
+    }
+
     // Exactly one of the three status counters increases by 1; none decrease;
     // currentStatus is a valid value; no other fields change.
     // NOTE: this phase deliberately does NOT require the ledger stamp here —
@@ -268,7 +320,7 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly([
           'siteId', 'status', 'activityType', 'activityNote', 'reporterName',
-          'uid', 'createdAt'
+          'reporterLevel', 'uid', 'createdAt'
         ])
         && d.uid == request.auth.uid
         && d.siteId == siteId
@@ -282,11 +334,19 @@ service cloud.firestore {
         && d.status in ['open', 'blitz', 'closed'];
     }
 
+    // `reporterLevel` (optional) is the author's ladder index, denormalized
+    // at write time so report rows show a level icon without per-author
+    // profile reads. Absent from old clients' docs — both shapes accepted.
+    // Capped loosely at 99 so adding ladder rungs never needs a rules deploy.
     function isValidActivityReport(d) {
       return d.keys().hasOnly([
           'siteId', 'activityType', 'activityNote', 'reporterName',
-          'uid', 'createdAt'
+          'reporterLevel', 'uid', 'createdAt'
         ])
+        && (!('reporterLevel' in d.keys())
+          || (d.reporterLevel is int
+            && d.reporterLevel >= 1
+            && d.reporterLevel <= 99))
         && d.activityType is string
         && d.activityType in [
           'longQueue', 'delays', 'policePresent', 'BGD',

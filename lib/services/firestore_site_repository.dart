@@ -7,6 +7,7 @@ import '../models/site_report.dart';
 import '../models/user_ban.dart';
 import 'auth_service.dart';
 import 'ban_logic.dart';
+import 'participation_logic.dart';
 import 'rate_limit.dart';
 import 'report_proximity.dart';
 import 'site_repository.dart';
@@ -87,6 +88,66 @@ class FirestoreSiteRepository implements SiteRepository {
       .doc(uid)
       .collection('limits')
       .doc('actions');
+
+  DocumentReference<Map<String, dynamic>> _statsRef(String uid) => firestore
+      .collection('users')
+      .doc(uid)
+      .collection('stats')
+      .doc('participation');
+
+  /// Last-known participation counters, used to pick the `reporterLevel`
+  /// stamped into activity reports. Fed by [watchMyStats] when that listener
+  /// is live (the User tab), else by one memoized `get()` before the first
+  /// report of the session, and bumped locally after each successful post.
+  /// Cross-device staleness only ever costs an off-by-one cosmetic stamp.
+  ParticipationStats? _lastKnownStats;
+  String? _statsUid;
+  bool _statsLoadAttempted = false;
+
+  void _cacheStats(String uid, ParticipationStats? stats) {
+    if (_statsUid != uid) _statsLoadAttempted = false;
+    _statsUid = uid;
+    _lastKnownStats = stats;
+  }
+
+  Future<ParticipationStats?> _statsForStamp(String uid) async {
+    if (_statsUid != uid) {
+      _lastKnownStats = null;
+      _statsLoadAttempted = false;
+      _statsUid = uid;
+    }
+    if (_lastKnownStats != null || _statsLoadAttempted) return _lastKnownStats;
+    _statsLoadAttempted = true;
+    try {
+      final snap = await _statsRef(uid).get();
+      _lastKnownStats = ParticipationStats.fromMap(snap.data() ?? const {});
+    } catch (_) {
+      // Gamification must never block a post — an unknown score just stamps
+      // level 1 (reporterLevelToStamp's null path).
+    }
+    return _lastKnownStats;
+  }
+
+  void _bumpStats(String uid, ParticipationAction action) {
+    if (_statsUid != uid || _lastKnownStats == null) return;
+    _lastKnownStats = _lastKnownStats!.after(action);
+  }
+
+  /// The stats write riding in every vote/report batch: exactly one counter
+  /// +1, the shape `isStatsSeed`/`isStatsIncrement` in firestore.rules
+  /// validate. `set(merge)` + increments covers create and update alike.
+  void _stampStats(WriteBatch batch, String uid, ParticipationAction action) {
+    batch.set(
+      _statsRef(uid),
+      statsIncrementPayload(
+        action,
+        plusOne: FieldValue.increment(1),
+        plusZero: FieldValue.increment(0),
+        serverTime: FieldValue.serverTimestamp(),
+      ),
+      SetOptions(merge: true),
+    );
+  }
 
   /// The user's active ban, or null. Read **only after a write was refused**:
   /// a ban is rare and the rules already enforce it, so paying a document read
@@ -219,7 +280,9 @@ class FirestoreSiteRepository implements SiteRepository {
         'currentStatus': status.name,
         'lastReportAt': FieldValue.serverTimestamp(),
       });
+      _stampStats(batch, uid, ParticipationAction.vote);
     });
+    _bumpStats(uid, ParticipationAction.vote);
   }
 
   @override
@@ -242,6 +305,12 @@ class FirestoreSiteRepository implements SiteRepository {
     final name = reporterName?.trim();
     if (note != null && note.isNotEmpty) data['activityNote'] = note;
     if (name != null && name.isNotEmpty) data['reporterName'] = name;
+    // The author's level after this report, denormalized into the doc so
+    // report rows can show it without any per-author read.
+    data['reporterLevel'] = reporterLevelToStamp(
+      await _statsForStamp(uid),
+      ParticipationAction.report,
+    );
 
     // One atomic batch so a report never lands without its site touch.
     await _commitWithLedgerStamp(uid, (batch) {
@@ -249,7 +318,9 @@ class FirestoreSiteRepository implements SiteRepository {
       batch.update(_sites.doc(siteId), {
         'lastReportAt': FieldValue.serverTimestamp(),
       });
+      _stampStats(batch, uid, ParticipationAction.report);
     });
+    _bumpStats(uid, ParticipationAction.report);
   }
 
   @override
@@ -273,6 +344,20 @@ class FirestoreSiteRepository implements SiteRepository {
       if (isRulesDenial(e)) await _explainDenial(uid, e);
       rethrow;
     }
+  }
+
+  @override
+  Stream<ParticipationStats?> watchMyStats() {
+    return auth.authStateChanges().asyncExpand((user) {
+      final uid = user?.uid;
+      if (uid == null) return Stream.value(null);
+      return _statsRef(uid).snapshots().map((snap) {
+        final stats = ParticipationStats.fromMap(snap.data() ?? const {});
+        // Keep the reporterLevel stamp fresh while the listener is live.
+        _cacheStats(uid, stats);
+        return stats;
+      });
+    });
   }
 
   @override
