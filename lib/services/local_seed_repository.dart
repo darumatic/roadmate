@@ -63,7 +63,11 @@ class LocalSeedSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> vote(Site site, SiteStatus status) async {
+  Future<void> vote(
+    Site site,
+    SiteStatus status, {
+    String? reporterName,
+  }) async {
     await _ensureLoaded();
     final siteId = site.id;
     _addReport(
@@ -72,6 +76,9 @@ class LocalSeedSiteRepository implements SiteRepository {
         siteId: siteId,
         createdAt: DateTime.now(),
         status: status,
+        reporterName: reporterName?.trim().isEmpty ?? true
+            ? null
+            : reporterName!.trim(),
       ),
     );
     final i = _sites.indexWhere((s) => s.id == siteId);
@@ -109,17 +116,18 @@ class LocalSeedSiteRepository implements SiteRepository {
         reporterName: reporterName?.trim().isEmpty ?? true
             ? null
             : reporterName!.trim(),
-        reporterLevel: reporterLevelToStamp(
-          _stats,
-          ParticipationAction.report,
-        ),
+        reporterLevel: reporterLevelToStamp(_stats, ParticipationAction.report),
       ),
     );
     _recordAction(ParticipationAction.report);
   }
 
   @override
-  Future<void> addSite(Site site, {bool approved = false}) async {
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  }) async {
     await _ensureLoaded();
     _sites.add(site);
     _sitesController.add(List.unmodifiable(_sites));

@@ -141,12 +141,20 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // `username` (0.1.61, road names) is additive: shipped clients'
+      // 5-key profile syncs keep passing. Anonymous users write this doc too
+      // now (their road name is its only content) — signedIn() covers them.
       allow create, update: if signedIn()
         && request.auth.uid == uid
         && !isBanned()
         && request.resource.data.keys().hasOnly([
-          'email', 'displayName', 'photoUrl', 'isAnonymous', 'lastSeenAt'
-        ]);
+          'email', 'displayName', 'photoUrl', 'isAnonymous', 'lastSeenAt',
+          'username'
+        ])
+        && (!('username' in request.resource.data.keys())
+          || (request.resource.data.username is string
+            && request.resource.data.username.size() >= 3
+            && request.resource.data.username.size() <= 30));
       // In-app account deletion (App Store 5.1.1(v)): a user erases their
       // own profile before deleting the Firebase account. NOT gated on the
       // ban — a suspended user keeps the right to delete their account, and
@@ -219,6 +227,43 @@ service cloud.firestore {
         allow delete: if signedIn()
           && (request.auth.uid == uid || isAdmin());
       }
+    }
+
+    // Road-name uniqueness claims (0.1.61): usernames/{key} where key is the
+    // lowercased name, so "Dusty Nomad" and "DUSTY NOMAD" collide. Claiming
+    // is create-if-free — a second create of the same key arrives as an
+    // update and dies on the owner check, which is the whole uniqueness
+    // guarantee. The display-cased name is denormalized onto
+    // users/{uid}.username in the same transaction (username_store.dart).
+    // World-readable: names are already public on every report, and the
+    // client reads a claim to explain a lost create race.
+    match /usernames/{nameKey} {
+      allow read: if true;
+      allow create: if signedIn() && !isBanned() && isValidUsernameClaim(nameKey);
+      // Owner may re-stamp their claim (casing change keeps the same key).
+      allow update: if signedIn()
+        && !isBanned()
+        && resource.data.uid == request.auth.uid
+        && isValidUsernameClaim(nameKey);
+      // Owner: rename release / account deletion (the latter deliberately
+      // un-banned, like the users/{uid} delete). Admin: moderation.
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // Shape of a road-name claim. Length caps and character set must stay in
+    // sync with lib/services/username_logic.dart, or a name the client
+    // accepts dies here with a generic error.
+    function isValidUsernameClaim(nameKey) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['uid', 'username', 'createdAt'])
+        && d.uid == request.auth.uid
+        && d.username is string
+        && d.username.lower() == nameKey
+        && d.createdAt == request.time
+        && nameKey.size() >= 3
+        && nameKey.size() <= 30
+        && nameKey.matches('[a-z0-9][a-z0-9 _-]*[a-z0-9]');
     }
 
     // Public app configuration (e.g. minVersion for the forced-update gate).
@@ -342,10 +387,18 @@ service cloud.firestore {
         && (isValidStatusReport(d) || isValidActivityReport(d));
     }
 
+    // `reporterName` (optional, 0.1.61 road names) signs the vote; absent
+    // from every shipped client's 4-field docs — both shapes accepted.
     function isValidStatusReport(d) {
-      return d.keys().hasOnly(['siteId', 'status', 'uid', 'createdAt'])
+      return d.keys().hasOnly([
+          'siteId', 'status', 'uid', 'createdAt', 'reporterName'
+        ])
         && d.status is string
-        && d.status in ['open', 'blitz', 'closed'];
+        && d.status in ['open', 'blitz', 'closed']
+        && (!('reporterName' in d.keys())
+          || (d.reporterName is string
+            && d.reporterName.size() > 0
+            && d.reporterName.size() <= 80));
     }
 
     // `reporterLevel` (optional) is the author's ladder index, denormalized
@@ -413,6 +466,11 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.approved is bool
         && d.createdBy == request.auth.uid
+        // The submitter's road name (optional, 0.1.61), beside the uid.
+        && (!('createdByName' in d.keys())
+          || (d.createdByName is string
+            && d.createdByName.size() > 0
+            && d.createdByName.size() <= 80))
         && d.name is string && d.name.size() > 0
         && d.state is string
         && d.type is string

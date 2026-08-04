@@ -263,10 +263,15 @@ class FirestoreSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> vote(Site site, SiteStatus status) async {
+  Future<void> vote(
+    Site site,
+    SiteStatus status, {
+    String? reporterName,
+  }) async {
     final uid = await ensureSignedIn(auth);
     await _ensureNearSite(site);
     final siteId = site.id;
+    final name = reporterName?.trim();
     final reportRef = _sites.doc(siteId).collection('reports').doc();
     await _commitWithLedgerStamp(uid, (batch) {
       batch.set(reportRef, {
@@ -274,6 +279,7 @@ class FirestoreSiteRepository implements SiteRepository {
         'status': status.name,
         'uid': uid,
         'createdAt': FieldValue.serverTimestamp(),
+        if (name != null && name.isNotEmpty) 'reporterName': name,
       });
       batch.update(_sites.doc(siteId), {
         '${status.name}Votes': FieldValue.increment(1),
@@ -324,8 +330,13 @@ class FirestoreSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> addSite(Site site, {bool approved = false}) async {
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  }) async {
     final uid = await ensureSignedIn(auth);
+    final name = submitterName?.trim();
     final ref = site.id.isEmpty ? _sites.doc() : _sites.doc(site.id);
     try {
       // One batch: the submission plus its sitesAdded credit (Trailblazer
@@ -339,6 +350,7 @@ class FirestoreSiteRepository implements SiteRepository {
         // the rules reject approved == true from non-admins).
         'approved': approved,
         'createdBy': uid,
+        if (name != null && name.isNotEmpty) 'createdByName': name,
         'createdAt': FieldValue.serverTimestamp(),
         if (approved) 'approvedAt': FieldValue.serverTimestamp(),
         if (approved) 'approvedBy': uid,

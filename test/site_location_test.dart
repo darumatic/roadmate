@@ -12,6 +12,7 @@ import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/admin_repository.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
+import 'package:roadmate/services/username_store.dart';
 import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
@@ -20,8 +21,11 @@ class FakeSiteRepository implements SiteRepository {
   final addedSites = <(Site, bool)>[];
 
   @override
-  Future<void> addSite(Site site, {bool approved = false}) async =>
-      addedSites.add((site, approved));
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  }) async => addedSites.add((site, approved));
 
   @override
   Future<void> report(
@@ -33,7 +37,11 @@ class FakeSiteRepository implements SiteRepository {
   @override
   Future<void> toggleFavourite(String siteId) async {}
   @override
-  Future<void> vote(Site site, SiteStatus status) async {}
+  Future<void> vote(
+    Site site,
+    SiteStatus status, {
+    String? reporterName,
+  }) async {}
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
 
@@ -110,6 +118,11 @@ Future<void> _pumpAddSite(
       overrides: [
         siteRepositoryProvider.overrideWithValue(repo),
         currentPositionProvider.overrideWith((ref) async => position),
+        myProfileProvider.overrideWith(
+          (ref) => Stream.value(
+            const UserProfile(isAnonymous: true, username: 'Test Driver'),
+          ),
+        ),
       ],
       child: MaterialApp.router(routerConfig: router),
     ),

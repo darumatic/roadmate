@@ -194,16 +194,11 @@ void main() {
   });
 
   group('ParticipationSummary', () {
-    Future<void> pumpSummary(
-      WidgetTester tester,
-      ParticipationStats? stats,
-    ) {
+    Future<void> pumpSummary(WidgetTester tester, ParticipationStats? stats) {
       return tester.pumpWidget(
         ProviderScope(
           overrides: [
-            myParticipationProvider.overrideWith(
-              (ref) => Stream.value(stats),
-            ),
+            myParticipationProvider.overrideWith((ref) => Stream.value(stats)),
           ],
           child: const MaterialApp(
             home: Scaffold(body: ParticipationSummary()),

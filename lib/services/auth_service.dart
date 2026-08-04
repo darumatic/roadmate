@@ -10,6 +10,7 @@ import 'display_mode_stub.dart'
     as display_mode;
 
 import '../firebase_options.dart';
+import 'username_logic.dart';
 
 /// The first-party domain native (iOS/Android) provider sign-in round-trips
 /// through, mirroring the web authDomain so no platform falls back to the
@@ -134,6 +135,24 @@ class AuthController {
     // If the auth deletion fails below, syncUser recreates the profile doc
     // on the next userChanges emission.
     final userDoc = firestore.collection('users').doc(user.uid);
+
+    // Release the road-name claim so the name frees up for others. A separate
+    // best-effort delete, deliberately NOT in the batch below: a missing or
+    // inconsistent claim doc would fail the whole batch, and nothing may ever
+    // block the user's right to delete their account (App Store 5.1.1(v)).
+    try {
+      final profile = await userDoc.get();
+      final username = profile.data()?['username'] as String?;
+      if (username != null && username.trim().isNotEmpty) {
+        await firestore
+            .collection('usernames')
+            .doc(usernameKey(username))
+            .delete();
+      }
+    } catch (e) {
+      debugPrint('RoadMate: road-name release skipped: $e');
+    }
+
     final favourites = await userDoc.collection('favourites').get();
     final batch = firestore.batch();
     for (final favourite in favourites.docs) {

@@ -216,7 +216,16 @@ class ProximityPromptCard extends ConsumerWidget {
     try {
       // The proximity gate passes by construction here — this card only
       // exists because GPS put the truck within the same 3 km radius.
-      await ref.read(siteRepositoryProvider).vote(prompt.site, status);
+      // Signed when a road name / display name exists; unsigned otherwise —
+      // this overlay sits above the Navigator, so it cannot open the picker,
+      // and a driver answering at speed must never be blocked on one.
+      await ref
+          .read(siteRepositoryProvider)
+          .vote(
+            prompt.site,
+            status,
+            reporterName: ref.read(signatureNameProvider),
+          );
       _snack(messenger, 'Reported ${statusDisplayLabel(status)} — thanks!');
     } on TooFarException catch (e) {
       _snack(messenger, e.message);

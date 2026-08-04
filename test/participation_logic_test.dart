@@ -15,7 +15,10 @@ void main() {
       final voted = stats.after(ParticipationAction.vote);
       expect((voted.votes, voted.reports, voted.sitesAdded), (3, 7, 1));
       final reported = stats.after(ParticipationAction.report);
-      expect((reported.votes, reported.reports, reported.sitesAdded), (2, 8, 1));
+      expect(
+        (reported.votes, reported.reports, reported.sitesAdded),
+        (2, 8, 1),
+      );
       final added = stats.after(ParticipationAction.addSite);
       expect((added.votes, added.reports, added.sitesAdded), (2, 7, 2));
     });
@@ -40,24 +43,30 @@ void main() {
   });
 
   group('level ladder', () {
-    test('is monotonically ascending from 0 with 1-based contiguous indexes', () {
-      expect(kLevels.first.minPoints, 0);
-      for (var i = 0; i < kLevels.length; i++) {
-        expect(kLevels[i].index1, i + 1);
-        if (i > 0) {
-          expect(kLevels[i].minPoints, greaterThan(kLevels[i - 1].minPoints));
+    test(
+      'is monotonically ascending from 0 with 1-based contiguous indexes',
+      () {
+        expect(kLevels.first.minPoints, 0);
+        for (var i = 0; i < kLevels.length; i++) {
+          expect(kLevels[i].index1, i + 1);
+          if (i > 0) {
+            expect(kLevels[i].minPoints, greaterThan(kLevels[i - 1].minPoints));
+          }
         }
-      }
-    });
+      },
+    );
 
-    test('levelForPoints picks the highest reached rung, exact boundaries in', () {
-      expect(levelForPoints(0).title, 'Rookie');
-      expect(levelForPoints(49).title, 'Rookie');
-      expect(levelForPoints(50).title, 'Local Runner');
-      expect(levelForPoints(2499).title, 'Road Train Boss');
-      expect(levelForPoints(2500).title, 'Outback Legend');
-      expect(levelForPoints(1000000).title, 'Outback Legend');
-    });
+    test(
+      'levelForPoints picks the highest reached rung, exact boundaries in',
+      () {
+        expect(levelForPoints(0).title, 'Rookie');
+        expect(levelForPoints(49).title, 'Rookie');
+        expect(levelForPoints(50).title, 'Local Runner');
+        expect(levelForPoints(2499).title, 'Road Train Boss');
+        expect(levelForPoints(2500).title, 'Outback Legend');
+        expect(levelForPoints(1000000).title, 'Outback Legend');
+      },
+    );
 
     test('levelForIndex round-trips every rung and rejects out-of-range', () {
       for (final level in kLevels) {
@@ -172,13 +181,15 @@ void main() {
 
     test('century club counts votes and reports combined', () {
       expect(
-        badgesFor(const ParticipationStats(votes: 60, reports: 40))
-            .map((b) => b.id),
+        badgesFor(
+          const ParticipationStats(votes: 60, reports: 40),
+        ).map((b) => b.id),
         contains('centuryClub'),
       );
       expect(
-        badgesFor(const ParticipationStats(votes: 60, reports: 39))
-            .map((b) => b.id),
+        badgesFor(
+          const ParticipationStats(votes: 60, reports: 39),
+        ).map((b) => b.id),
         isNot(contains('centuryClub')),
       );
     });

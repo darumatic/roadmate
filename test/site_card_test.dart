@@ -11,6 +11,8 @@ import 'package:roadmate/services/rate_limit.dart';
 import 'package:roadmate/services/report_proximity.dart';
 import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
+import 'package:roadmate/services/username_logic.dart';
+import 'package:roadmate/services/username_store.dart';
 import 'package:roadmate/widgets/level_badge.dart';
 import 'package:roadmate/widgets/site_card.dart';
 
@@ -18,7 +20,7 @@ import 'package:roadmate/widgets/site_card.dart';
 /// [reportError] to simulate the write being rejected (e.g. by the rules'
 /// rate limit or the proximity gate).
 class FakeSiteRepository implements SiteRepository {
-  final votes = <(String, SiteStatus)>[];
+  final votes = <(String, SiteStatus, String?)>[];
   final favourites = <String>[];
   final reports = <(String, ActivityReportType, String?, String?)>[];
   List<SiteReport> watchedReports = const [];
@@ -26,10 +28,14 @@ class FakeSiteRepository implements SiteRepository {
   Object? reportError;
 
   @override
-  Future<void> vote(Site site, SiteStatus status) async {
+  Future<void> vote(
+    Site site,
+    SiteStatus status, {
+    String? reporterName,
+  }) async {
     final error = voteError;
     if (error != null) throw error;
-    votes.add((site.id, status));
+    votes.add((site.id, status, reporterName));
   }
 
   @override
@@ -48,7 +54,11 @@ class FakeSiteRepository implements SiteRepository {
   }
 
   @override
-  Future<void> addSite(Site site, {bool approved = false}) async {}
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  }) async {}
 
   @override
   Stream<List<Site>> watchSites() => Stream.value(const []);
@@ -94,11 +104,20 @@ Future<void> _pump(
   FakeSiteRepository repo, {
   Site site = _site,
   FakeAdminRepository? adminRepo,
+  // Posting is signed, so most tests pump as a user who already picked a
+  // road name; hasRoadName: false exercises the pick-a-name prompt instead.
+  bool hasRoadName = true,
 }) {
   return tester.pumpWidget(
     ProviderScope(
       overrides: [
         siteRepositoryProvider.overrideWithValue(repo),
+        if (hasRoadName)
+          myProfileProvider.overrideWith(
+            (ref) => Stream.value(
+              const UserProfile(isAnonymous: true, username: 'Test Driver'),
+            ),
+          ),
         // A non-null adminRepo pumps the card as a signed-in admin.
         if (adminRepo != null) ...[
           currentUserRoleProvider.overrideWith(
@@ -123,9 +142,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Open/Working'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(repo.votes, [('nsw-1', SiteStatus.open)]);
+    expect(repo.votes, [('nsw-1', SiteStatus.open, 'Test Driver')]);
   });
 
   // Issue #21: a stale site shows Unknown — badge grey, no button selected,
@@ -191,21 +210,23 @@ void main() {
     expect(find.textContaining('reported '), findsNothing);
   });
 
-  testWidgets('submitting an activity report records category, note and name', (
-    tester,
-  ) async {
+  testWidgets('submitting an activity report records category, note and the '
+      'road name it is signed with', (tester) async {
     final repo = FakeSiteRepository();
     await _pump(tester, repo);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Report activity'));
     await tester.pumpAndSettle();
+
+    // The dialog says what name the report will carry — no free-text field.
+    expect(find.text('Posting as Test Driver'), findsOneWidget);
+
     await tester.tap(find.text('Delays'));
     await tester.enterText(
-      find.byType(TextField).at(0),
+      find.byType(TextField),
       'Northbound back to the ramp',
     );
-    await tester.enterText(find.byType(TextField).at(1), 'Sam');
     await tester.tap(find.text('Submit'));
     await tester.pumpAndSettle();
 
@@ -214,9 +235,96 @@ void main() {
         'nsw-1',
         ActivityReportType.delays,
         'Northbound back to the ramp',
-        'Sam',
+        'Test Driver',
       ),
     ]);
+  });
+
+  // Posting is signed: a user with no road name yet is asked to pick one
+  // right at the point of posting, and the post proceeds with it.
+  group('road-name requirement on posting', () {
+    testWidgets('voting without a road name opens the picker, and saving '
+        'signs the vote', (tester) async {
+      final repo = FakeSiteRepository();
+      await _pump(tester, repo, hasRoadName: false);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pick your road name'), findsOneWidget);
+      expect(repo.votes, isEmpty);
+
+      await tester.enterText(find.byType(TextField), 'Big Rig Bob');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pick your road name'), findsNothing);
+      expect(repo.votes, [('nsw-1', SiteStatus.open, 'Big Rig Bob')]);
+    });
+
+    testWidgets('declining the picker abandons the vote with an explanation', (
+      tester,
+    ) async {
+      final repo = FakeSiteRepository();
+      await _pump(tester, repo, hasRoadName: false);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(repo.votes, isEmpty);
+      expect(find.text(kRoadNameRequiredMessage), findsOneWidget);
+    });
+
+    testWidgets('an invalid typed name shows the reason and blocks saving', (
+      tester,
+    ) async {
+      final repo = FakeSiteRepository();
+      await _pump(tester, repo, hasRoadName: false);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '!!');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(repo.votes, isEmpty);
+      expect(find.text('Pick your road name'), findsOneWidget);
+      expect(find.text(validateUsername('!!')!), findsOneWidget);
+    });
+
+    testWidgets('a taken name shows the taken message', (tester) async {
+      final repo = FakeSiteRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            siteRepositoryProvider.overrideWithValue(repo),
+            usernameStoreProvider.overrideWithValue(
+              MemoryUsernameStore(takenNames: {'Big Rig Bob'}),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(child: SiteCard(site: _site)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open/Working'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'big rig bob');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(repo.votes, isEmpty);
+      expect(find.textContaining('already taken'), findsOneWidget);
+    });
   });
 
   testWidgets('shows latest five categorized activity reports', (tester) async {
@@ -428,11 +536,11 @@ void main() {
       await tester.tap(find.text('Open/Working'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Blitz'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(repo.votes, [
-        ('nsw-1', SiteStatus.open),
-        ('nsw-1', SiteStatus.blitz),
+        ('nsw-1', SiteStatus.open, 'Test Driver'),
+        ('nsw-1', SiteStatus.blitz, 'Test Driver'),
       ]);
     },
   );
@@ -445,7 +553,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Open/Working'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(repo.votes, isEmpty);
     expect(find.textContaining('Could not submit'), findsOneWidget);
@@ -475,7 +583,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Open/Working'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text(kRateLimitMessage), findsOneWidget);
     expect(find.textContaining('Could not submit'), findsNothing);
@@ -509,7 +617,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Open/Working'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(repo.votes, isEmpty);
       expect(find.text(kTooFarToReportMessage), findsOneWidget);
@@ -526,7 +634,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Open/Working'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(repo.votes, isEmpty);
       expect(find.text(kLocationRequiredMessage), findsOneWidget);

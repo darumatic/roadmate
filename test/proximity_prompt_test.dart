@@ -81,13 +81,21 @@ class FakeSiteRepository implements SiteRepository {
   Object? voteError;
 
   @override
-  Future<void> vote(Site site, SiteStatus status) async {
+  Future<void> vote(
+    Site site,
+    SiteStatus status, {
+    String? reporterName,
+  }) async {
     if (voteError != null) throw voteError!;
     votes.add((site.id, status));
   }
 
   @override
-  Future<void> addSite(Site site, {bool approved = false}) async {}
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  }) async {}
   @override
   Future<void> report(
     Site site,

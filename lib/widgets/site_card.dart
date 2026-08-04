@@ -11,11 +11,13 @@ import '../services/rate_limit.dart';
 import '../services/report_proximity.dart';
 import '../services/site_repository.dart';
 import '../services/status_logic.dart';
+import '../services/username_logic.dart';
 import '../theme/app_theme.dart';
 import 'edit_site_location_dialog.dart';
 import 'level_badge.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
+import 'username_prompt.dart';
 
 /// Card for a single site: shows details and the community actions — status
 /// voting, Report activity, and favourite (star). All writes go through
@@ -37,6 +39,9 @@ class SiteCard extends ConsumerWidget {
     final repo = ref.read(siteRepositoryProvider);
     final isAdmin =
         ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
+    // Keeps the profile stream hot so ensureSignatureName's synchronous read
+    // is settled by the time a post button is tapped.
+    ref.watch(signatureNameProvider);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -175,7 +180,7 @@ class SiteCard extends ConsumerWidget {
           const SizedBox(height: 12),
           _VoteRow(
             current: site.currentStatus,
-            onVote: (status) => _vote(context, repo, status),
+            onVote: (status) => _vote(context, ref, repo, status),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -186,7 +191,7 @@ class SiteCard extends ConsumerWidget {
             ),
             icon: const Icon(Icons.flag_outlined, size: 16),
             label: const Text('Report activity'),
-            onPressed: () => _reportActivity(context, repo),
+            onPressed: () => _reportActivity(context, ref, repo),
           ),
           _RecentActivityReports(reportsAsync: reportsAsync),
         ],
@@ -198,13 +203,23 @@ class SiteCard extends ConsumerWidget {
   /// The proximity gate's refusals arrive as exceptions from the repository —
   /// the OS location prompt (if one was needed) has already been shown by the
   /// time [LocationRequiredException] lands, so a snack is all that's left.
+  ///
+  /// Votes are signed: a user with no road name yet is asked to pick one
+  /// first, and declining abandons the vote.
   Future<void> _vote(
     BuildContext context,
+    WidgetRef ref,
     SiteRepository repo,
     SiteStatus status,
   ) async {
+    final name = await ensureSignatureName(context, ref);
+    if (name == null) {
+      if (context.mounted) _snack(context, kRoadNameRequiredMessage);
+      return;
+    }
+    if (!context.mounted) return;
     try {
-      await repo.vote(site, status);
+      await repo.vote(site, status, reporterName: name);
       if (context.mounted) {
         _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
       }
@@ -228,11 +243,18 @@ class SiteCard extends ConsumerWidget {
 
   Future<void> _reportActivity(
     BuildContext context,
+    WidgetRef ref,
     SiteRepository repo,
   ) async {
-    final report = await _showReportDialog(context);
+    final name = await ensureSignatureName(context, ref);
+    if (name == null) {
+      if (context.mounted) _snack(context, kRoadNameRequiredMessage);
+      return;
+    }
+    if (!context.mounted) return;
+    final report = await _showReportDialog(context, signature: name);
     if (report == null || !context.mounted) return;
-    await _submitReport(context, repo, report);
+    await _submitReport(context, repo, report, name);
   }
 
   /// Submits an already-composed [report]. Split from [_reportActivity] so
@@ -241,13 +263,14 @@ class SiteCard extends ConsumerWidget {
     BuildContext context,
     SiteRepository repo,
     _ActivityReportDraft report,
+    String reporterName,
   ) async {
     try {
       await repo.report(
         site,
         report.activityType,
         activityNote: report.activityNote,
-        reporterName: report.reporterName,
+        reporterName: reporterName,
       );
       if (context.mounted) _snack(context, 'Report submitted — thanks!');
     } on TooFarException catch (e) {
@@ -324,27 +347,29 @@ class SiteCard extends ConsumerWidget {
 }
 
 class _ActivityReportDraft {
-  const _ActivityReportDraft({
-    required this.activityType,
-    this.activityNote,
-    this.reporterName,
-  });
+  const _ActivityReportDraft({required this.activityType, this.activityNote});
 
   final ActivityReportType activityType;
   final String? activityNote;
-  final String? reporterName;
 }
 
-/// Modal to capture an activity category plus optional note/name.
-Future<_ActivityReportDraft?> _showReportDialog(BuildContext context) {
+/// Modal to capture an activity category plus optional note. The report is
+/// signed with [signature] (the author's road name / display name), shown so
+/// nobody posts without knowing what name lands next to it.
+Future<_ActivityReportDraft?> _showReportDialog(
+  BuildContext context, {
+  required String signature,
+}) {
   return showDialog<_ActivityReportDraft>(
     context: context,
-    builder: (context) => const _ReportDialog(),
+    builder: (context) => _ReportDialog(signature: signature),
   );
 }
 
 class _ReportDialog extends StatefulWidget {
-  const _ReportDialog();
+  const _ReportDialog({required this.signature});
+
+  final String signature;
 
   @override
   State<_ReportDialog> createState() => _ReportDialogState();
@@ -352,13 +377,11 @@ class _ReportDialog extends StatefulWidget {
 
 class _ReportDialogState extends State<_ReportDialog> {
   final _noteController = TextEditingController();
-  final _nameController = TextEditingController();
   ActivityReportType _activityType = ActivityReportType.longQueue;
 
   @override
   void dispose() {
     _noteController.dispose();
-    _nameController.dispose();
     super.dispose();
   }
 
@@ -399,12 +422,15 @@ class _ReportDialogState extends State<_ReportDialog> {
               decoration: const InputDecoration(hintText: 'Comment (optional)'),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(hintText: 'Name (optional)'),
+            Text(
+              'Posting as ${widget.signature}',
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             const Text(
               'Names and comments are public.',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
@@ -421,13 +447,11 @@ class _ReportDialogState extends State<_ReportDialog> {
           style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
           onPressed: () {
             final note = _noteController.text.trim();
-            final name = _nameController.text.trim();
             Navigator.pop(
               context,
               _ActivityReportDraft(
                 activityType: _activityType,
                 activityNote: note.isEmpty ? null : note,
-                reporterName: name.isEmpty ? null : name,
               ),
             );
           },

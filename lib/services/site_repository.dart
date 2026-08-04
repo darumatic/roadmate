@@ -19,7 +19,9 @@ abstract class SiteRepository {
 
   /// Record a status vote for a site. Takes the whole [Site] (not just its
   /// id) so the proximity gate can measure against its coordinates.
-  Future<void> vote(Site site, SiteStatus status);
+  /// [reporterName] is the author's road name; optional so the proximity
+  /// approach card (no Navigator to ask from) can still post unsigned.
+  Future<void> vote(Site site, SiteStatus status, {String? reporterName});
 
   /// Record an activity report for a site. Takes the whole [Site] for the
   /// same reason as [vote].
@@ -32,8 +34,13 @@ abstract class SiteRepository {
 
   /// Submit a new site. Community submissions stay pending until moderated;
   /// admins pass [approved] = true to publish immediately (issue #16 — the
-  /// rules only accept an approved create from an admin).
-  Future<void> addSite(Site site, {bool approved = false});
+  /// rules only accept an approved create from an admin). [submitterName] is
+  /// the author's road name, stored as `createdByName` beside `createdBy`.
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  });
 
   /// The current user's participation counters (points/levels/badges are
   /// derived client-side — see `participation_logic.dart`). Null while signed

@@ -1136,5 +1136,209 @@ await check(
   ),
 );
 
+// ---- Road names (0.1.61): usernames/{key} claims, signed votes, profile
+// username, submitter name on new sites ----
+const claimData = (uid, username) => ({
+  uid,
+  username,
+  createdAt: serverTimestamp(),
+});
+const claim = (db, key, data) => setDoc(doc(db, `usernames/${key}`), data);
+
+await check(
+  'anonymous user claims a road name (claim + profile in one batch)',
+  assertSucceeds(
+    (() => {
+      const b = writeBatch(alice);
+      b.set(doc(alice, 'usernames/dusty nomad'), claimData('alice', 'Dusty Nomad'));
+      b.set(
+        doc(alice, 'users/alice'),
+        { username: 'Dusty Nomad', isAnonymous: true, lastSeenAt: serverTimestamp() },
+        { merge: true },
+      );
+      return b.commit();
+    })(),
+  ),
+);
+
+await check(
+  'a second user cannot take a claimed name',
+  assertFails(claim(bob, 'dusty nomad', claimData('bob', 'Dusty Nomad'))),
+);
+
+await check(
+  'owner may re-stamp their claim with new casing',
+  assertSucceeds(claim(alice, 'dusty nomad', claimData('alice', 'DUSTY Nomad'))),
+);
+
+await check(
+  'malformed road-name claims are refused',
+  (async () => {
+    // uid mismatch
+    await assertFails(claim(bob, 'big rig', claimData('alice', 'Big Rig')));
+    // key does not match username.lower()
+    await assertFails(claim(bob, 'big rig', claimData('bob', 'Big Rig X')));
+    // too short / too long
+    await assertFails(claim(bob, 'xy', claimData('bob', 'xy')));
+    await assertFails(claim(bob, 'a'.repeat(31), claimData('bob', 'a'.repeat(31))));
+    // forbidden character and bad edge character
+    await assertFails(claim(bob, 'bad!name', claimData('bob', 'bad!name')));
+    await assertFails(claim(bob, '-big rig', claimData('bob', '-Big Rig')));
+    // smuggled extra key
+    await assertFails(
+      setDoc(doc(bob, 'usernames/big rig'), {
+        uid: 'bob',
+        username: 'Big Rig',
+        createdAt: serverTimestamp(),
+        extra: 1,
+      }),
+    );
+    // back-dated createdAt
+    await assertFails(
+      setDoc(doc(bob, 'usernames/big rig'), {
+        uid: 'bob',
+        username: 'Big Rig',
+        createdAt: Timestamp.fromDate(new Date(0)),
+      }),
+    );
+  })(),
+);
+
+await check(
+  'renaming releases the old claim in the same batch',
+  assertSucceeds(
+    (() => {
+      const b = writeBatch(alice);
+      b.delete(doc(alice, 'usernames/dusty nomad'));
+      b.set(
+        doc(alice, 'usernames/outback legend'),
+        claimData('alice', 'Outback Legend'),
+      );
+      b.set(
+        doc(alice, 'users/alice'),
+        { username: 'Outback Legend', isAnonymous: true, lastSeenAt: serverTimestamp() },
+        { merge: true },
+      );
+      return b.commit();
+    })(),
+  ),
+);
+
+await check(
+  'anyone may read a claim; stranger cannot delete it; admin can',
+  (async () => {
+    await assertSucceeds(getDoc(doc(mallory, 'usernames/outback legend')));
+    await assertFails(deleteDoc(doc(mallory, 'usernames/outback legend')));
+    await assertSucceeds(deleteDoc(doc(admin, 'usernames/outback legend')));
+  })(),
+);
+
+await env.withSecurityRulesDisabled(async (ctx) => {
+  // No `until` == permanent ban.
+  await setDoc(doc(ctx.firestore(), 'bans/troll'), {});
+});
+const troll = env
+  .authenticatedContext('troll', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+await check(
+  'a banned user cannot claim a road name',
+  assertFails(claim(troll, 'troll king', claimData('troll', 'Troll King'))),
+);
+
+// Mirrors FirestoreSiteRepository.vote() with a signature (0.1.61 clients).
+async function signedVoteBatch(db, siteId, status, uid, reporterName) {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, `sites/${siteId}/reports`)), {
+    siteId,
+    status,
+    uid,
+    createdAt: serverTimestamp(),
+    reporterName,
+  });
+  b.update(doc(db, `sites/${siteId}`), {
+    [`${status}Votes`]: increment(1),
+    currentStatus: status,
+    lastReportAt: serverTimestamp(),
+  });
+  return b.commit();
+}
+
+await check(
+  'a status vote signed with reporterName is accepted (and legacy unsigned '
+    + 'votes still pass)',
+  (async () => {
+    await assertSucceeds(
+      signedVoteBatch(alice, 'site-1', 'open', 'alice', 'Dusty Nomad'),
+    );
+    await assertSucceeds(voteBatch(alice, 'site-1', 'open', 'alice'));
+  })(),
+);
+
+await check(
+  'a vote with a malformed reporterName is refused',
+  (async () => {
+    await assertFails(signedVoteBatch(alice, 'site-1', 'open', 'alice', ''));
+    await assertFails(
+      signedVoteBatch(alice, 'site-1', 'open', 'alice', 'x'.repeat(81)),
+    );
+    await assertFails(signedVoteBatch(alice, 'site-1', 'open', 'alice', 42));
+  })(),
+);
+
+await check(
+  'profile username must be a 3-30 char string (legacy 5-key sync unaffected)',
+  (async () => {
+    await assertFails(
+      setDoc(doc(bob, 'users/bob'), { username: 'ab', isAnonymous: true }),
+    );
+    await assertFails(
+      setDoc(doc(bob, 'users/bob'), {
+        username: 'x'.repeat(31),
+        isAnonymous: true,
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(bob, 'users/bob'), {
+        username: 'Big Rig Bob',
+        isAnonymous: true,
+        lastSeenAt: serverTimestamp(),
+      }),
+    );
+    // The shipped clients' profile-sync shape, untouched.
+    await assertSucceeds(
+      setDoc(doc(bob, 'users/bob'), {
+        email: 'bob@example.com',
+        displayName: 'Bob',
+        photoUrl: null,
+        isAnonymous: false,
+        lastSeenAt: serverTimestamp(),
+      }),
+    );
+  })(),
+);
+
+await check(
+  'a new site may carry the submitter road name; malformed ones are refused',
+  (async () => {
+    const pending = (createdByName) => ({
+      name: 'Named Yard',
+      state: 'NSW',
+      type: 'checkingStation',
+      address: 'Hume Hwy',
+      approved: false,
+      createdBy: 'alice',
+      createdByName,
+      createdAt: serverTimestamp(),
+    });
+    await assertSucceeds(
+      setDoc(doc(alice, 'sites/named-site'), pending('Dusty Nomad')),
+    );
+    await assertFails(setDoc(doc(alice, 'sites/named-site-2'), pending('')));
+    await assertFails(
+      setDoc(doc(alice, 'sites/named-site-3'), pending('x'.repeat(81))),
+    );
+  })(),
+);
+
 console.log(`\nALL ${checks.length} RULES CHECKS PASSED`);
 await env.cleanup();

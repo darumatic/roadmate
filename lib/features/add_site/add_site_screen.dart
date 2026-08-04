@@ -8,8 +8,10 @@ import '../../services/auth_service.dart';
 import '../../services/ban_logic.dart';
 import '../../services/geo.dart';
 import '../../services/providers.dart';
+import '../../services/username_logic.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coordinate_fields.dart';
+import '../../widgets/username_prompt.dart';
 
 /// Form for submitting a new community site. Validates required fields and
 /// writes through [siteRepositoryProvider].
@@ -57,6 +59,18 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    // Submissions are signed: a user with no road name yet picks one here,
+    // and declining abandons the submission (nothing typed is lost).
+    final submitterName = await ensureSignatureName(context, ref);
+    if (submitterName == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text(kRoadNameRequiredMessage)));
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() => _submitting = true);
     final isAdmin = _isAdmin;
     final site = Site(
@@ -73,7 +87,9 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
       direction: _direction,
     );
     try {
-      await ref.read(siteRepositoryProvider).addSite(site, approved: isAdmin);
+      await ref
+          .read(siteRepositoryProvider)
+          .addSite(site, approved: isAdmin, submitterName: submitterName);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -104,6 +120,9 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
   Widget build(BuildContext context) {
     final isAdmin =
         ref.watch(currentUserRoleProvider).value == AppUserRole.admin;
+    // Keeps the profile stream hot so _submit's synchronous signature read
+    // is settled by the time the form is submitted.
+    ref.watch(signatureNameProvider);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,

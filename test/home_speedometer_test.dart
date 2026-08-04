@@ -141,7 +141,11 @@ class FakeSites implements SiteRepository {
   FakeSites(this.sites);
   final List<Site> sites;
   @override
-  Future<void> addSite(Site site, {bool approved = false}) async {}
+  Future<void> addSite(
+    Site site, {
+    bool approved = false,
+    String? submitterName,
+  }) async {}
   @override
   Future<void> report(
     Site site,
@@ -152,7 +156,11 @@ class FakeSites implements SiteRepository {
   @override
   Future<void> toggleFavourite(String siteId) async {}
   @override
-  Future<void> vote(Site site, SiteStatus status) async {}
+  Future<void> vote(
+    Site site,
+    SiteStatus status, {
+    String? reporterName,
+  }) async {}
   @override
   Stream<Set<String>> watchFavourites() => Stream.value(const {});
 

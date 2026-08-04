@@ -21,6 +21,7 @@ import 'refresh_logic.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
 import 'trip_history_store.dart';
+import 'username_store.dart';
 
 /// The active site backend. Firestore-backed; the single place that names a
 /// concrete implementation. (The bundled-seed `LocalSeedSiteRepository` remains
@@ -47,6 +48,30 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
 });
 
 final statusLogicProvider = Provider<StatusLogic>((ref) => const StatusLogic());
+
+/// Road-name storage (see `username_store.dart`). Firestore in production;
+/// the in-memory store keeps tests and Firebase-less runs prompt-free.
+final usernameStoreProvider = Provider<UsernameStore>((ref) {
+  if (Firebase.apps.isEmpty) return MemoryUsernameStore();
+  return FirestoreUsernameStore(
+    firestore: FirebaseFirestore.instance,
+    auth: ref.watch(firebaseAuthProvider),
+  );
+});
+
+/// The current user's profile (road name + provider displayName). One cheap
+/// single-doc listener on `users/{uid}`; fail-soft (errors surface as null)
+/// so a broken stream can never wedge the road-name prompt on screen.
+final myProfileProvider = StreamProvider<UserProfile?>((ref) {
+  return ref.watch(usernameStoreProvider).watchProfile();
+});
+
+/// What posts are signed with right now: road name, else (signed-in only)
+/// the provider displayName, else null — meaning posting paths must ask the
+/// user to pick a name first (`ensureSignatureName`).
+final signatureNameProvider = Provider<String?>((ref) {
+  return ref.watch(myProfileProvider).value?.signature;
+});
 
 /// Whether this build is the web app. A provider rather than a bare [kIsWeb]
 /// read so widget tests can pump the web-only admin surface (and assert it

@@ -10,6 +10,7 @@ import 'theme/app_theme.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/force_update_screen.dart';
 import 'widgets/update_banner.dart';
+import 'widgets/username_prompt.dart';
 
 class RoadMateApp extends ConsumerWidget {
   const RoadMateApp({super.key});
@@ -51,11 +52,14 @@ class RoadMateApp extends ConsumerWidget {
                 // Web: offer a one-tap refresh when a newer build is deployed.
                 // Below it, the admin notice (when there is one) takes a strip
                 // off the top of every screen. The approach prompt floats over
-                // whatever screen is showing.
+                // whatever screen is showing, and the road-name picker floats
+                // under it (an approaching site always outranks housekeeping).
                 builder: (context, child) => UpdateGate(
                   child: AnnouncementGate(
                     child: ProximityGate(
-                      child: child ?? const SizedBox.shrink(),
+                      child: UsernameGate(
+                        child: child ?? const SizedBox.shrink(),
+                      ),
                     ),
                   ),
                 ),

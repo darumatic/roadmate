@@ -10,6 +10,7 @@ import '../services/participation_logic.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
 import 'level_badge.dart';
+import 'username_prompt.dart';
 
 const _deleteRed = Color(0xFFEF4444);
 
@@ -54,6 +55,7 @@ class AccountPanel extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _AccountSummary(user: user, role: roleAsync.value),
+            const RoadNameRow(),
             const ParticipationSummary(),
             const AdminEntryLink(),
             const SizedBox(height: 12),
@@ -345,6 +347,49 @@ class _AccountSummary extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The public road name posts are signed with, and the way to set or change
+/// it. Self-gating (watches [myProfileProvider]) and fail-silent — nothing
+/// renders until the profile stream has answered.
+class RoadNameRow extends ConsumerWidget {
+  const RoadNameRow({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(myProfileProvider).value;
+    if (profile == null) return const SizedBox.shrink();
+    final signature = profile.signature;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.badge_outlined,
+            size: 16,
+            color: AppTheme.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              signature == null
+                  ? 'No road name yet — posts are signed with one.'
+                  : 'Posting as $signature',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => showUsernameDialog(context),
+            child: Text(profile.username == null ? 'Set road name' : 'Change'),
+          ),
+        ],
+      ),
     );
   }
 }
