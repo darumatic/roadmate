@@ -57,18 +57,29 @@ class _ProximityGateState extends ConsumerState<ProximityGate>
       children: [
         widget.child,
         if (prompt != null)
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 12,
-            child: SafeArea(
-              child: ProximityPromptCard(
-                prompt: prompt,
-                onDismiss: () =>
-                    ref.read(proximityControllerProvider.notifier).dismiss(),
-                onAnswered: () => ref
-                    .read(proximityControllerProvider.notifier)
-                    .markAnswered(),
+          Positioned.fill(
+            // This gate sits ABOVE the router's Navigator, so no Overlay
+            // exists here — yet the dismiss button's tooltip summons its
+            // popup through Overlay.of(); without a local Overlay, hovering
+            // it greys the whole app ("No Overlay widget found").
+            // Positioned.fill gives the Overlay bounded constraints; empty
+            // regions stay tap-through.
+            child: Overlay.wrap(
+              child: Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: SafeArea(
+                  child: ProximityPromptCard(
+                    prompt: prompt,
+                    onDismiss: () => ref
+                        .read(proximityControllerProvider.notifier)
+                        .dismiss(),
+                    onAnswered: () => ref
+                        .read(proximityControllerProvider.notifier)
+                        .markAnswered(),
+                  ),
+                ),
               ),
             ),
           ),

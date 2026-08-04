@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -286,6 +287,58 @@ void main() {
 
     expect(repo.votes, isEmpty);
     expect(find.textContaining('APPROACHING'), findsNothing);
+  });
+
+  // Regression: in production the gate sits ABOVE the router's Navigator
+  // (MaterialApp.builder), where no Overlay exists. Hovering the Dismiss X
+  // made its tooltip throw "No Overlay widget found" and greyed the whole
+  // app; the gate now hosts a local Overlay (same fix as UsernameGate).
+  testWidgets('hovering Dismiss above the Navigator shows the tooltip '
+      'instead of greying the app', (tester) async {
+    final loc = FakeLocationSource();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    final user = FakeUser();
+    addTearDown(loc.controller.close);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(900, 1600));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          locationSourceProvider.overrideWithValue(loc),
+          alertPlayerProvider.overrideWithValue(FakeAlertPlayer()),
+          tripHistoryStoreProvider.overrideWithValue(FakeStore()),
+          siteRepositoryProvider.overrideWithValue(repo),
+          firebaseAuthProvider.overrideWithValue(FakeFirebaseAuth(user)),
+          authStateProvider.overrideWith((ref) => Stream.value(user)),
+        ],
+        child: MaterialApp(
+          // The production shape: the gate wraps the Navigator itself.
+          builder: (context, child) =>
+              ProximityGate(child: child ?? const SizedBox.shrink()),
+          home: const Scaffold(
+            body: SingleChildScrollView(child: SpeedometerPanel()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+    expect(find.textContaining('APPROACHING'), findsOneWidget);
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.byTooltip('Dismiss')));
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Dismiss'), findsOneWidget); // the tooltip popup
   });
 
   testWidgets('an unanswered prompt stays put, counting down the distance', (

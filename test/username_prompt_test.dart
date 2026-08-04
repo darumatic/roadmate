@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,27 @@ import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/services/username_store.dart';
 import 'package:roadmate/widgets/username_prompt.dart';
+
+/// Tap-to-increment counter standing in for real app screens, so tests can
+/// prove the gate never reparents (and thereby resets) the app subtree.
+class _Counter extends StatefulWidget {
+  const _Counter();
+
+  @override
+  State<_Counter> createState() => _CounterState();
+}
+
+class _CounterState extends State<_Counter> {
+  int count = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => setState(() => count++),
+      child: Text('count: $count'),
+    );
+  }
+}
 
 class FakeUser implements User {
   FakeUser({this.anonymous = true});
@@ -201,6 +223,81 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('PICK YOUR ROAD NAME'), findsNothing);
+    });
+
+    // Regression: in production the gate sits ABOVE the router's Navigator
+    // (MaterialApp.builder), where no Overlay exists. Hovering the dice made
+    // its tooltip throw "No Overlay widget found" and greyed the whole app.
+    // The gate now hosts a local Overlay, so popup UI works up there.
+    testWidgets('hovering the dice above the Navigator shows the tooltip '
+        'instead of greying the app', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(FakeUser())),
+            myProfileProvider.overrideWith(
+              (ref) => Stream.value(const UserProfile(isAnonymous: true)),
+            ),
+          ],
+          child: MaterialApp(
+            // The production shape: the gate wraps the Navigator itself.
+            builder: (context, child) =>
+                UsernameGate(child: child ?? const SizedBox.shrink()),
+            home: const Scaffold(body: Center(child: Text('the app'))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('PICK YOUR ROAD NAME'), findsOneWidget);
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: Offset.zero);
+      addTearDown(gesture.removePointer);
+      await tester.pump();
+      await gesture.moveTo(
+        tester.getCenter(find.byIcon(Icons.casino_outlined)),
+      );
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Roll another name'), findsOneWidget); // the tooltip
+      // The app underneath is still rendered, not greyed out.
+      expect(find.text('the app'), findsOneWidget);
+    });
+
+    testWidgets('showing and dismissing the card never resets the app '
+        'subtree state', (tester) async {
+      final store = MemoryUsernameStore(
+        initialProfile: const UserProfile(isAnonymous: true),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(FakeUser())),
+            usernameStoreProvider.overrideWithValue(store),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: UsernameGate(
+                child: SizedBox.expand(child: Center(child: _Counter())),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('PICK YOUR ROAD NAME'), findsOneWidget);
+
+      // Bump the app-side state while the card is up…
+      await tester.tap(find.text('count: 0'));
+      await tester.pump();
+      expect(find.text('count: 1'), findsOneWidget);
+
+      // …dismissing the card must not rebuild the app subtree from scratch.
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+      expect(find.text('PICK YOUR ROAD NAME'), findsNothing);
+      expect(find.text('count: 1'), findsOneWidget);
     });
 
     testWidgets('the dice rerolls the suggested name', (tester) async {

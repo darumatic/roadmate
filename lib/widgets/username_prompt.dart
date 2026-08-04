@@ -44,70 +44,82 @@ class UsernameGate extends ConsumerWidget {
       username: profile?.username,
       dismissed: dismissed,
     );
-    if (!show) return child;
-
+    // The Stack is always returned — collapsing to the bare child when the
+    // card hides would reparent the whole app subtree (router included) and
+    // reset every screen's state the moment a name is saved or dismissed.
     return Stack(
       children: [
         child,
-        Positioned(
-          left: 12,
-          right: 12,
-          bottom: 12,
-          child: SafeArea(
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppTheme.accent, width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.badge_outlined,
-                          size: 16,
-                          color: AppTheme.accent,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'PICK YOUR ROAD NAME',
-                          style: TextStyle(
-                            color: AppTheme.accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
+        if (show)
+          Positioned.fill(
+            // This gate sits ABOVE the router's Navigator, so no Overlay
+            // exists here — yet the card needs one: the dice tooltip and the
+            // TextField's selection toolbar both summon popup UI through
+            // Overlay.of(). Without a local Overlay, hovering the dice greyed
+            // the whole app with "No Overlay widget found". Positioned.fill
+            // gives it bounded constraints; empty regions stay tap-through.
+            child: Overlay.wrap(
+              child: Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: SafeArea(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppTheme.accent, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.badge_outlined,
+                                size: 16,
+                                color: AppTheme.accent,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'PICK YOUR ROAD NAME',
+                                style: TextStyle(
+                                  color: AppTheme.accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          UsernameForm(
+                            // No pop here: claiming updates the profile stream and
+                            // the gate simply stops matching.
+                            onSaved: (_) {},
+                            onDismiss: () => ref
+                                .read(usernamePromptDismissedProvider.notifier)
+                                .dismiss(),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    UsernameForm(
-                      // No pop here: claiming updates the profile stream and
-                      // the gate simply stops matching.
-                      onSaved: (_) {},
-                      onDismiss: () => ref
-                          .read(usernamePromptDismissedProvider.notifier)
-                          .dismiss(),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
