@@ -7,23 +7,26 @@ import '../services/providers.dart';
 import '../theme/app_theme.dart';
 import 'coordinate_fields.dart';
 
-/// Admin editor for a site's coordinates. Pops `true` once the write lands.
+/// Admin editor for a site's name and coordinates. Pops `true` once the
+/// write lands.
 ///
-/// Clearing both fields is allowed and meaningful: it retracts a position an
-/// admin believes is wrong, rather than leaving drivers chasing a bad pin.
-class EditSiteLocationDialog extends ConsumerStatefulWidget {
-  const EditSiteLocationDialog({super.key, required this.site});
+/// Clearing both coordinate fields is allowed and meaningful: it retracts a
+/// position an admin believes is wrong, rather than leaving drivers chasing
+/// a bad pin. The name can only be corrected, never blanked.
+class EditSiteDialog extends ConsumerStatefulWidget {
+  const EditSiteDialog({super.key, required this.site});
 
   final Site site;
 
   @override
-  ConsumerState<EditSiteLocationDialog> createState() =>
-      _EditSiteLocationDialogState();
+  ConsumerState<EditSiteDialog> createState() => _EditSiteDialogState();
 }
 
-class _EditSiteLocationDialogState
-    extends ConsumerState<EditSiteLocationDialog> {
+class _EditSiteDialogState extends ConsumerState<EditSiteDialog> {
   final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name = TextEditingController(
+    text: widget.site.name,
+  );
   late final TextEditingController _lat = TextEditingController(
     text: widget.site.lat?.toString() ?? '',
   );
@@ -35,6 +38,7 @@ class _EditSiteLocationDialogState
 
   @override
   void dispose() {
+    _name.dispose();
     _lat.dispose();
     _lng.dispose();
     super.dispose();
@@ -49,8 +53,9 @@ class _EditSiteLocationDialogState
     try {
       await ref
           .read(adminRepositoryProvider)
-          .updateSiteLocation(
+          .updateSiteDetails(
             widget.site.id,
+            name: _name.text.trim(),
             lat: parseCoordinate(_lat.text, maxAbs: maxLatitude),
             lng: parseCoordinate(_lng.text, maxAbs: maxLongitude),
           );
@@ -68,7 +73,7 @@ class _EditSiteLocationDialogState
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppTheme.surface,
-      title: const Text('Site coordinates'),
+      title: const Text('Edit site'),
       content: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -76,14 +81,14 @@ class _EditSiteLocationDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                widget.site.name,
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
+              TextFormField(
+                controller: _name,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Site name'),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               CoordinateFields(
                 latController: _lat,
                 lngController: _lng,

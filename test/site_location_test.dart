@@ -53,16 +53,17 @@ class FakeSiteRepository implements SiteRepository {
   Stream<List<Site>> watchSites() => Stream.value(const []);
 }
 
-/// Records coordinate edits; everything else is unused here.
+/// Records site edits; everything else is unused here.
 class FakeAdminRepository implements AdminRepository {
-  final locations = <(String, double?, double?)>[];
+  final edits = <(String, String, double?, double?)>[];
 
   @override
-  Future<void> updateSiteLocation(
+  Future<void> updateSiteDetails(
     String siteId, {
+    required String name,
     required double? lat,
     required double? lng,
-  }) async => locations.add((siteId, lat, lng));
+  }) async => edits.add((siteId, name, lat, lng));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -251,7 +252,7 @@ void main() {
     });
   });
 
-  group('admin location editor', () {
+  group('admin site editor', () {
     Future<FakeAdminRepository> pumpCard(
       WidgetTester tester, {
       Site site = _site,
@@ -294,38 +295,39 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Edit coordinates (admin)'), findsNothing);
+      expect(find.byTooltip('Edit site (admin)'), findsNothing);
     });
 
     testWidgets('prefills the current pin and saves an edit', (tester) async {
       final admin = await pumpCard(tester);
 
-      await tester.tap(find.byTooltip('Edit coordinates (admin)'));
+      await tester.tap(find.byTooltip('Edit site (admin)'));
       await tester.pumpAndSettle();
 
       expect(find.text('-34.71'), findsOneWidget);
       expect(find.text('149.99'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextFormField).at(0), '-34.7205');
-      await tester.enterText(find.byType(TextFormField).at(1), '149.9911');
+      await tester.enterText(find.byType(TextFormField).at(1), '-34.7205');
+      await tester.enterText(find.byType(TextFormField).at(2), '149.9911');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      expect(admin.locations, [('nsw-1', -34.7205, 149.9911)]);
-      expect(find.text('Location updated'), findsOneWidget);
+      // The untouched name field rode along with its prefilled value.
+      expect(admin.edits, [('nsw-1', _site.name, -34.7205, 149.9911)]);
+      expect(find.text('Site updated'), findsOneWidget);
     });
 
     testWidgets('clearing both fields retracts the pin', (tester) async {
       final admin = await pumpCard(tester);
 
-      await tester.tap(find.byTooltip('Edit coordinates (admin)'));
+      await tester.tap(find.byTooltip('Edit site (admin)'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField).at(0), '');
       await tester.enterText(find.byType(TextFormField).at(1), '');
+      await tester.enterText(find.byType(TextFormField).at(2), '');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      expect(admin.locations, [('nsw-1', null, null)]);
+      expect(admin.edits, [('nsw-1', _site.name, null, null)]);
     });
 
     testWidgets('a site missing coordinates flags itself to admins', (
@@ -343,9 +345,43 @@ void main() {
         ),
       );
       expect(
-        find.byTooltip('Set coordinates (admin) — missing'),
+        find.byTooltip('Edit site (admin) — location missing'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('renaming the site saves the trimmed new name', (tester) async {
+      final admin = await pumpCard(tester);
+
+      await tester.tap(find.byTooltip('Edit site (admin)'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        '  Marulan HVSS Northbound  ',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(admin.edits, [
+        ('nsw-1', 'Marulan HVSS Northbound', _site.lat, _site.lng),
+      ]);
+      expect(find.text('Site updated'), findsOneWidget);
+    });
+
+    testWidgets('a blanked name is rejected before it reaches Firestore', (
+      tester,
+    ) async {
+      final admin = await pumpCard(tester);
+
+      await tester.tap(find.byTooltip('Edit site (admin)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).at(0), '   ');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(admin.edits, isEmpty);
+      expect(find.text('Required'), findsOneWidget);
     });
 
     testWidgets('an invalid edit is rejected before it reaches Firestore', (
@@ -353,14 +389,14 @@ void main() {
     ) async {
       final admin = await pumpCard(tester);
 
-      await tester.tap(find.byTooltip('Edit coordinates (admin)'));
+      await tester.tap(find.byTooltip('Edit site (admin)'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField).at(0), '-34.5');
-      await tester.enterText(find.byType(TextFormField).at(1), '999');
+      await tester.enterText(find.byType(TextFormField).at(1), '-34.5');
+      await tester.enterText(find.byType(TextFormField).at(2), '999');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      expect(admin.locations, isEmpty);
+      expect(admin.edits, isEmpty);
       expect(
         find.text('Longitude must be a number between -180.0 and 180.0'),
         findsOneWidget,

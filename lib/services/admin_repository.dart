@@ -121,12 +121,17 @@ class AdminRepository {
   /// Written as plain numbers, exactly the shape every shipped client already
   /// reads; passing nulls clears them, which old clients handle (they treat a
   /// site without coordinates as simply not distance-rankable).
-  Future<void> updateSiteLocation(
+  /// Corrects a site's name and/or pin in one write. A null coordinate pair
+  /// retracts the pin (see EditSiteDialog); the name is always written —
+  /// callers validate it non-empty. Admin-only per the security rules, which
+  /// deliberately leave admin site updates shape-free.
+  Future<void> updateSiteDetails(
     String siteId, {
+    required String name,
     required double? lat,
     required double? lng,
   }) {
-    return _sites.doc(siteId).update({'lat': lat, 'lng': lng});
+    return _sites.doc(siteId).update({'name': name, 'lat': lat, 'lng': lng});
   }
 
   /// Permanently removes a site and every report and rate-limit ledger doc
