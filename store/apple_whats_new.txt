@@ -1,12 +1,12 @@
 Welcome to RoadMate AU — know before you roll.
 
-New in this version — reporting is open to every driver again:
+New in this version:
 
-• No sign-in needed any more to tap OPEN / BLITZ / CLOSED or Report activity — posting is open to everyone again
-• To keep reports honest they now come from the road: posting works when you're within 3 km of a site, the same range where RoadMate starts asking "what's the status?"
-• RoadMate asks for your location as you post; if location is off or the site is too far away, a message tells you exactly why
-• Signing in stays optional — it still keeps your favourites, your trips and your past reports together under your account
-• Browsing, Nearby, favourites and adding a site are unchanged and open to everyone
+• Smarter approach alerts: where a northbound and a southbound station share the one spot, RoadMate now uses your direction of travel and asks only about the station on your side of the road. Once yours is answered and you're within 100 m, one quick follow-up asks about the other side
+• Open any site in your maps app straight from its card, for turn-by-turn directions to the gate
+• Road names: pick a unique handle like "Dusty Roadtrain" and it signs your votes, your activity reports and any site you add, so other drivers can see who called it. Roll the dice for a suggestion or type your own — you're asked once, and you can change it any time from the User tab
+• Participation points, levels and badges: every vote and report earns points and moves you up the levels, with your level shown beside your name on the reports you post. The new Achievements page collects the badges you've earned — including Trailblazer, for adding a site to the map
+• Reporting stays open to every driver, no sign-in needed, from within 3 km of a site
 • Small behind-the-scenes fixes
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
@@ -15,11 +15,13 @@ Live status of NHVR heavy-vehicle inspection sites across Australia, powered by 
 • Site alerts as you approach an inspection site, on screen or in the background
 • Blitz alerts when unusual enforcement activity is reported
 • Browse by state or find the nearest sites with GPS
+• Directions to any site in your maps app
 • Favourites for the sites on your regular runs
 • Trip log with audible speed alerts
 • Camera Times: point-to-point average-speed camera corridors, with a live "Time me" timer for your run
 • Add missing sites
+• Points, levels and badges for the drivers who keep the map honest
 • Share RoadMate with another driver straight from the Info tab
-• Sign in with Apple or Google
+• Sign in with Apple or Google to keep your favourites, trips and reports together — optional, browsing and posting work without an account
 
 Safe travels!
