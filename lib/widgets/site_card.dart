@@ -7,6 +7,7 @@ import '../models/site_report.dart';
 import '../services/auth_service.dart';
 import '../services/providers.dart';
 import '../services/ban_logic.dart';
+import '../services/map_links.dart';
 import '../services/rate_limit.dart';
 import '../services/report_proximity.dart';
 import '../services/site_repository.dart';
@@ -156,6 +157,21 @@ class SiteCard extends ConsumerWidget {
                   ),
                 ),
               ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 32,
+                  minHeight: 32,
+                ),
+                icon: const Icon(
+                  Icons.directions_outlined,
+                  size: 18,
+                  color: AppTheme.textSecondary,
+                ),
+                onPressed: () => _openInMaps(context),
+                tooltip: 'Open in Maps',
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -289,6 +305,17 @@ class SiteCard extends ConsumerWidget {
       if (!context.mounted) return;
       _snack(context, 'Could not submit — please try again.');
     }
+  }
+
+  /// Hands the site's location to the platform maps app (a Google Maps tab
+  /// on web). Un-geocoded sites become an address search there instead.
+  Future<void> _openInMaps(BuildContext context) async {
+    try {
+      if (await openSiteInMaps(site)) return;
+    } catch (_) {
+      // Fall through to the snack.
+    }
+    if (context.mounted) _snack(context, 'Could not open the maps app');
   }
 
   /// Admin: correct the site's name and/or coordinates. Community

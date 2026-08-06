@@ -72,6 +72,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('New South Wales —'), findsOneWidget);
     expect(find.byType(SiteCard), findsWidgets);
+    // Every card's address row carries the "Open in Maps" directions icon.
+    expect(
+      find.byTooltip('Open in Maps'),
+      findsNWidgets(find.byType(SiteCard).evaluate().length),
+    );
     await binding.takeScreenshot('04-state-nsw');
   });
 }

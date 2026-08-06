@@ -1,5 +1,3 @@
-• Reporting is open to everyone again — no sign-in needed to post OPEN / BLITZ / CLOSED or Report activity
-• To keep reports trustworthy they now come from the road: posting works within 3 km of a site, the same range where RoadMate starts asking "what's the status?"
-• RoadMate asks for your location when you post; if it's off or you're too far away, it tells you exactly why
-• Browsing, Nearby, favourites and adding a site are unchanged and open to everyone
+• Open any site in your maps app — tap the directions icon next to the address on a site card
+• Sites without an exact pin yet open as an address search, so directions work everywhere
 • Small behind-the-scenes fixes

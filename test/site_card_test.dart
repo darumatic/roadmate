@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadmate/models/enums.dart';
@@ -187,6 +188,60 @@ void main() {
     await tester.pump();
 
     expect(repo.favourites, ['nsw-1']);
+  });
+
+  // The maps icon on the address row hands the site to the platform maps app
+  // (widget tests run as Android, so the geo: scheme is expected).
+  group('open in maps', () {
+    List<String> mockUrlLauncher(WidgetTester tester) {
+      final launched = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/url_launcher'),
+        (call) async {
+          if (call.method == 'launch') {
+            launched.add(call.arguments['url'] as String);
+          }
+          return true;
+        },
+      );
+      return launched;
+    }
+
+    testWidgets('a geocoded site opens the maps app at its pin', (
+      tester,
+    ) async {
+      final launched = mockUrlLauncher(tester);
+      const geocoded = Site(
+        id: 'nsw-1',
+        name: 'Marulan',
+        type: SiteType.checkingStation,
+        state: AusState.nsw,
+        suburb: 'Marulan',
+        address: 'Hume Hwy',
+        lat: -34.75,
+        lng: 149.9926,
+      );
+      await _pump(tester, FakeSiteRepository(), site: geocoded);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.directions_outlined));
+      await tester.pumpAndSettle();
+
+      expect(launched, ['geo:-34.75,149.9926?q=-34.75,149.9926(Marulan)']);
+    });
+
+    testWidgets('an un-geocoded site searches the maps app for its address', (
+      tester,
+    ) async {
+      final launched = mockUrlLauncher(tester);
+      await _pump(tester, FakeSiteRepository());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.directions_outlined));
+      await tester.pumpAndSettle();
+
+      expect(launched, ['geo:0,0?q=Hume%20Hwy']);
+    });
   });
 
   testWidgets('shows recent report time in top-right when present', (
