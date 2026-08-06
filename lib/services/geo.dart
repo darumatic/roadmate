@@ -20,6 +20,25 @@ double distanceKm(double lat1, double lng1, double lat2, double lng2) {
 
 double _toRad(double deg) => deg * math.pi / 180.0;
 
+/// Initial great-circle bearing in degrees (0 = north, 90 = east) travelling
+/// from point 1 toward point 2. Pure function — unit-tested.
+double bearingDeg(double lat1, double lng1, double lat2, double lng2) {
+  final phi1 = _toRad(lat1);
+  final phi2 = _toRad(lat2);
+  final dLng = _toRad(lng2 - lng1);
+  final y = math.sin(dLng) * math.cos(phi2);
+  final x =
+      math.cos(phi1) * math.sin(phi2) -
+      math.sin(phi1) * math.cos(phi2) * math.cos(dLng);
+  return (math.atan2(y, x) * 180.0 / math.pi + 360.0) % 360.0;
+}
+
+/// Smallest absolute difference between two bearings, in degrees (0–180).
+double angleDiffDeg(double a, double b) {
+  final d = (a - b) % 360.0; // Dart % is non-negative for a positive divisor
+  return d > 180.0 ? 360.0 - d : d;
+}
+
 const double maxLatitude = 90.0;
 const double maxLongitude = 180.0;
 

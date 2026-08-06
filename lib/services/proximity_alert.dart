@@ -11,12 +11,24 @@ import 'geo.dart';
 ///
 ///  1. the site is within [proximityRadiusKm],
 ///  2. the driver is actually moving ([proximityMinSpeedKmh]), and
-///  3. the distance is *shrinking* since the previous fix — which is also how
-///     direction is handled: heading away never prompts, so no compass maths
-///     and no dependence on the site's (often missing) direction tag.
+///  3. the distance is *shrinking* since the previous fix — which is how
+///     "heading away" is handled for the ordinary site: no compass maths, no
+///     dependence on the (often missing) direction tag.
 ///
 /// Plus a per-site [proximityCooldown] so one site can't nag on a return trip
 /// the same morning.
+///
+/// The one place compass maths does enter is **co-located opposite-direction
+/// pairs** (Mt White, Marulan and Daroobalgie each have a Northbound and a
+/// Southbound site on the same pin). There a travel heading derived from the
+/// GPS fixes decides which member the driver is actually rolling toward: the
+/// matching member prompts exactly as normal, and the opposite one is
+/// deferred — it asks once, only inside [proximityNearRadiusKm] and only after
+/// the matching member is done (answered or passed). That is "you've dealt
+/// with your side — while you're at the gate, what does the other side look
+/// like?", never two competing questions on approach. Lone directional sites
+/// are untouched: their tag may be stale, and silencing their only prompt on
+/// compass grounds could hide a blitz.
 ///
 /// Everything is tracked per **pass**: a pass starts when the driver crosses
 /// into the radius and ends when they leave it again. Within one pass a site
@@ -52,6 +64,37 @@ const double proximityClosingMarginKm = 0.02;
 /// a jittery fix at the gate doesn't read as "passed" while queueing to enter.
 const double proximityPassedMarginKm = 0.15;
 
+/// Two opposite-direction sites within this of each other are one location —
+/// the two carriageways of the same road. Generous enough to keep the pins
+/// paired if they're ever corrected from shared town-level geocodes to the
+/// real gates, but far smaller than the gap between genuinely separate
+/// stations (Wallan and Broadford, the nearest unrelated N/S pair, are 23 km
+/// apart).
+const double proximityPairRadiusKm = 2.0;
+
+/// How far the device must move before the derived travel heading updates.
+/// Below this, the bearing between fixes is mostly GPS jitter; above it,
+/// course over ground is trustworthy. Movement accumulates from an anchor
+/// fix, so a slow crawl still resolves a heading.
+const double proximityHeadingMinMoveKm = 0.01;
+
+/// The compass bearing a site's direction tag points along (northbound = 0,
+/// eastbound = 90), or null when the site has no usable tag ("Both"/"N/A"
+/// normalise to null upstream; anything unrecognised lands here too).
+double? directionBearingDeg(String? direction) {
+  switch (direction?.toLowerCase().trim()) {
+    case 'northbound':
+      return 0;
+    case 'eastbound':
+      return 90;
+    case 'southbound':
+      return 180;
+    case 'westbound':
+      return 270;
+  }
+  return null;
+}
+
 /// A site the driver is approaching, with its current distance.
 class ProximityHit {
   const ProximityHit(this.site, this.km, {this.near = false});
@@ -59,8 +102,9 @@ class ProximityHit {
   final Site site;
   final double km;
 
-  /// True when this is the second-chance prompt raised inside
-  /// [proximityNearRadiusKm], rather than the long-range one.
+  /// True when this prompt is raised inside [proximityNearRadiusKm] — the
+  /// second-chance ask after a dismissal, or the deferred ask for the opposite
+  /// member of a direction pair — rather than the long-range one.
   final bool near;
 }
 
@@ -111,6 +155,8 @@ class ProximityTracker {
     this.cooldown = proximityCooldown,
     this.closingMarginKm = proximityClosingMarginKm,
     this.passedMarginKm = proximityPassedMarginKm,
+    this.pairRadiusKm = proximityPairRadiusKm,
+    this.headingMinMoveKm = proximityHeadingMinMoveKm,
   });
 
   final double radiusKm;
@@ -119,6 +165,20 @@ class ProximityTracker {
   final Duration cooldown;
   final double closingMarginKm;
   final double passedMarginKm;
+  final double pairRadiusKm;
+  final double headingMinMoveKm;
+
+  /// Travel course derived from the GPS fixes (degrees, 0 = north), or null
+  /// until the device has moved [headingMinMoveKm] from its anchor fix. For a
+  /// vehicle this *is* the device's GPS heading — the platform's
+  /// `Position.heading` is the same course over ground, but with per-platform
+  /// invalid markers (-1, 0, NaN) and no web support, while deriving it here
+  /// keeps the logic pure and testable. Kept through stops: a parked truck
+  /// hasn't turned, and 10 m of movement corrects it if it has.
+  double? get headingDeg => _headingDeg;
+  double? _headingDeg;
+  double? _headingAnchorLat;
+  double? _headingAnchorLng;
 
   /// Per-pass state, keyed by site id.
   final Map<String, _Approach> _tracks = {};
@@ -141,6 +201,10 @@ class ProximityTracker {
     required double speedKmh,
     required DateTime now,
   }) {
+    _updateHeading(lat, lng);
+    // Built only when a directional site needs it (and a heading exists), so
+    // fleets without direction tags never pay the pairing scan.
+    Map<String, Site>? partners;
     ProximityHit? best;
     for (final site in sites) {
       if (site.lat == null || site.lng == null) continue;
@@ -171,6 +235,34 @@ class ProximityTracker {
       if (km - track.minKm! > passedMarginKm) track.passed = true;
 
       if (track.passed || track.answered) continue;
+
+      // The opposite-direction member of a co-located pair: the driver is
+      // rolling toward the other carriageway's site, so the long-range ask
+      // belongs to that member alone. This one waits until that conversation
+      // is over (answered or passed) and then asks exactly once, only with the
+      // pair in sight — where the other side of the road is something the
+      // driver can actually see.
+      final ownBearing = directionBearingDeg(site.direction);
+      final heading = _headingDeg;
+      if (ownBearing != null && heading != null) {
+        final partner = (partners ??= _oppositePartners(sites))[site.id];
+        if (partner != null && angleDiffDeg(heading, ownBearing) > 90.0) {
+          if (track.nearPrompted || km > nearRadiusKm) continue;
+          final partnerTrack = _tracks[partner.id];
+          final partnerDone =
+              partnerTrack != null &&
+              (partnerTrack.answered || partnerTrack.passed);
+          if (!partnerDone || isInCooldown(site.id, now)) continue;
+          // No speed, closing or history gate here — the moment is "just
+          // dealt with your own side, still at the gate", which is usually
+          // slow and often already pulling away from a shared pin.
+          if (best == null || km < best.km) {
+            best = ProximityHit(site, km, near: true);
+          }
+          continue;
+        }
+      }
+
       // First fix for this site (app just opened, or it just entered the
       // radius from beyond it): no history, so "closing" is unknowable. The
       // next fix a second later decides.
@@ -200,6 +292,54 @@ class ProximityTracker {
       }
     }
     return best;
+  }
+
+  /// Folds one fix into the derived travel heading. The bearing is measured
+  /// from the last anchor fix and the anchor moves only on real displacement,
+  /// so jitter while parked neither updates the heading nor poisons it.
+  void _updateHeading(double lat, double lng) {
+    final aLat = _headingAnchorLat;
+    final aLng = _headingAnchorLng;
+    if (aLat != null && aLng != null) {
+      if (distanceKm(aLat, aLng, lat, lng) < headingMinMoveKm) return;
+      _headingDeg = bearingDeg(aLat, aLng, lat, lng);
+    }
+    _headingAnchorLat = lat;
+    _headingAnchorLng = lng;
+  }
+
+  /// For each directional site, its opposite-direction twin within
+  /// [pairRadiusKm] (nearest wins) — the "same location, other carriageway"
+  /// pairs the heading rule applies to. Lone directional sites stay unpaired
+  /// and prompt as normal.
+  Map<String, Site> _oppositePartners(Iterable<Site> sites) {
+    final directional = [
+      for (final s in sites)
+        if (s.lat != null &&
+            s.lng != null &&
+            directionBearingDeg(s.direction) != null)
+          s,
+    ];
+    final partners = <String, Site>{};
+    for (final s in directional) {
+      final bearing = directionBearingDeg(s.direction)!;
+      Site? partner;
+      double? partnerKm;
+      for (final o in directional) {
+        if (o.id == s.id) continue;
+        if (angleDiffDeg(bearing, directionBearingDeg(o.direction)!) != 180.0) {
+          continue;
+        }
+        final km = distanceKm(s.lat!, s.lng!, o.lat!, o.lng!);
+        if (km > pairRadiusKm) continue;
+        if (partnerKm == null || km < partnerKm) {
+          partnerKm = km;
+          partner = o;
+        }
+      }
+      if (partner != null) partners[s.id] = partner;
+    }
+    return partners;
   }
 
   /// Records that [siteId] prompted at [now], starting its [cooldown]. Pass
@@ -240,5 +380,8 @@ class ProximityTracker {
   void reset() {
     _tracks.clear();
     _promptedAt.clear();
+    _headingDeg = null;
+    _headingAnchorLat = null;
+    _headingAnchorLng = null;
   }
 }

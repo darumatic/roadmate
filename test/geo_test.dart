@@ -27,6 +27,34 @@ void main() {
     });
   });
 
+  group('bearingDeg', () {
+    test('the four cardinal directions', () {
+      expect(bearingDeg(-33.0, 151.0, -32.0, 151.0), closeTo(0, 0.001)); // N
+      expect(bearingDeg(-33.0, 151.0, -33.0, 152.0), closeTo(90, 0.3)); // E
+      expect(bearingDeg(-32.0, 151.0, -33.0, 151.0), closeTo(180, 0.001)); // S
+      expect(bearingDeg(-33.0, 152.0, -33.0, 151.0), closeTo(270, 0.3)); // W
+    });
+
+    test('stays within 0–360', () {
+      final b = bearingDeg(-33.0, 151.0, -32.9, 150.9); // north-west
+      expect(b, greaterThan(270));
+      expect(b, lessThan(360));
+    });
+  });
+
+  group('angleDiffDeg', () {
+    test('wraps around north', () {
+      expect(angleDiffDeg(350, 10), closeTo(20, 0.001));
+      expect(angleDiffDeg(10, 350), closeTo(20, 0.001));
+    });
+
+    test('opposites are 180, same is 0', () {
+      expect(angleDiffDeg(0, 180), 180);
+      expect(angleDiffDeg(270, 90), 180);
+      expect(angleDiffDeg(90, 90), 0);
+    });
+  });
+
   group('nearestSites', () {
     test('sorts by distance and excludes sites without coordinates', () {
       final sites = [
