@@ -1,3 +1,3 @@
-• Open any site in your maps app — tap the directions icon next to the address on a site card
-• Sites without an exact pin yet open as an address search, so directions work everywhere
+• Smarter approach alerts: where northbound and southbound stations share one spot, RoadMate now uses your direction of travel and asks only about the station on your side of the road
+• Once yours is done and you're within 100 m, one quick follow-up asks about the other side
 • Small behind-the-scenes fixes
