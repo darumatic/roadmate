@@ -1,8 +1,64 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/admin_repository.dart';
 
 void main() {
+  // Admin site edits: the full describing shape, never the derived or
+  // moderation fields.
+  group('siteEditData', () {
+    Map<String, Object?> edit({String? note, String? direction}) =>
+        siteEditData(
+          name: '  Marulan HVSS  ',
+          type: SiteType.checkingStation,
+          state: AusState.vic,
+          suburb: '  Marulan  ',
+          address: '  Hume Hwy  ',
+          direction: direction,
+          note: note,
+          lat: -34.71,
+          lng: 149.99,
+        );
+
+    test('writes wire values and trims text fields', () {
+      final data = edit(
+        note: '  queue past the ramp  ',
+        direction: 'southbound',
+      );
+      expect(data['name'], 'Marulan HVSS');
+      expect(data['suburb'], 'Marulan');
+      expect(data['address'], 'Hume Hwy');
+      expect(data['type'], 'checking_station');
+      expect(data['state'], 'VIC');
+      expect(data['direction'], 'southbound');
+      expect(data['note'], 'queue past the ramp');
+      expect(data['lat'], -34.71);
+      expect(data['lng'], 149.99);
+    });
+
+    test('a blank or missing note maps to null (field cleared)', () {
+      expect(edit(note: '   ')['note'], isNull);
+      expect(edit(note: null)['note'], isNull);
+    });
+
+    test('never touches derived or moderation fields', () {
+      expect(
+        edit().keys,
+        unorderedEquals([
+          'name',
+          'type',
+          'state',
+          'suburb',
+          'address',
+          'direction',
+          'note',
+          'lat',
+          'lng',
+        ]),
+      );
+    });
+  });
+
   // Admin activity-report edits (rules allow exactly these fields to change).
   group('activityReportEditData', () {
     test('writes the wire value for the chosen type', () {

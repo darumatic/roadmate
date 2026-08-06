@@ -53,17 +53,37 @@ class FakeSiteRepository implements SiteRepository {
   Stream<List<Site>> watchSites() => Stream.value(const []);
 }
 
-/// Records site edits; everything else is unused here.
+/// Records site edits (as the exact Firestore write shape, via [siteEditData]);
+/// everything else is unused here.
 class FakeAdminRepository implements AdminRepository {
-  final edits = <(String, String, double?, double?)>[];
+  final edits = <(String, Map<String, Object?>)>[];
 
   @override
   Future<void> updateSiteDetails(
     String siteId, {
     required String name,
+    required SiteType type,
+    required AusState state,
+    required String suburb,
+    required String address,
+    required String? direction,
+    required String? note,
     required double? lat,
     required double? lng,
-  }) async => edits.add((siteId, name, lat, lng));
+  }) async => edits.add((
+    siteId,
+    siteEditData(
+      name: name,
+      type: type,
+      state: state,
+      suburb: suburb,
+      address: address,
+      direction: direction,
+      note: note,
+      lat: lat,
+      lng: lng,
+    ),
+  ));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -97,6 +117,15 @@ const _site = Site(
 // longitude.
 const _latField = 3;
 const _lngField = 4;
+
+// Text-field order on the admin Edit site dialog: name, suburb, address,
+// note, latitude, longitude (the dropdowns are not TextFormFields).
+const _editName = 0;
+const _editSuburb = 1;
+const _editAddress = 2;
+const _editNote = 3;
+const _editLat = 4;
+const _editLng = 5;
 
 Future<void> _pumpAddSite(
   WidgetTester tester,
@@ -307,13 +336,27 @@ void main() {
       expect(find.text('-34.71'), findsOneWidget);
       expect(find.text('149.99'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextFormField).at(1), '-34.7205');
-      await tester.enterText(find.byType(TextFormField).at(2), '149.9911');
+      await tester.enterText(
+        find.byType(TextFormField).at(_editLat),
+        '-34.7205',
+      );
+      await tester.enterText(
+        find.byType(TextFormField).at(_editLng),
+        '149.9911',
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      // The untouched name field rode along with its prefilled value.
-      expect(admin.edits, [('nsw-1', _site.name, -34.7205, 149.9911)]);
+      // The untouched fields rode along with their prefilled values.
+      final (siteId, data) = admin.edits.single;
+      expect(siteId, 'nsw-1');
+      expect(data['lat'], -34.7205);
+      expect(data['lng'], 149.9911);
+      expect(data['name'], _site.name);
+      expect(data['suburb'], _site.suburb);
+      expect(data['address'], _site.address);
+      expect(data['type'], _site.type.jsonValue);
+      expect(data['state'], _site.state.code);
       expect(find.text('Site updated'), findsOneWidget);
     });
 
@@ -322,12 +365,15 @@ void main() {
 
       await tester.tap(find.byTooltip('Edit site (admin)'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField).at(1), '');
-      await tester.enterText(find.byType(TextFormField).at(2), '');
+      await tester.enterText(find.byType(TextFormField).at(_editLat), '');
+      await tester.enterText(find.byType(TextFormField).at(_editLng), '');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      expect(admin.edits, [('nsw-1', _site.name, null, null)]);
+      final (_, data) = admin.edits.single;
+      expect(data['lat'], isNull);
+      expect(data['lng'], isNull);
+      expect(data['name'], _site.name);
     });
 
     testWidgets('a site missing coordinates flags itself to admins', (
@@ -357,17 +403,126 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.byType(TextFormField).at(0),
+        find.byType(TextFormField).at(_editName),
         '  Marulan HVSS Northbound  ',
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      expect(admin.edits, [
-        ('nsw-1', 'Marulan HVSS Northbound', _site.lat, _site.lng),
-      ]);
+      final (_, data) = admin.edits.single;
+      expect(data['name'], 'Marulan HVSS Northbound');
+      expect(data['lat'], _site.lat);
+      expect(data['lng'], _site.lng);
       expect(find.text('Site updated'), findsOneWidget);
     });
+
+    testWidgets('every describing field is editable in one write', (
+      tester,
+    ) async {
+      final admin = await pumpCard(tester);
+
+      await tester.tap(find.byTooltip('Edit site (admin)'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextFormField).at(_editSuburb),
+        '  Goulburn  ',
+      );
+      await tester.enterText(
+        find.byType(TextFormField).at(_editAddress),
+        'Hume Hwy, Goulburn NSW',
+      );
+      await tester.enterText(
+        find.byType(TextFormField).at(_editNote),
+        '  Entry required over 4.5t GVM  ',
+      );
+
+      final dialog = find.byType(AlertDialog);
+      Future<void> pick(String current, String choice) async {
+        await tester.ensureVisible(
+          find.descendant(of: dialog, matching: find.text(current)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: dialog, matching: find.text(current)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(choice).last);
+        await tester.pumpAndSettle();
+      }
+
+      await pick('Checking Station', 'Weighbridge');
+      await pick('NSW — New South Wales', 'VIC — Victoria');
+      await pick('None / both', 'Southbound');
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final (siteId, data) = admin.edits.single;
+      expect(siteId, 'nsw-1');
+      expect(data['suburb'], 'Goulburn');
+      expect(data['address'], 'Hume Hwy, Goulburn NSW');
+      expect(data['note'], 'Entry required over 4.5t GVM');
+      expect(data['type'], 'weighbridge');
+      expect(data['state'], 'VIC');
+      expect(data['direction'], 'southbound');
+      expect(find.text('Site updated'), findsOneWidget);
+    });
+
+    testWidgets('clearing the note removes it', (tester) async {
+      final admin = await pumpCard(
+        tester,
+        site: Site(
+          id: _site.id,
+          name: _site.name,
+          type: _site.type,
+          state: _site.state,
+          suburb: _site.suburb,
+          address: _site.address,
+          lat: _site.lat,
+          lng: _site.lng,
+          note: 'Stale detail',
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Edit site (admin)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Stale detail'), findsWidgets);
+      await tester.enterText(find.byType(TextFormField).at(_editNote), '   ');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final (_, data) = admin.edits.single;
+      expect(data['note'], isNull);
+    });
+
+    testWidgets(
+      'a non-normalised stored direction opens as unset, not a crash',
+      (tester) async {
+        final admin = await pumpCard(
+          tester,
+          site: Site(
+            id: _site.id,
+            name: _site.name,
+            type: _site.type,
+            state: _site.state,
+            suburb: _site.suburb,
+            address: _site.address,
+            direction: 'Both ways',
+          ),
+        );
+
+        await tester.tap(
+          find.byTooltip('Edit site (admin) — location missing'),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('None / both'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+        await tester.pumpAndSettle();
+        expect(admin.edits.single.$2['direction'], isNull);
+      },
+    );
 
     testWidgets('a blanked name is rejected before it reaches Firestore', (
       tester,
@@ -376,12 +531,26 @@ void main() {
 
       await tester.tap(find.byTooltip('Edit site (admin)'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField).at(0), '   ');
+      await tester.enterText(find.byType(TextFormField).at(_editName), '   ');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
       expect(admin.edits, isEmpty);
       expect(find.text('Required'), findsOneWidget);
+    });
+
+    testWidgets('a blanked suburb or address is rejected too', (tester) async {
+      final admin = await pumpCard(tester);
+
+      await tester.tap(find.byTooltip('Edit site (admin)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).at(_editSuburb), ' ');
+      await tester.enterText(find.byType(TextFormField).at(_editAddress), ' ');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(admin.edits, isEmpty);
+      expect(find.text('Required'), findsNWidgets(2));
     });
 
     testWidgets('an invalid edit is rejected before it reaches Firestore', (
@@ -391,8 +560,8 @@ void main() {
 
       await tester.tap(find.byTooltip('Edit site (admin)'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField).at(1), '-34.5');
-      await tester.enterText(find.byType(TextFormField).at(2), '999');
+      await tester.enterText(find.byType(TextFormField).at(_editLat), '-34.5');
+      await tester.enterText(find.byType(TextFormField).at(_editLng), '999');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 

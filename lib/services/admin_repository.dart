@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/admin_report.dart';
+import '../models/enums.dart';
 import '../models/site.dart';
 import '../models/site_report.dart';
 import '../models/user_ban.dart';
@@ -28,6 +29,37 @@ Map<String, String?> activityReportEditData(
   return {
     'activityType': activityType.wire,
     'activityNote': (note == null || note.isEmpty) ? null : note,
+  };
+}
+
+/// Field values for an admin edit of a site — every describing field a site
+/// has, but never the derived ones (status, vote tallies, lastReportAt are
+/// owned by the reports flow) and never the moderation ones (approved,
+/// createdBy have their own approve/reject flow). Text is trimmed; blank
+/// optional text maps to null so old clients read a clean absence, matching
+/// how a cleared pin is written.
+Map<String, Object?> siteEditData({
+  required String name,
+  required SiteType type,
+  required AusState state,
+  required String suburb,
+  required String address,
+  required String? direction,
+  required String? note,
+  required double? lat,
+  required double? lng,
+}) {
+  final trimmedNote = note?.trim();
+  return {
+    'name': name.trim(),
+    'type': type.jsonValue,
+    'state': state.code,
+    'suburb': suburb.trim(),
+    'address': address.trim(),
+    'direction': direction,
+    'note': (trimmedNote == null || trimmedNote.isEmpty) ? null : trimmedNote,
+    'lat': lat,
+    'lng': lng,
   };
 }
 
@@ -115,23 +147,41 @@ class AdminRepository {
     });
   }
 
-  /// Sets (or clears) a site's map coordinates — admin-only per the security
-  /// rules, which allow admins to update a site freely.
-  ///
-  /// Written as plain numbers, exactly the shape every shipped client already
-  /// reads; passing nulls clears them, which old clients handle (they treat a
-  /// site without coordinates as simply not distance-rankable).
-  /// Corrects a site's name and/or pin in one write. A null coordinate pair
-  /// retracts the pin (see EditSiteDialog); the name is always written —
-  /// callers validate it non-empty. Admin-only per the security rules, which
-  /// deliberately leave admin site updates shape-free.
+  /// Corrects every describing field of a site in one write — name, type,
+  /// state, suburb, address, direction, note and the pin (see [siteEditData]
+  /// for what is deliberately excluded). A null coordinate pair retracts the
+  /// pin (see EditSiteDialog); callers validate name/suburb/address non-empty.
+  /// Admin-only per the security rules, which deliberately leave admin site
+  /// updates shape-free. Every value is written in the exact shape shipped
+  /// clients already read (enum wire strings, plain numbers, nulls for
+  /// absences), so no rules change and no retrocompat risk.
   Future<void> updateSiteDetails(
     String siteId, {
     required String name,
+    required SiteType type,
+    required AusState state,
+    required String suburb,
+    required String address,
+    required String? direction,
+    required String? note,
     required double? lat,
     required double? lng,
   }) {
-    return _sites.doc(siteId).update({'name': name, 'lat': lat, 'lng': lng});
+    return _sites
+        .doc(siteId)
+        .update(
+          siteEditData(
+            name: name,
+            type: type,
+            state: state,
+            suburb: suburb,
+            address: address,
+            direction: direction,
+            note: note,
+            lat: lat,
+            lng: lng,
+          ),
+        );
   }
 
   /// Permanently removes a site and every report and rate-limit ledger doc
