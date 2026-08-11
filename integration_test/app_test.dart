@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Home: header + bottom nav render.
-    expect(find.text('RoadMate - Know before you roll'), findsOneWidget);
+    expect(find.text('RoadMate Australia'), findsOneWidget);
     expect(find.text('Nearby'), findsOneWidget);
     await binding.takeScreenshot('01-home');
 
@@ -72,11 +72,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('New South Wales —'), findsOneWidget);
     expect(find.byType(SiteCard), findsWidgets);
-    // Every card's address row carries the "Open in Maps" directions icon.
+    // Every card's address row carries the "Open in Maps" directions icon,
+    // leading the address on the left rather than trailing it.
     expect(
       find.byTooltip('Open in Maps'),
       findsNWidgets(find.byType(SiteCard).evaluate().length),
     );
+    final firstCard = find.byType(SiteCard).first;
+    final mapsIcon = find
+        .descendant(of: firstCard, matching: find.byTooltip('Open in Maps'))
+        .first;
+    final cardBox = tester.getRect(firstCard);
+    expect(tester.getCenter(mapsIcon).dx, lessThan(cardBox.center.dx));
     await binding.takeScreenshot('04-state-nsw');
   });
 }
