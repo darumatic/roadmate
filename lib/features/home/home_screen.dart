@@ -107,7 +107,7 @@ class HomeScreen extends ConsumerWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'RoadMate - Know before you roll',
+                    'RoadMate Australia',
                     maxLines: 1,
                     style: TextStyle(
                       color: AppTheme.textPrimary,

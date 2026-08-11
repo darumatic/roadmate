@@ -242,6 +242,28 @@ void main() {
 
       expect(launched, ['geo:0,0?q=Hume%20Hwy']);
     });
+
+    testWidgets('the maps icon leads the address as a bare icon', (
+      tester,
+    ) async {
+      await _pump(tester, FakeSiteRepository());
+      await tester.pumpAndSettle();
+
+      final mapsIcon = find.byIcon(Icons.directions_outlined);
+      expect(tester.widget<Icon>(mapsIcon).size, 19);
+      // Left of the address text, not trailing it.
+      expect(
+        tester.getTopLeft(mapsIcon).dx,
+        lessThan(tester.getTopLeft(find.text('Hume Hwy')).dx),
+      );
+      // Just the icon — no IconButton chrome — and it replaced the
+      // decorative location pin rather than joining it.
+      expect(
+        find.ancestor(of: mapsIcon, matching: find.byType(IconButton)),
+        findsNothing,
+      );
+      expect(find.byIcon(Icons.location_on_outlined), findsNothing);
+    });
   });
 
   testWidgets('shows recent report time in top-right when present', (

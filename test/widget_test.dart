@@ -434,7 +434,8 @@ void main() {
     expect(find.byType(RefreshIndicator), findsOneWidget);
 
     // Issue #8: single header title, old texts gone.
-    expect(find.text('RoadMate - Know before you roll'), findsOneWidget);
+    expect(find.text('RoadMate Australia'), findsOneWidget);
+    expect(find.text('RoadMate - Know before you roll'), findsNothing);
     expect(find.text('NHVR Sites'), findsNothing);
     expect(find.text('Know before you roll'), findsNothing);
 

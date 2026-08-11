@@ -142,12 +142,21 @@ class SiteCard extends ConsumerWidget {
           ),
           Row(
             children: [
-              const Icon(
-                Icons.location_on_outlined,
-                size: 14,
-                color: AppTheme.textSecondary,
+              // The maps launcher leads the address as a bare icon (no button
+              // chrome), doubling as the row's location marker.
+              Tooltip(
+                message: 'Open in Maps',
+                child: InkResponse(
+                  onTap: () => _openInMaps(context),
+                  radius: 18,
+                  child: const Icon(
+                    Icons.directions_outlined,
+                    size: 19,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   site.address,
@@ -156,21 +165,6 @@ class SiteCard extends ConsumerWidget {
                     fontSize: 13,
                   ),
                 ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 32,
-                  minHeight: 32,
-                ),
-                icon: const Icon(
-                  Icons.directions_outlined,
-                  size: 18,
-                  color: AppTheme.textSecondary,
-                ),
-                onPressed: () => _openInMaps(context),
-                tooltip: 'Open in Maps',
               ),
             ],
           ),
