@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -72,15 +73,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('New South Wales —'), findsOneWidget);
     expect(find.byType(SiteCard), findsWidgets);
-    // Every card's address row carries the "Open in Maps" directions icon,
-    // leading the address on the left rather than trailing it.
+    // Every card's address row is an "Open in Maps" tap target, with the
+    // directions icon leading the address on the left rather than trailing.
     expect(
       find.byTooltip('Open in Maps'),
       findsNWidgets(find.byType(SiteCard).evaluate().length),
     );
     final firstCard = find.byType(SiteCard).first;
     final mapsIcon = find
-        .descendant(of: firstCard, matching: find.byTooltip('Open in Maps'))
+        .descendant(
+          of: firstCard,
+          matching: find.byIcon(Icons.directions_outlined),
+        )
         .first;
     final cardBox = tester.getRect(firstCard);
     expect(tester.getCenter(mapsIcon).dx, lessThan(cardBox.center.dx));

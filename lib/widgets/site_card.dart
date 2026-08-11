@@ -140,33 +140,33 @@ class SiteCard extends ConsumerWidget {
               ),
             ],
           ),
-          Row(
-            children: [
-              // The maps launcher leads the address as a bare icon (no button
-              // chrome), doubling as the row's location marker.
-              Tooltip(
-                message: 'Open in Maps',
-                child: InkResponse(
-                  onTap: () => _openInMaps(context),
-                  radius: 18,
-                  child: const Icon(
+          // The whole address row — leading bare directions icon and the
+          // address itself — is one maps-app tap target.
+          Tooltip(
+            message: 'Open in Maps',
+            child: InkWell(
+              onTap: () => _openInMaps(context),
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                children: [
+                  const Icon(
                     Icons.directions_outlined,
                     size: 19,
                     color: AppTheme.textSecondary,
                   ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  site.address,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 13,
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      site.address,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
           const SizedBox(height: 10),
           Row(

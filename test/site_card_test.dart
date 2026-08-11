@@ -243,6 +243,19 @@ void main() {
       expect(launched, ['geo:0,0?q=Hume%20Hwy']);
     });
 
+    testWidgets('tapping the address text opens the maps app too', (
+      tester,
+    ) async {
+      final launched = mockUrlLauncher(tester);
+      await _pump(tester, FakeSiteRepository());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Hume Hwy'));
+      await tester.pumpAndSettle();
+
+      expect(launched, ['geo:0,0?q=Hume%20Hwy']);
+    });
+
     testWidgets('the maps icon leads the address as a bare icon', (
       tester,
     ) async {
