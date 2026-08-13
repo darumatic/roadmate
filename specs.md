@@ -293,7 +293,7 @@ Pure logic + expiry in `lib/services/announcement.dart`; covered by
 builds older than 0.1.55 have no listener and never show one at all. Fully
 additive, so those old builds are otherwise unaffected.
 
-**Rich notices (0.1.68+): links, formatting and colour.** Two additive optional
+**Rich notices (0.1.70+): links, formatting and colour.** Two additive optional
 fields on the same doc: `messageHtml` (≤480 chars, `kAnnouncementHtmlMaxLength`
 — the extra room pays for tags) and `color` (`#RRGGBB` background override;
 foreground auto-picks black/white by luminance, `prefersDarkForeground`).

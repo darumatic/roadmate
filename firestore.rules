@@ -448,7 +448,7 @@ service cloud.firestore {
     // must stay in sync with kAnnouncementMaxLength/kAnnouncementHtmlMaxLength
     // in lib/services/announcement.dart.
     //
-    // `messageHtml` (rich subset, rendered by 0.1.68+) and `color` (#RRGGBB
+    // `messageHtml` (rich subset, rendered by 0.1.70+) and `color` (#RRGGBB
     // background) are optional and additive; `message` stays required as the
     // plain-text fallback older clients render.
     function isValidAnnouncement() {

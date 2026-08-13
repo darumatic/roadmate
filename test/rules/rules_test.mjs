@@ -641,7 +641,7 @@ await check(
 await check(
   'rich notices: markup and colour are optional, capped and validated',
   (async () => {
-    // The full rich shape (0.1.68+ admin build): plain fallback + markup + colour.
+    // The full rich shape (0.1.70+ admin build): plain fallback + markup + colour.
     await assertSucceeds(
       setDoc(
         doc(admin, 'announcements/current'),
