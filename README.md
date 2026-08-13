@@ -96,6 +96,37 @@ New sites from **Add Site** are stored with `approved: false` and stay hidden
 
 (An in-app admin screen + rate-limiting are planned.)
 
+### Publish an admin notice (top banner)
+Admin screen → **Notice** tab. The message appears as a dismissible banner across
+the top of every screen, for every user, until you clear it (or it auto-hides
+after 7 days if enabled). Messages may use a safe HTML subset — `<b> <i> <u>
+<br> <a href="https://…"> <font color="#RRGGBB">` — plus a background colour
+from the swatches or a custom hex. The form previews the banner live as you type.
+
+Example — plain notice (works identically on every build):
+
+```
+Blitz season starts Monday — expect extra checks on the Hume and Newell.
+```
+
+Example — formatted "text ad" with a link, on a blue (`#2563EB`) background:
+
+```
+Fuel deal at BP Yass — <b>12¢/L off</b> for RoadMate drivers. <a href="https://example.com/roadmate-deal">Get the voucher</a>
+```
+
+Example — urgent warning with colour inside the text:
+
+```
+<b>Floodwater on the Newell near Forbes.</b><br><font color="#FFEB3B">Check closures before you roll</font> — <a href="https://www.livetraffic.com">Live Traffic NSW</a>
+```
+
+Links open in the browser; only `http(s)` URLs become tappable. Mobile builds
+0.1.55–0.1.67 show the same message as plain text (no formatting, links or
+colour), so write text that still reads sensibly without its link. iOS caveat:
+never leave a banner linking to donation/payment pages up while an iOS build is
+in App Store review (guideline 3.1.1).
+
 ### Inspect Firestore data quickly
 Sites are publicly readable, so you can read them via REST with the web apiKey:
 ```

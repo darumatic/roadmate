@@ -1,3 +1,4 @@
-• Smarter approach alerts: where northbound and southbound stations share one spot, RoadMate now uses your direction of travel and asks only about the station on your side of the road
-• Once yours is done and you're within 100 m, one quick follow-up asks about the other side
-• Small behind-the-scenes fixes
+• Notices from the RoadMate team can now include tappable links, formatting and colours
+• Tap a site's address to open it straight in your maps app
+• Fresh "RoadMate Australia" branding on the home screen
+• Small fixes and polish
