@@ -7,6 +7,7 @@ import '../../models/site.dart';
 import '../../models/site_report.dart';
 import '../../models/user_ban.dart';
 import '../../services/announcement.dart';
+import '../../services/notice_markup.dart';
 import '../../services/auth_service.dart';
 import '../../services/ban_logic.dart';
 import '../../services/providers.dart';
@@ -776,6 +777,7 @@ class NoticeTab extends ConsumerStatefulWidget {
 
 class _NoticeTabState extends ConsumerState<NoticeTab> {
   final TextEditingController _message = TextEditingController();
+  final TextEditingController _customColor = TextEditingController();
   AnnouncementSeverity _severity = AnnouncementSeverity.info;
   DateTime? _expiresAt;
   bool _busy = false;
@@ -784,10 +786,46 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
   /// once (for editing) without fighting the admin's typing on every snapshot.
   String? _loadedKey;
 
+  /// Background swatches offered beside the free hex field. First is "auto"
+  /// (null — colour by severity), the rest read well under both black and
+  /// white text picked by `prefersDarkForeground`.
+  static const List<String> _presetColors = [
+    '#F97316', // brand orange
+    '#2563EB', // blue
+    '#16A34A', // green
+    '#DC2626', // red
+    '#7C3AED', // purple
+  ];
+
   @override
   void dispose() {
     _message.dispose();
+    _customColor.dispose();
     super.dispose();
+  }
+
+  /// The colour the form currently means: the hex field is the single source
+  /// of truth (swatches just fill it), and anything unparseable is "auto".
+  String? get _colorHex {
+    final raw = _customColor.text.trim().replaceFirst('#', '');
+    if (raw.isEmpty) return null;
+    final full = '#$raw';
+    return parseHexColor(full) == null ? null : full;
+  }
+
+  /// The notice as typed, ready to preview — or null while the form would
+  /// refuse to publish (no visible text once markup is stripped).
+  Announcement? get _draft {
+    final source = _message.text.trim();
+    if (source.isEmpty) return null;
+    final plain = plainTextOfNotice(source).trim();
+    if (plain.isEmpty) return null;
+    return Announcement(
+      message: plain,
+      messageHtml: noticeHasMarkup(source) ? source : null,
+      severity: _severity,
+      color: _colorHex,
+    );
   }
 
   @override
@@ -795,7 +833,8 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
     final live = ref.watch(announcementProvider).value;
     if (live != null && live.dismissKey != _loadedKey) {
       _loadedKey = live.dismissKey;
-      _message.text = live.message;
+      _message.text = live.messageHtml ?? live.message;
+      _customColor.text = (live.color ?? '').replaceFirst('#', '');
       _severity = live.severity;
       _expiresAt = live.expiresAt;
     }
@@ -816,11 +855,16 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
         ],
         TextField(
           controller: _message,
-          maxLength: kAnnouncementMaxLength, // matches the rules' 280 cap
-          maxLines: 3,
+          maxLength: kAnnouncementHtmlMaxLength, // matches the rules' 480 cap
+          maxLines: 4,
+          onChanged: (_) => setState(() {}), // keeps the preview live
           decoration: const InputDecoration(
             labelText: 'Message',
             hintText: 'Shown to every user at the top of every screen',
+            helperText:
+                'Formatting: <b> <i> <u> <br> <a href="https://…"> '
+                '<font color="#16A34A">. Links open in the browser.',
+            helperMaxLines: 3,
           ),
         ),
         const SizedBox(height: 4),
@@ -841,6 +885,36 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
           onSelectionChanged: (selection) =>
               setState(() => _severity = selection.first),
         ),
+        const SizedBox(height: 16),
+        const Text(
+          'Background colour',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _swatch(),
+            for (final hex in _presetColors) ...[
+              const SizedBox(width: 8),
+              _swatch(hex),
+            ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: TextField(
+                controller: _customColor,
+                maxLength: 7, // '#RRGGBB' pasted whole still fits
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  counterText: '',
+                  prefixText: '#',
+                  labelText: 'Custom',
+                  hintText: 'RRGGBB',
+                ),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
         SwitchListTile(
           value: _expiresAt != null,
@@ -856,6 +930,15 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
                 : null,
           ),
         ),
+        if (_draft case final draft?) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'Preview',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          AnnouncementBanner(announcement: draft, onDismiss: () {}),
+        ],
         const SizedBox(height: 12),
         FilledButton.icon(
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
@@ -880,16 +963,57 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
         const Text(
           'Delivered in the app, not as a push notification — users see it the '
           'next time they open RoadMate. Builds older than 0.1.55 cannot show '
-          'notices at all.',
+          'notices at all; mobile builds up to 0.1.67 show the text without '
+          'formatting, links or colour.',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
         ),
       ],
     );
   }
 
+  /// One background swatch; null is "auto" (colour by severity). Tapping just
+  /// fills or clears the hex field, which stays the single source of truth.
+  Widget _swatch([String? hex]) {
+    final value = hex == null ? null : parseHexColor(hex);
+    final selected =
+        value == (_colorHex == null ? null : parseHexColor(_colorHex));
+    return InkWell(
+      onTap: () => setState(() {
+        if (hex == null) {
+          _customColor.clear();
+        } else {
+          _customColor.text = hex.substring(1);
+        }
+      }),
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: value == null ? AppTheme.surfaceAlt : Color(value),
+          border: Border.all(
+            color: selected ? Colors.white : AppTheme.border,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: value == null
+            ? const Icon(
+                Icons.format_color_reset_outlined,
+                size: 15,
+                color: AppTheme.textSecondary,
+              )
+            : null,
+      ),
+    );
+  }
+
   Future<void> _publish() async {
-    final message = _message.text.trim();
-    if (message.isEmpty) {
+    final source = _message.text.trim();
+    // What old (pre-rich) clients will read — and the only thing users of any
+    // build see if the markup is nothing but tags. So it must not be empty.
+    final plain = plainTextOfNotice(source).trim();
+    if (plain.isEmpty) {
       _snack('Type a message first');
       return;
     }
@@ -898,8 +1022,10 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
       await ref
           .read(adminRepositoryProvider)
           .publishAnnouncement(
-            message: message,
+            message: plain,
+            messageHtml: noticeHasMarkup(source) ? source : null,
             severity: _severity,
+            color: _colorHex,
             expiresAt: _expiresAt,
           );
       _snack('Notice published');

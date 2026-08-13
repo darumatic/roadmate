@@ -20,9 +20,16 @@
 /// a notice is seen the next time someone opens the app.
 library;
 
+import 'notice_markup.dart';
+
 /// Longest message an admin may publish — mirrors the 280-char cap in
 /// `firestore.rules` (isValidAnnouncement).
 const int kAnnouncementMaxLength = 280;
+
+/// Longest rich-markup source (`messageHtml`) — larger than the plain cap
+/// because tags cost characters without adding visible text. Mirrors the
+/// 480-char cap in `firestore.rules`.
+const int kAnnouncementHtmlMaxLength = 480;
 
 /// How loud the banner is. Stored as the wire string, so adding a level later
 /// stays additive for old clients (they fall back to [info]).
@@ -48,6 +55,8 @@ enum AnnouncementSeverity {
 class Announcement {
   const Announcement({
     required this.message,
+    this.messageHtml,
+    this.color,
     this.severity = AnnouncementSeverity.info,
     this.publishedAt,
     this.publishedBy,
@@ -55,7 +64,22 @@ class Announcement {
   });
 
   final String message;
+
+  /// Rich source in the safe HTML subset of `notice_markup.dart`, when the
+  /// admin used any markup. [message] always carries the plain-text rendering
+  /// of the same notice — that is what pre-rich clients (0.1.55–0.1.67 mobile
+  /// builds) show, so the two must tell the same story.
+  final String? messageHtml;
+
+  /// `#RRGGBB` background override, or null to colour by [severity]. Kept as
+  /// the wire string; [colorValue] is the parsed form.
+  final String? color;
+
   final AnnouncementSeverity severity;
+
+  /// [color] as opaque ARGB, or null when unset (invalid values were already
+  /// dropped in [fromMap]).
+  int? get colorValue => parseHexColor(color);
 
   /// When an admin published it. Doubles as the notice's identity: dismissal is
   /// remembered per [publishedAt], so editing the message re-shows the banner to
@@ -74,8 +98,14 @@ class Announcement {
   static Announcement? fromMap(Map<String, dynamic>? map) {
     final message = (map?['message'] as String?)?.trim();
     if (message == null || message.isEmpty) return null;
+    final messageHtml = (map?['messageHtml'] as String?)?.trim();
+    final color = map?['color'] as String?;
     return Announcement(
       message: message,
+      // Blank markup or an unparseable colour degrade to the plain notice
+      // rather than suppressing it — additive fields must never cost a message.
+      messageHtml: (messageHtml?.isEmpty ?? true) ? null : messageHtml,
+      color: parseHexColor(color) == null ? null : color,
       severity: AnnouncementSeverity.fromWire(map?['severity'] as String?),
       publishedAt: DateTime.tryParse(map?['publishedAt']?.toString() ?? ''),
       publishedBy: map?['publishedBy'] as String?,
@@ -107,14 +137,26 @@ class Announcement {
   /// than rejected here; the admin form caps the field too.
   static Map<String, Object> editData({
     required String message,
+    String? messageHtml,
     required AnnouncementSeverity severity,
+    String? color,
     DateTime? expiresAt,
   }) {
     final trimmed = message.trim();
+    final richTrimmed = messageHtml?.trim();
     return {
       'message': trimmed.length > kAnnouncementMaxLength
           ? trimmed.substring(0, kAnnouncementMaxLength)
           : trimmed,
+      // Absent, not null/empty, when the notice is plain — so a plain publish
+      // stays byte-identical to the pre-rich write shape.
+      if (richTrimmed != null && richTrimmed.isNotEmpty)
+        'messageHtml': richTrimmed.length > kAnnouncementHtmlMaxLength
+            ? richTrimmed.substring(0, kAnnouncementHtmlMaxLength)
+            : richTrimmed,
+      // Only a colour the rules would accept; anything else falls back to the
+      // severity colour rather than failing the whole publish.
+      if (parseHexColor(color) != null) 'color': color!,
       'severity': severity.wire,
       'expiresAt': ?expiresAt,
     };

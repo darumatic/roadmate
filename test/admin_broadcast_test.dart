@@ -12,7 +12,9 @@ import 'package:roadmate/widgets/announcement_banner.dart';
 
 typedef PublishedNotice = ({
   String message,
+  String? messageHtml,
   AnnouncementSeverity severity,
+  String? color,
   DateTime? expiresAt,
 });
 
@@ -24,11 +26,19 @@ class FakeAdminRepository implements AdminRepository {
   @override
   Future<void> publishAnnouncement({
     required String message,
+    String? messageHtml,
     required AnnouncementSeverity severity,
+    String? color,
     DateTime? expiresAt,
   }) async {
     if (publishError != null) throw publishError!;
-    published.add((message: message, severity: severity, expiresAt: expiresAt));
+    published.add((
+      message: message,
+      messageHtml: messageHtml,
+      severity: severity,
+      color: color,
+      expiresAt: expiresAt,
+    ));
   }
 
   @override
@@ -68,36 +78,91 @@ Future<void> _pumpNoticeTab(
 }
 
 void main() {
+  /// The message box — first field in the form (the second is the custom
+  /// colour hex).
+  Finder messageField() => find.byType(TextField).first;
+
   testWidgets('an admin publishes a notice to everyone', (tester) async {
     final repo = FakeAdminRepository();
     await _pumpNoticeTab(tester, repo: repo);
 
     await tester.enterText(
-      find.byType(TextField),
+      messageField(),
       '  Signing in is now required to report.  ',
     );
     await tester.tap(find.text('Publish'));
     await tester.pumpAndSettle();
 
     expect(repo.published, hasLength(1));
-    // Trimmed, info by default, and up until an admin takes it down.
+    // Trimmed, info by default, and up until an admin takes it down. Plain
+    // text writes the exact pre-rich shape: no markup, no colour.
     expect(
       repo.published.single.message,
       'Signing in is now required to report.',
     );
+    expect(repo.published.single.messageHtml, isNull);
+    expect(repo.published.single.color, isNull);
     expect(repo.published.single.severity, AnnouncementSeverity.info);
     expect(repo.published.single.expiresAt, isNull);
     expect(find.text('Notice published'), findsOneWidget);
+  });
+
+  testWidgets('markup publishes richly with its plain text as the fallback', (
+    tester,
+  ) async {
+    final repo = FakeAdminRepository();
+    await _pumpNoticeTab(tester, repo: repo);
+
+    await tester.enterText(
+      messageField(),
+      'Fuel deal at <b>BP Yass</b> — <a href="https://x.io">tap here</a>',
+    );
+    await tester.pumpAndSettle();
+
+    // Typing brings up a live preview banner of the draft.
+    expect(find.text('Preview'), findsOneWidget);
+    expect(find.byType(AnnouncementBanner), findsOneWidget);
+
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+
+    final notice = repo.published.single;
+    expect(
+      notice.messageHtml,
+      'Fuel deal at <b>BP Yass</b> — <a href="https://x.io">tap here</a>',
+    );
+    // What pre-rich builds will show: the same words, markup resolved away.
+    expect(notice.message, 'Fuel deal at BP Yass — tap here');
+  });
+
+  testWidgets('a swatch tap publishes its colour, auto clears it', (
+    tester,
+  ) async {
+    final repo = FakeAdminRepository();
+    await _pumpNoticeTab(tester, repo: repo);
+
+    await tester.enterText(messageField(), 'Sponsored run');
+    // The hex field is the source of truth; swatches only fill it.
+    await tester.enterText(find.byType(TextField).at(1), '2563EB');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+
+    expect(repo.published.single.color, '#2563EB');
+
+    // An unparseable colour means "auto": published without one. (The button
+    // still reads Publish — the faked live stream never emits.)
+    await tester.enterText(find.byType(TextField).at(1), 'nope');
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+    expect(repo.published.last.color, isNull);
   });
 
   testWidgets('a warning can be set to auto-hide', (tester) async {
     final repo = FakeAdminRepository();
     await _pumpNoticeTab(tester, repo: repo);
 
-    await tester.enterText(
-      find.byType(TextField),
-      'Blitz season starts Monday',
-    );
+    await tester.enterText(messageField(), 'Blitz season starts Monday');
     await tester.tap(find.text('Warning'));
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
@@ -114,12 +179,19 @@ void main() {
     final repo = FakeAdminRepository();
     await _pumpNoticeTab(tester, repo: repo);
 
-    await tester.enterText(find.byType(TextField), '   ');
+    await tester.enterText(messageField(), '   ');
     await tester.tap(find.text('Publish'));
     await tester.pumpAndSettle();
 
     expect(repo.published, isEmpty);
     expect(find.text('Type a message first'), findsOneWidget);
+
+    // Markup that strips to nothing is refused the same way — old builds
+    // would otherwise get a blank notice.
+    await tester.enterText(messageField(), '<b> </b><br>');
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+    expect(repo.published, isEmpty);
   });
 
   testWidgets('the message field caps at the length the rules enforce', (
@@ -127,10 +199,10 @@ void main() {
   ) async {
     await _pumpNoticeTab(tester, repo: FakeAdminRepository());
 
-    // Pins the form to isValidAnnouncement's 280-char cap: a message the rules
-    // would reject must be untypeable rather than fail on submit.
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.maxLength, kAnnouncementMaxLength);
+    // Pins the form to isValidAnnouncement's 480-char markup cap: a notice the
+    // rules would reject must be untypeable rather than fail on submit.
+    final field = tester.widget<TextField>(messageField());
+    expect(field.maxLength, kAnnouncementHtmlMaxLength);
   });
 
   testWidgets('a live notice is previewed, editable and clearable', (
@@ -147,10 +219,11 @@ void main() {
       ),
     );
 
-    // The admin sees exactly what users see, and the form is seeded for edits.
-    expect(find.byType(AnnouncementBanner), findsOneWidget);
+    // The admin sees exactly what users see — the live banner up top and the
+    // seeded draft's preview below — and the form is ready for edits.
+    expect(find.byType(AnnouncementBanner), findsNWidgets(2));
     expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      tester.widget<TextField>(messageField()).controller?.text,
       'Roadworks on the Hume.',
     );
     expect(find.text('Update notice'), findsOneWidget);
@@ -168,7 +241,7 @@ void main() {
     final repo = FakeAdminRepository()..publishError = Exception('offline');
     await _pumpNoticeTab(tester, repo: repo);
 
-    await tester.enterText(find.byType(TextField), 'Anything');
+    await tester.enterText(messageField(), 'Anything');
     await tester.tap(find.text('Publish'));
     await tester.pumpAndSettle();
 

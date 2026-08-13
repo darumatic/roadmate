@@ -293,6 +293,25 @@ Pure logic + expiry in `lib/services/announcement.dart`; covered by
 builds older than 0.1.55 have no listener and never show one at all. Fully
 additive, so those old builds are otherwise unaffected.
 
+**Rich notices (0.1.68+): links, formatting and colour.** Two additive optional
+fields on the same doc: `messageHtml` (≤480 chars, `kAnnouncementHtmlMaxLength`
+— the extra room pays for tags) and `color` (`#RRGGBB` background override;
+foreground auto-picks black/white by luminance, `prefersDarkForeground`).
+`messageHtml` accepts a **safe HTML subset only** — `<b>/<strong>`, `<i>/<em>`,
+`<u>`, `<br>`, `<a href="https://…">` (http/https only; `javascript:`/`mailto:`
+etc. are refused) and `<font color="#RRGGBB">`; entities `&amp; &lt; &gt;
+&quot; &#39; &apos; &nbsp;`. Parsing lives Flutter-free in
+`lib/services/notice_markup.dart` (hand-rolled scanner → flat `NoticeSpan`s;
+unknown tags stripped, their text kept), rendered by `AnnouncementBanner` as
+tappable spans (`url_launcher`, external browser; tests inject `onOpenLink`).
+The admin form is one field that takes markup directly, with preset swatches +
+custom hex and a live draft preview; on publish it always writes the plain-text
+rendering to `message` (via `plainTextOfNotice`) so the two fields tell the same
+story, and a notice with no markup writes the exact pre-rich shape.
+**Retrocompat:** `message` stays required (≤280) — 0.1.55–0.1.67 mobile builds
+render it verbatim, with no formatting, links or colour; they must never be
+shown raw tags. Parser + colour logic in `test/notice_markup_test.dart`.
+
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
 for MVP** — flip `approved` to `true` in the Firebase console. An in-app admin

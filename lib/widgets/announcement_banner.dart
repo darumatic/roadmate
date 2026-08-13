@@ -1,7 +1,10 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/announcement.dart';
+import '../services/notice_markup.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
 
@@ -67,31 +70,119 @@ class _AnnouncementGateState extends ConsumerState<AnnouncementGate> {
   }
 }
 
-/// The banner itself. Public and dependency-free so it can be pumped directly
-/// in widget tests.
-class AnnouncementBanner extends StatelessWidget {
+/// The banner itself. Public and pumpable directly in widget tests: pass
+/// [onOpenLink] there so a tapped link is recorded instead of reaching the
+/// url_launcher plugin.
+///
+/// Rich notices ([Announcement.messageHtml], the safe subset of
+/// `notice_markup.dart`) render as styled spans with tappable links; plain
+/// notices render exactly as they always have. A custom [Announcement.color]
+/// replaces the severity background, with black/white text picked for
+/// contrast.
+class AnnouncementBanner extends StatefulWidget {
   const AnnouncementBanner({
     super.key,
     required this.announcement,
     required this.onDismiss,
+    this.onOpenLink,
   });
 
   final Announcement announcement;
   final VoidCallback onDismiss;
 
+  /// Where link taps go. Null (production) opens the URL in the browser /
+  /// external app; tests inject a recorder.
+  final ValueChanged<String>? onOpenLink;
+
+  @override
+  State<AnnouncementBanner> createState() => _AnnouncementBannerState();
+}
+
+class _AnnouncementBannerState extends State<AnnouncementBanner> {
+  /// Recognizers backing the current build's link spans — replaced wholesale
+  /// each build and disposed with the state, as [TextSpan.recognizer] requires.
+  final List<TapGestureRecognizer> _recognizers = [];
+
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    super.dispose();
+  }
+
+  void _disposeRecognizers() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
+
+  void _open(String url) {
+    final handler = widget.onOpenLink;
+    if (handler != null) {
+      handler(url);
+      return;
+    }
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
   /// Warnings borrow the brand accent (the same orange the update banner and
   /// BLITZ use); ordinary notices stay in the card grey so they read as
-  /// information, not alarm.
-  Color get _background => announcement.severity == AnnouncementSeverity.warning
-      ? AppTheme.accent
-      : AppTheme.surfaceAlt;
+  /// information, not alarm. An admin-picked colour overrides either.
+  Color get _background {
+    final custom = widget.announcement.colorValue;
+    if (custom != null) return Color(custom);
+    return widget.announcement.severity == AnnouncementSeverity.warning
+        ? AppTheme.accent
+        : AppTheme.surfaceAlt;
+  }
 
-  Color get _foreground => announcement.severity == AnnouncementSeverity.warning
-      ? Colors.white
-      : AppTheme.textPrimary;
+  Color get _foreground {
+    final custom = widget.announcement.colorValue;
+    if (custom != null) {
+      return prefersDarkForeground(custom) ? Colors.black : Colors.white;
+    }
+    return widget.announcement.severity == AnnouncementSeverity.warning
+        ? Colors.white
+        : AppTheme.textPrimary;
+  }
+
+  /// The message as spans: plain notices stay a single [Text]; rich ones map
+  /// each parsed [NoticeSpan] onto the base style, links underlined and wired
+  /// to [_open].
+  Widget _message(TextStyle base) {
+    final html = widget.announcement.messageHtml;
+    if (html == null) return Text(widget.announcement.message, style: base);
+    _disposeRecognizers();
+    final spans = <TextSpan>[];
+    for (final span in parseNoticeMarkup(html)) {
+      TapGestureRecognizer? recognizer;
+      final link = span.linkUrl;
+      if (link != null) {
+        recognizer = TapGestureRecognizer()..onTap = () => _open(link);
+        _recognizers.add(recognizer);
+      }
+      spans.add(
+        TextSpan(
+          text: span.text,
+          recognizer: recognizer,
+          style: TextStyle(
+            // The base is already w600; bold steps up from there.
+            fontWeight: span.bold ? FontWeight.w800 : null,
+            fontStyle: span.italic ? FontStyle.italic : null,
+            decoration: (span.underline || link != null)
+                ? TextDecoration.underline
+                : null,
+            color: span.color != null ? Color(span.color!) : null,
+          ),
+        ),
+      );
+    }
+    return Text.rich(TextSpan(style: base, children: spans));
+  }
 
   @override
   Widget build(BuildContext context) {
+    final announcement = widget.announcement;
     return Material(
       color: _background,
       child: SafeArea(
@@ -110,9 +201,8 @@ class AnnouncementBanner extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  announcement.message,
-                  style: TextStyle(
+                child: _message(
+                  TextStyle(
                     color: _foreground,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -124,7 +214,7 @@ class AnnouncementBanner extends StatelessWidget {
                 color: _foreground,
                 visualDensity: VisualDensity.compact,
                 tooltip: 'Dismiss',
-                onPressed: onDismiss,
+                onPressed: widget.onDismiss,
               ),
             ],
           ),

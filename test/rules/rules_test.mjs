@@ -638,6 +638,73 @@ await check(
   })(),
 );
 
+await check(
+  'rich notices: markup and colour are optional, capped and validated',
+  (async () => {
+    // The full rich shape (0.1.68+ admin build): plain fallback + markup + colour.
+    await assertSucceeds(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({
+          message: 'Fuel deal at BP Yass — tap here',
+          messageHtml:
+            'Fuel deal at <b>BP Yass</b> — <a href="https://roadmate.club">tap here</a>',
+          color: '#2563EB',
+        }),
+      ),
+    );
+    // Either rides alone too.
+    await assertSucceeds(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ color: '#f97316' }),
+      ),
+    );
+    // The colour must be exactly #RRGGBB.
+    await assertFails(
+      setDoc(doc(admin, 'announcements/current'), announcement({ color: 'blue' })),
+    );
+    await assertFails(
+      setDoc(doc(admin, 'announcements/current'), announcement({ color: '#25F' })),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ color: '#2563EB99' }),
+      ),
+    );
+    // Markup is a non-empty string under its own 480 cap.
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ messageHtml: '' }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ messageHtml: 'x'.repeat(481) }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ messageHtml: 42 }),
+      ),
+    );
+    // The plain fallback stays mandatory — a rich body cannot replace it.
+    await assertFails(
+      setDoc(doc(admin, 'announcements/current'), {
+        messageHtml: '<b>hi</b>',
+        severity: 'info',
+        publishedAt: serverTimestamp(),
+        publishedBy: 'admin1',
+      }),
+    );
+    await assertSucceeds(deleteDoc(doc(admin, 'announcements/current')));
+  })(),
+);
+
 // ---- Bans (spam control) ----
 // An admin writes bans/{uid}; while it is active that uid may not write
 // anything. Reads stay open, and so does everything the user needs to leave:

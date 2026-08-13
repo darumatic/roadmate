@@ -12,14 +12,33 @@ void main() {
 
   Announcement notice({
     String message = 'Signing in is now required to report.',
+    String? messageHtml,
+    String? color,
     AnnouncementSeverity severity = AnnouncementSeverity.info,
     DateTime? expiresAt,
   }) {
     return Announcement(
       message: message,
+      messageHtml: messageHtml,
+      color: color,
       severity: severity,
       publishedAt: published,
       expiresAt: expiresAt,
+    );
+  }
+
+  /// The banner alone, outside the gate — how the rich-rendering tests pump it,
+  /// with link taps recorded rather than launched.
+  Widget bare(Announcement announcement, {ValueChanged<String>? onOpenLink}) {
+    return MaterialApp(
+      theme: AppTheme.dark,
+      home: Scaffold(
+        body: AnnouncementBanner(
+          announcement: announcement,
+          onDismiss: () {},
+          onOpenLink: onOpenLink,
+        ),
+      ),
     );
   }
 
@@ -115,5 +134,73 @@ void main() {
     );
     expect(material.color, AppTheme.accent);
     expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+  });
+
+  testWidgets('a rich notice renders its markup and opens the tapped link', (
+    tester,
+  ) async {
+    String? opened;
+    await tester.pumpWidget(
+      bare(
+        notice(
+          message: 'Fuel deal at BP Yass — tap here',
+          messageHtml:
+              '<b>Fuel deal</b> at BP Yass — '
+              '<a href="https://example.com/deal">tap here</a>',
+        ),
+        onOpenLink: (url) => opened = url,
+      ),
+    );
+
+    // The markup resolved to styled text — no tag leaks through to the user.
+    expect(
+      find.textContaining('Fuel deal at BP Yass', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('<b>', findRichText: true), findsNothing);
+
+    await tester.tapOnText(find.textRange.ofSubstring('tap here'));
+    expect(opened, 'https://example.com/deal');
+  });
+
+  testWidgets('a custom colour restyles the banner, foreground auto-picked', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      bare(notice(message: 'Sponsored run', color: '#2563EB')),
+    );
+
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(AnnouncementBanner),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.color, const Color(0xFF2563EB));
+    // Blue is dark, so the text goes white for contrast.
+    final text = tester.widget<Text>(find.text('Sponsored run'));
+    expect(text.style?.color, Colors.white);
+  });
+
+  testWidgets('through the gate, a rich notice is still dismissible', (
+    tester,
+  ) async {
+    final store = MemoryAnnouncementDismissStore();
+    final announcement = notice(
+      message: 'Deal — tap',
+      messageHtml: 'Deal — <a href="https://x.io">tap</a>',
+      color: '#16A34A',
+    );
+    await tester.pumpWidget(gate(announcement, store));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnnouncementBanner), findsOneWidget);
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnnouncementBanner), findsNothing);
+    expect(store.dismissKey, announcement.dismissKey);
   });
 }

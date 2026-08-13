@@ -358,18 +358,26 @@ class AdminRepository {
   /// the old `expiresAt` rather than leave it behind.
   Future<void> publishAnnouncement({
     required String message,
+    String? messageHtml,
     required AnnouncementSeverity severity,
+    String? color,
     DateTime? expiresAt,
   }) {
     final data = Announcement.editData(
       message: message,
+      messageHtml: messageHtml,
       severity: severity,
+      color: color,
       expiresAt: expiresAt,
     );
     final expiry = data['expiresAt'];
     return _announcement.set({
       'message': data['message'],
       'severity': data['severity'],
+      // Rich fields ride along only when editData kept them, so a plain
+      // notice writes the exact pre-rich shape.
+      if (data['messageHtml'] is String) 'messageHtml': data['messageHtml'],
+      if (data['color'] is String) 'color': data['color'],
       if (expiry is DateTime) 'expiresAt': Timestamp.fromDate(expiry),
       'publishedAt': FieldValue.serverTimestamp(),
       'publishedBy': _adminMarker,

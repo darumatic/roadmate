@@ -58,6 +58,39 @@ void main() {
     test('trims the message', () {
       expect(Announcement.fromMap(raw(message: '  hi  '))!.message, 'hi');
     });
+
+    test('parses the rich markup and colour when present', () {
+      final announcement = Announcement.fromMap({
+        ...raw(),
+        'messageHtml': 'Fuel deal — <a href="https://x.io">tap</a>',
+        'color': '#2563EB',
+      })!;
+      expect(
+        announcement.messageHtml,
+        'Fuel deal — <a href="https://x.io">tap</a>',
+      );
+      expect(announcement.color, '#2563EB');
+      expect(announcement.colorValue, 0xFF2563EB);
+    });
+
+    test('a plain notice has neither markup nor colour', () {
+      final announcement = Announcement.fromMap(raw())!;
+      expect(announcement.messageHtml, isNull);
+      expect(announcement.color, isNull);
+      expect(announcement.colorValue, isNull);
+    });
+
+    test('blank markup and a bad colour degrade to the plain notice', () {
+      // Additive fields must never cost a message: the banner still shows,
+      // rendered from the plain text with the severity colour.
+      final announcement = Announcement.fromMap({
+        ...raw(),
+        'messageHtml': '   ',
+        'color': 'blue',
+      })!;
+      expect(announcement.messageHtml, isNull);
+      expect(announcement.color, isNull);
+    });
   });
 
   group('isVisibleAt', () {
@@ -152,6 +185,49 @@ void main() {
         severity: AnnouncementSeverity.info,
       );
       expect((data['message']! as String).length, kAnnouncementMaxLength);
+    });
+
+    test('carries markup and colour when given', () {
+      final data = Announcement.editData(
+        message: 'Fuel deal — tap',
+        messageHtml: 'Fuel deal — <a href="https://x.io">tap</a>',
+        severity: AnnouncementSeverity.info,
+        color: '#2563EB',
+      );
+      expect(data['messageHtml'], 'Fuel deal — <a href="https://x.io">tap</a>');
+      expect(data['color'], '#2563EB');
+    });
+
+    test('a plain publish writes the exact pre-rich shape', () {
+      // Byte-identical keys to what 0.1.55 shipped — the retrocompat contract.
+      final data = Announcement.editData(
+        message: 'hi',
+        severity: AnnouncementSeverity.info,
+      );
+      expect(data.keys, ['message', 'severity']);
+    });
+
+    test('blank markup and an invalid colour are omitted, not written', () {
+      final data = Announcement.editData(
+        message: 'hi',
+        messageHtml: '   ',
+        severity: AnnouncementSeverity.info,
+        color: 'not-a-colour',
+      );
+      expect(data.containsKey('messageHtml'), isFalse);
+      expect(data.containsKey('color'), isFalse);
+    });
+
+    test('truncates markup past its own larger cap', () {
+      final data = Announcement.editData(
+        message: 'hi',
+        messageHtml: 'y' * (kAnnouncementHtmlMaxLength + 40),
+        severity: AnnouncementSeverity.info,
+      );
+      expect(
+        (data['messageHtml']! as String).length,
+        kAnnouncementHtmlMaxLength,
+      );
     });
   });
 }

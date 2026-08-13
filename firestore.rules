@@ -444,12 +444,18 @@ service cloud.firestore {
     // An admin notice. Same shape discipline as isValidBan: a capped key set so
     // a notice can never smuggle in a field another rule might read,
     // server-stamped `publishedAt` so it can't be back-dated, and `publishedBy`
-    // pinned to the issuing admin for the audit trail. The 280-char cap must
-    // stay in sync with kAnnouncementMaxLength in lib/services/announcement.dart.
+    // pinned to the issuing admin for the audit trail. The 280/480-char caps
+    // must stay in sync with kAnnouncementMaxLength/kAnnouncementHtmlMaxLength
+    // in lib/services/announcement.dart.
+    //
+    // `messageHtml` (rich subset, rendered by 0.1.68+) and `color` (#RRGGBB
+    // background) are optional and additive; `message` stays required as the
+    // plain-text fallback older clients render.
     function isValidAnnouncement() {
       let d = request.resource.data;
       return d.keys().hasOnly([
-          'message', 'severity', 'publishedAt', 'publishedBy', 'expiresAt'
+          'message', 'severity', 'publishedAt', 'publishedBy', 'expiresAt',
+          'messageHtml', 'color'
         ])
         && d.message is string
         && d.message.size() > 0
@@ -457,7 +463,13 @@ service cloud.firestore {
         && d.severity in ['info', 'warning']
         && d.publishedAt == request.time
         && d.publishedBy == request.auth.uid
-        && (!('expiresAt' in d.keys()) || d.expiresAt is timestamp);
+        && (!('expiresAt' in d.keys()) || d.expiresAt is timestamp)
+        && (!('messageHtml' in d.keys())
+          || (d.messageHtml is string
+            && d.messageHtml.size() > 0
+            && d.messageHtml.size() <= 480))
+        && (!('color' in d.keys())
+          || (d.color is string && d.color.matches('#[0-9a-fA-F]{6}')));
     }
 
     // Shared shape for any client-created site; the create rule adds the
