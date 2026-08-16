@@ -73,8 +73,39 @@ if [ -z "$registrant" ]; then
   echo "ERROR: no web_plugin_registrant.dart found after build" >&2
   exit 1
 fi
+# Only actual web plugin implementations appear in the registrant — they
+# declare a pluginClass (or default_package fileName) under
+# flutter.plugin.platforms.web in their pubspec. Name-matching alone
+# false-positived on google_identity_services_web, a plain JS-interop
+# package that never registers (broke the v0.1.71 release).
+web_plugins="$(python3 - <<'PY'
+import json
+import pathlib
+import re
+
+cfg = json.load(open('.dart_tool/package_config.json'))
+for pkg in cfg['packages']:
+    name = pkg['name']
+    if not name.endswith('_web'):
+        continue
+    root = pkg['rootUri']
+    if root.startswith('file://'):
+        root = root[len('file://'):]
+    path = pathlib.Path(root)
+    if not path.is_absolute():
+        path = pathlib.Path('.dart_tool') / path
+    try:
+        pubspec = (path / 'pubspec.yaml').read_text()
+    except OSError:
+        continue
+    is_web_plugin = re.search(r'^\s+web:\s*$', pubspec, re.M) and (
+        'pluginClass:' in pubspec or 'fileName:' in pubspec)
+    if is_web_plugin:
+        print(name)
+PY
+)"
 missing=0
-for pkg in $(grep -oE '"name": *"[a-z0-9_]+_web"' .dart_tool/package_config.json | grep -oE '[a-z0-9_]+_web'); do
+for pkg in $web_plugins; do
   if ! grep -q "package:${pkg}/" "$registrant"; then
     echo "ERROR: ${pkg} is resolved but not registered in ${registrant}" >&2
     echo "       Stale build cache — run 'flutter clean' and rebuild." >&2
