@@ -1,4 +1,3 @@
-• Notices from the RoadMate team can now include tappable links, formatting and colours
-• Tap a site's address to open it straight in your maps app
-• Fresh "RoadMate Australia" branding on the home screen
+• Google sign-in now uses your phone's built-in account picker — one tap, no browser page, no typing your email and password
+• Fixes the sign-in error some drivers hit on earlier versions
 • Small fixes and polish
