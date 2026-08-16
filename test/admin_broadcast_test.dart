@@ -15,6 +15,7 @@ typedef PublishedNotice = ({
   String? messageHtml,
   AnnouncementSeverity severity,
   String? color,
+  String? cta,
   DateTime? expiresAt,
 });
 
@@ -29,6 +30,7 @@ class FakeAdminRepository implements AdminRepository {
     String? messageHtml,
     required AnnouncementSeverity severity,
     String? color,
+    String? cta,
     DateTime? expiresAt,
   }) async {
     if (publishError != null) throw publishError!;
@@ -37,6 +39,7 @@ class FakeAdminRepository implements AdminRepository {
       messageHtml: messageHtml,
       severity: severity,
       color: color,
+      cta: cta,
       expiresAt: expiresAt,
     ));
   }
@@ -102,6 +105,7 @@ void main() {
     );
     expect(repo.published.single.messageHtml, isNull);
     expect(repo.published.single.color, isNull);
+    expect(repo.published.single.cta, isNull);
     expect(repo.published.single.severity, AnnouncementSeverity.info);
     expect(repo.published.single.expiresAt, isNull);
     expect(find.text('Notice published'), findsOneWidget);
@@ -164,13 +168,62 @@ void main() {
 
     await tester.enterText(messageField(), 'Blitz season starts Monday');
     await tester.tap(find.text('Warning'));
-    await tester.tap(find.byType(SwitchListTile));
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Auto-hide after 7 days'),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Publish'));
     await tester.pumpAndSettle();
 
     expect(repo.published.single.severity, AnnouncementSeverity.warning);
     expect(repo.published.single.expiresAt, isNotNull);
+  });
+
+  testWidgets('the rate toggle prefills the plea and publishes the CTA', (
+    tester,
+  ) async {
+    final repo = FakeAdminRepository();
+    await _pumpNoticeTab(tester, repo: repo);
+
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Ask users to rate the app'),
+    );
+    await tester.pumpAndSettle();
+
+    // An empty box is seeded with the plea, and the preview already carries
+    // the specialised store button mobile users will see.
+    expect(
+      tester.widget<TextField>(messageField()).controller?.text,
+      'Enjoy the app? Would you mind rating us?',
+    );
+    expect(find.text('Rate RoadMate'), findsOneWidget);
+
+    await tester.tap(find.text('Publish'));
+    await tester.pumpAndSettle();
+
+    expect(repo.published.single.cta, kAnnouncementCtaRate);
+    expect(
+      repo.published.single.message,
+      'Enjoy the app? Would you mind rating us?',
+    );
+  });
+
+  testWidgets('the rate toggle never overwrites a typed message', (
+    tester,
+  ) async {
+    final repo = FakeAdminRepository();
+    await _pumpNoticeTab(tester, repo: repo);
+
+    await tester.enterText(messageField(), 'Loving the new Nearby tab?');
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Ask users to rate the app'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(messageField()).controller?.text,
+      'Loving the new Nearby tab?',
+    );
   });
 
   testWidgets('an empty message is refused before it reaches Firestore', (
@@ -215,16 +268,26 @@ void main() {
       live: Announcement(
         message: 'Roadworks on the Hume.',
         severity: AnnouncementSeverity.warning,
+        cta: kAnnouncementCtaRate,
         publishedAt: DateTime.now().subtract(const Duration(hours: 2)),
       ),
     );
 
     // The admin sees exactly what users see — the live banner up top and the
-    // seeded draft's preview below — and the form is ready for edits.
+    // seeded draft's preview below — and the form is ready for edits,
+    // including the rate toggle mirroring the live CTA.
     expect(find.byType(AnnouncementBanner), findsNWidgets(2));
     expect(
       tester.widget<TextField>(messageField()).controller?.text,
       'Roadworks on the Hume.',
+    );
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, 'Ask users to rate the app'),
+          )
+          .value,
+      isTrue,
     );
     expect(find.text('Update notice'), findsOneWidget);
 

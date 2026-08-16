@@ -312,6 +312,27 @@ story, and a notice with no markup writes the exact pre-rich shape.
 render it verbatim, with no formatting, links or colour; they must never be
 shown raw tags. Parser + colour logic in `test/notice_markup_test.dart`.
 
+**Rate notices (0.1.74+): the store-rating CTA.** A third additive optional
+field on the same doc: `cta` — a string with `'rate'` as its only value so far
+(`kAnnouncementCtaRate`; a string, not a bool, so later CTAs stay additive like
+severity levels, and an unknown value renders as a plain notice). A rate notice
+grows a specialised **"Rate RoadMate"** button in the banner that opens the
+platform's own store: Google Play on Android, the App Store **rating sheet** on
+iOS (`?action=write-review`) — `rateUrlFor` in `lib/services/min_version.dart`
+beside the store URLs it reuses. On platforms with nothing to rate (**web**,
+desktop) `rateUrlFor` is null and `AnnouncementGate` hides a rate notice
+**entirely** — web users receive nothing, by design. The admin Notice tab has an
+"Ask users to rate the app" toggle that seeds an empty message box with the
+plea ("Enjoy the app? Would you mind rating us?") without overwriting typed
+text; both previews pass a stand-in URL so the button stays visible while
+composing on web. **Retrocompat:** mobile builds 0.1.55–0.1.73 show just the
+`message` text, without the button, and pre-0.1.55 builds nothing — the button
+reaches users only from builds that ship it (the owner's iOS 0.1.73 was cut
+just before this landed, so on mobile the button starts at 0.1.74). Covered across
+`test/store_links_test.dart`, `test/announcement_test.dart`,
+`test/announcement_banner_test.dart`, `test/admin_broadcast_test.dart` and the
+`cta` checks in `test/rules/rules_test.mjs`.
+
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
 for MVP** — flip `approved` to `true` in the Firebase console. An in-app admin

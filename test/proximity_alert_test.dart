@@ -523,6 +523,5 @@ void main() {
       expect(other!.site.id, 's');
       expect(other.near, isTrue);
     });
-
   });
 }

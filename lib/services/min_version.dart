@@ -60,6 +60,26 @@ List<StoreLink> storeLinksFor({
   }
 }
 
+/// The App Store listing with Apple's write-review deep link, which lands the
+/// user straight on the rating sheet instead of the product page.
+const String kAppStoreReviewUrl = '$kAppStoreUrl?action=write-review';
+
+/// The URL a "rate the app" button opens: each native app's own store (Play
+/// has no direct-review deep link, so Android gets the listing), and null
+/// where there is nothing to rate — web and desktop dev runs. Rate notices
+/// (`Announcement.asksForRating`) are hidden entirely when this is null.
+String? rateUrlFor({required bool isWeb, required TargetPlatform platform}) {
+  if (isWeb) return null;
+  switch (platform) {
+    case TargetPlatform.android:
+      return kPlayStoreUrl;
+    case TargetPlatform.iOS:
+      return kAppStoreReviewUrl;
+    default:
+      return null;
+  }
+}
+
 /// Whether the "Support the app" (Buy Me a Coffee) donation UI may be shown.
 /// Hidden in the native iOS app: App Store guideline 3.1.1 forbids external
 /// donation mechanisms (rejection of 0.1.38). Android and web keep it.

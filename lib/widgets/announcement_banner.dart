@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/announcement.dart';
+import '../services/min_version.dart';
 import '../services/notice_markup.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
@@ -54,14 +56,19 @@ class _AnnouncementGateState extends ConsumerState<AnnouncementGate> {
   @override
   Widget build(BuildContext context) {
     final announcement = ref.watch(announcementProvider).value;
+    // Where this runtime could be rated — null on web/desktop, so a rate
+    // notice is not shown at all there (nothing to rate, no button to press).
+    final rateUrl = rateUrlFor(isWeb: kIsWeb, platform: defaultTargetPlatform);
     final visible =
         announcement != null &&
-        announcement.isVisibleAt(DateTime.now(), dismissedKey: _dismissedKey);
+        announcement.isVisibleAt(DateTime.now(), dismissedKey: _dismissedKey) &&
+        (!announcement.asksForRating || rateUrl != null);
     if (!visible) return widget.child;
     return Column(
       children: [
         AnnouncementBanner(
           announcement: announcement,
+          rateUrl: rateUrl,
           onDismiss: () => _dismiss(announcement),
         ),
         Expanded(child: widget.child),
@@ -84,11 +91,18 @@ class AnnouncementBanner extends StatefulWidget {
     super.key,
     required this.announcement,
     required this.onDismiss,
+    this.rateUrl,
     this.onOpenLink,
   });
 
   final Announcement announcement;
   final VoidCallback onDismiss;
+
+  /// The store-review URL the Rate button opens when [announcement] asks for a
+  /// rating. The gate passes the running platform's own store (`rateUrlFor`);
+  /// the admin preview passes a stand-in so the button is visible while
+  /// composing. Null means no button — the caller decides, never this widget.
+  final String? rateUrl;
 
   /// Where link taps go. Null (production) opens the URL in the browser /
   /// external app; tests inject a recorder.
@@ -180,9 +194,38 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
     return Text.rich(TextSpan(style: base, children: spans));
   }
 
+  /// The specialised store CTA of a rate notice: inverted colours so it stands
+  /// out on any banner background, opening whichever store [widget.rateUrl]
+  /// points at (Play on Android, the App Store rating sheet on iOS).
+  Widget _rateButton(String url) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.icon(
+          onPressed: () => _open(url),
+          icon: const Icon(Icons.star_rounded, size: 16),
+          label: const Text('Rate RoadMate'),
+          style: FilledButton.styleFrom(
+            backgroundColor: _foreground,
+            foregroundColor: _background,
+            visualDensity: VisualDensity.compact,
+            minimumSize: const Size(0, 34),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final announcement = widget.announcement;
+    final rateUrl = announcement.asksForRating ? widget.rateUrl : null;
     return Material(
       color: _background,
       child: SafeArea(
@@ -201,12 +244,19 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _message(
-                  TextStyle(
-                    color: _foreground,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _message(
+                      TextStyle(
+                        color: _foreground,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (rateUrl != null) _rateButton(rateUrl),
+                  ],
                 ),
               ),
               IconButton(

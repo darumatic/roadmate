@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +17,7 @@ void main() {
     String? messageHtml,
     String? color,
     AnnouncementSeverity severity = AnnouncementSeverity.info,
+    String? cta,
     DateTime? expiresAt,
   }) {
     return Announcement(
@@ -22,6 +25,7 @@ void main() {
       messageHtml: messageHtml,
       color: color,
       severity: severity,
+      cta: cta,
       publishedAt: published,
       expiresAt: expiresAt,
     );
@@ -29,12 +33,17 @@ void main() {
 
   /// The banner alone, outside the gate — how the rich-rendering tests pump it,
   /// with link taps recorded rather than launched.
-  Widget bare(Announcement announcement, {ValueChanged<String>? onOpenLink}) {
+  Widget bare(
+    Announcement announcement, {
+    String? rateUrl,
+    ValueChanged<String>? onOpenLink,
+  }) {
     return MaterialApp(
       theme: AppTheme.dark,
       home: Scaffold(
         body: AnnouncementBanner(
           announcement: announcement,
+          rateUrl: rateUrl,
           onDismiss: () {},
           onOpenLink: onOpenLink,
         ),
@@ -182,6 +191,81 @@ void main() {
     // Blue is dark, so the text goes white for contrast.
     final text = tester.widget<Text>(find.text('Sponsored run'));
     expect(text.style?.color, Colors.white);
+  });
+
+  testWidgets('a rate notice shows the store button and opens the store', (
+    tester,
+  ) async {
+    String? opened;
+    await tester.pumpWidget(
+      bare(
+        notice(
+          message: 'Enjoy the app? Would you mind rating us?',
+          cta: kAnnouncementCtaRate,
+        ),
+        rateUrl: 'https://store.example/rate',
+        onOpenLink: (url) => opened = url,
+      ),
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Rate RoadMate'));
+    expect(opened, 'https://store.example/rate');
+  });
+
+  testWidgets('an ordinary notice never grows a rate button', (tester) async {
+    // Even with a store available: the button belongs to the CTA, not the
+    // platform.
+    await tester.pumpWidget(
+      bare(notice(), rateUrl: 'https://store.example/rate'),
+    );
+    expect(find.text('Rate RoadMate'), findsNothing);
+  });
+
+  testWidgets(
+    'through the gate, Android gets the rate notice with its button',
+    (tester) async {
+      // flutter test reports TargetPlatform.android, so the gate resolves the
+      // Play listing — the same path a phone takes.
+      await tester.pumpWidget(
+        gate(
+          notice(cta: kAnnouncementCtaRate),
+          MemoryAnnouncementDismissStore(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AnnouncementBanner), findsOneWidget);
+      expect(find.text('Rate RoadMate'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a rate notice is hidden entirely where there is no store', (
+    tester,
+  ) async {
+    // Desktop stands in for "no store to rate in" (web's kIsWeb cannot be
+    // faked in a VM test; rateUrlFor's own test covers it). Reset in the body,
+    // not addTearDown — the binding checks debug variables before teardowns.
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+
+    await tester.pumpWidget(
+      gate(notice(cta: kAnnouncementCtaRate), MemoryAnnouncementDismissStore()),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(AnnouncementBanner), findsNothing);
+    expect(find.text('app'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('an ordinary notice still shows where there is no store', (
+    tester,
+  ) async {
+    // Only the rate CTA hides on an unratable platform — never the message.
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+
+    await tester.pumpWidget(gate(notice(), MemoryAnnouncementDismissStore()));
+    await tester.pumpAndSettle();
+    expect(find.byType(AnnouncementBanner), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('through the gate, a rich notice is still dismissible', (

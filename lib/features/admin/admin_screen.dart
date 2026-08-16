@@ -7,6 +7,7 @@ import '../../models/site.dart';
 import '../../models/site_report.dart';
 import '../../models/user_ban.dart';
 import '../../services/announcement.dart';
+import '../../services/min_version.dart';
 import '../../services/notice_markup.dart';
 import '../../services/auth_service.dart';
 import '../../services/ban_logic.dart';
@@ -779,8 +780,13 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
   final TextEditingController _message = TextEditingController();
   final TextEditingController _customColor = TextEditingController();
   AnnouncementSeverity _severity = AnnouncementSeverity.info;
+  bool _askForRating = false;
   DateTime? _expiresAt;
   bool _busy = false;
+
+  /// Seeded into an empty message box when the rate toggle goes on — the
+  /// admin can still edit it before publishing.
+  static const String _ratePrompt = 'Enjoy the app? Would you mind rating us?';
 
   /// The published notice already copied into the form, so the field is seeded
   /// once (for editing) without fighting the admin's typing on every snapshot.
@@ -825,6 +831,7 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
       messageHtml: noticeHasMarkup(source) ? source : null,
       severity: _severity,
       color: _colorHex,
+      cta: _askForRating ? kAnnouncementCtaRate : null,
     );
   }
 
@@ -836,6 +843,7 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
       _message.text = live.messageHtml ?? live.message;
       _customColor.text = (live.color ?? '').replaceFirst('#', '');
       _severity = live.severity;
+      _askForRating = live.asksForRating;
       _expiresAt = live.expiresAt;
     }
 
@@ -843,7 +851,14 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
       padding: const EdgeInsets.all(20),
       children: [
         if (live != null) ...[
-          AnnouncementBanner(announcement: live, onDismiss: () {}),
+          // The stand-in rateUrl keeps the Rate button visible in these
+          // previews even though the admin is usually on web, where the gate
+          // would hide a rate notice entirely.
+          AnnouncementBanner(
+            announcement: live,
+            rateUrl: kPlayStoreUrl,
+            onDismiss: () {},
+          ),
           const SizedBox(height: 8),
           Text(
             live.publishedAt == null
@@ -917,6 +932,22 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
         ),
         const SizedBox(height: 12),
         SwitchListTile(
+          value: _askForRating,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Ask users to rate the app'),
+          subtitle: const Text(
+            'Adds a Rate button — Android opens Google Play, iOS the App '
+            'Store. Web users never see this notice.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          onChanged: (on) => setState(() {
+            _askForRating = on;
+            if (on && _message.text.trim().isEmpty) {
+              _message.text = _ratePrompt;
+            }
+          }),
+        ),
+        SwitchListTile(
           value: _expiresAt != null,
           contentPadding: EdgeInsets.zero,
           title: const Text('Auto-hide after 7 days'),
@@ -937,7 +968,11 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 6),
-          AnnouncementBanner(announcement: draft, onDismiss: () {}),
+          AnnouncementBanner(
+            announcement: draft,
+            rateUrl: kPlayStoreUrl,
+            onDismiss: () {},
+          ),
         ],
         const SizedBox(height: 12),
         FilledButton.icon(
@@ -964,7 +999,8 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
           'Delivered in the app, not as a push notification — users see it the '
           'next time they open RoadMate. Builds older than 0.1.55 cannot show '
           'notices at all; mobile builds up to 0.1.67 show the text without '
-          'formatting, links or colour.',
+          'formatting, links or colour, and up to 0.1.73 without the Rate '
+          'button.',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
         ),
       ],
@@ -1026,6 +1062,7 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
             messageHtml: noticeHasMarkup(source) ? source : null,
             severity: _severity,
             color: _colorHex,
+            cta: _askForRating ? kAnnouncementCtaRate : null,
             expiresAt: _expiresAt,
           );
       _snack('Notice published');

@@ -517,27 +517,30 @@ void main() {
       expect(anon.tokenRefreshes, [true]);
     });
 
-    test('a link conflict signs in with the server-returned credential', () async {
-      final anon = FakeUser(
-        anonymous: true,
-        linkCredentialError: FirebaseAuthException(
-          code: 'credential-already-in-use',
-          credential: GoogleAuthProvider.credential(idToken: 'server-minted'),
-        ),
-      );
-      final auth = FakeFirebaseAuth()..current = anon;
+    test(
+      'a link conflict signs in with the server-returned credential',
+      () async {
+        final anon = FakeUser(
+          anonymous: true,
+          linkCredentialError: FirebaseAuthException(
+            code: 'credential-already-in-use',
+            credential: GoogleAuthProvider.credential(idToken: 'server-minted'),
+          ),
+        );
+        final auth = FakeFirebaseAuth()..current = anon;
 
-      await _controller(
-        auth,
-        isWeb: false,
-        sheet: true,
-        obtain: () async => sheetCredential(),
-      ).signInWithGoogle();
+        await _controller(
+          auth,
+          isWeb: false,
+          sheet: true,
+          obtain: () async => sheetCredential(),
+        ).signInWithGoogle();
 
-      expect(auth.credentialSignIns, 1);
-      final used = auth.signedInCredentials.single as OAuthCredential;
-      expect(used.idToken, 'server-minted');
-    });
+        expect(auth.credentialSignIns, 1);
+        final used = auth.signedInCredentials.single as OAuthCredential;
+        expect(used.idToken, 'server-minted');
+      },
+    );
 
     test('other link failures rethrow instead of signing in', () async {
       final anon = FakeUser(

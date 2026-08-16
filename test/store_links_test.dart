@@ -34,6 +34,41 @@ void main() {
     });
   });
 
+  group('rateUrlFor', () {
+    test('Android rates on Google Play', () {
+      expect(
+        rateUrlFor(isWeb: false, platform: TargetPlatform.android),
+        kPlayStoreUrl,
+      );
+    });
+
+    test('iOS lands straight on the App Store rating sheet', () {
+      expect(
+        rateUrlFor(isWeb: false, platform: TargetPlatform.iOS),
+        kAppStoreReviewUrl,
+      );
+      expect(kAppStoreReviewUrl, contains('id6788635496'));
+      expect(kAppStoreReviewUrl, contains('action=write-review'));
+    });
+
+    test('web has nothing to rate, even in mobile browsers', () {
+      // Rate notices are hidden entirely wherever this is null.
+      expect(rateUrlFor(isWeb: true, platform: TargetPlatform.iOS), isNull);
+      expect(rateUrlFor(isWeb: true, platform: TargetPlatform.android), isNull);
+    });
+
+    test('desktop dev runs have nothing to rate', () {
+      for (final platform in [
+        TargetPlatform.linux,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.fuchsia,
+      ]) {
+        expect(rateUrlFor(isWeb: false, platform: platform), isNull);
+      }
+    });
+  });
+
   group('showDonationLink', () {
     test('hidden only in the native iOS app (App Store guideline 3.1.1)', () {
       expect(

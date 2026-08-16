@@ -91,6 +91,27 @@ void main() {
       expect(announcement.messageHtml, isNull);
       expect(announcement.color, isNull);
     });
+
+    test('parses the rate CTA', () {
+      final announcement = Announcement.fromMap({...raw(), 'cta': 'rate'})!;
+      expect(announcement.cta, kAnnouncementCtaRate);
+      expect(announcement.asksForRating, isTrue);
+    });
+
+    test('a plain notice asks for nothing', () {
+      expect(Announcement.fromMap(raw())!.asksForRating, isFalse);
+    });
+
+    test('an unknown CTA still shows as a plain notice', () {
+      // Additive-change guarantee, same as severity: a CTA this build has
+      // never heard of must not cost anyone the message — or hide it the way
+      // an unratable platform hides a rate notice.
+      final announcement = Announcement.fromMap({
+        ...raw(),
+        'cta': 'subscribe',
+      })!;
+      expect(announcement.asksForRating, isFalse);
+    });
   });
 
   group('isVisibleAt', () {
@@ -216,6 +237,29 @@ void main() {
       );
       expect(data.containsKey('messageHtml'), isFalse);
       expect(data.containsKey('color'), isFalse);
+    });
+
+    test('carries the rate CTA when set, omits it otherwise', () {
+      final data = Announcement.editData(
+        message: 'Enjoy the app? Would you mind rating us?',
+        severity: AnnouncementSeverity.info,
+        cta: kAnnouncementCtaRate,
+      );
+      expect(data['cta'], 'rate');
+
+      // Absent (not null) without one — and an unknown value is dropped
+      // rather than written, so the rules' allow-list can stay exact.
+      final plain = Announcement.editData(
+        message: 'hi',
+        severity: AnnouncementSeverity.info,
+      );
+      expect(plain.containsKey('cta'), isFalse);
+      final unknown = Announcement.editData(
+        message: 'hi',
+        severity: AnnouncementSeverity.info,
+        cta: 'subscribe',
+      );
+      expect(unknown.containsKey('cta'), isFalse);
     });
 
     test('truncates markup past its own larger cap', () {

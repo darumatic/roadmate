@@ -31,6 +31,11 @@ const int kAnnouncementMaxLength = 280;
 /// 480-char cap in `firestore.rules`.
 const int kAnnouncementHtmlMaxLength = 480;
 
+/// The one `cta` value defined so far: ask the reader to rate the app in
+/// their platform's store. A string (not a bool) so later CTAs stay additive
+/// exactly like [AnnouncementSeverity] levels.
+const String kAnnouncementCtaRate = 'rate';
+
 /// How loud the banner is. Stored as the wire string, so adding a level later
 /// stays additive for old clients (they fall back to [info]).
 enum AnnouncementSeverity {
@@ -58,6 +63,7 @@ class Announcement {
     this.messageHtml,
     this.color,
     this.severity = AnnouncementSeverity.info,
+    this.cta,
     this.publishedAt,
     this.publishedBy,
     this.expiresAt,
@@ -76,6 +82,16 @@ class Announcement {
   final String? color;
 
   final AnnouncementSeverity severity;
+
+  /// Optional call-to-action, kept as the wire string ([kAnnouncementCtaRate]
+  /// is the only value so far). An unknown value from a newer admin build
+  /// renders as a plain notice — a CTA must never cost anyone the message.
+  final String? cta;
+
+  /// Whether this notice asks the reader to rate the app. The gate hides such
+  /// a notice entirely on platforms with no store to rate in (web, desktop);
+  /// mobile builds 0.1.55–0.1.73 show just the text, without the button.
+  bool get asksForRating => cta == kAnnouncementCtaRate;
 
   /// [color] as opaque ARGB, or null when unset (invalid values were already
   /// dropped in [fromMap]).
@@ -107,6 +123,7 @@ class Announcement {
       messageHtml: (messageHtml?.isEmpty ?? true) ? null : messageHtml,
       color: parseHexColor(color) == null ? null : color,
       severity: AnnouncementSeverity.fromWire(map?['severity'] as String?),
+      cta: map?['cta'] as String?,
       publishedAt: DateTime.tryParse(map?['publishedAt']?.toString() ?? ''),
       publishedBy: map?['publishedBy'] as String?,
       expiresAt: DateTime.tryParse(map?['expiresAt']?.toString() ?? ''),
@@ -140,6 +157,7 @@ class Announcement {
     String? messageHtml,
     required AnnouncementSeverity severity,
     String? color,
+    String? cta,
     DateTime? expiresAt,
   }) {
     final trimmed = message.trim();
@@ -157,6 +175,9 @@ class Announcement {
       // Only a colour the rules would accept; anything else falls back to the
       // severity colour rather than failing the whole publish.
       if (parseHexColor(color) != null) 'color': color!,
+      // Absent (not null) for an ordinary notice — same discipline as
+      // messageHtml, so a plain publish keeps the pre-CTA write shape.
+      if (cta == kAnnouncementCtaRate) 'cta': cta!,
       'severity': severity.wire,
       'expiresAt': ?expiresAt,
     };

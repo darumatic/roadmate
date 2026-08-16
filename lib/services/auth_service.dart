@@ -98,7 +98,8 @@ class AuthController {
     this.isStandalone = display_mode.isStandaloneDisplayMode,
     bool? useGoogleCredentialSheet,
     Future<OAuthCredential?> Function()? obtainGoogleCredential,
-  }) : useGoogleCredentialSheet = useGoogleCredentialSheet ??
+  }) : useGoogleCredentialSheet =
+           useGoogleCredentialSheet ??
            (!kIsWeb && defaultTargetPlatform == TargetPlatform.android),
        obtainGoogleCredential =
            obtainGoogleCredential ?? GoogleCredentialSource().obtain;

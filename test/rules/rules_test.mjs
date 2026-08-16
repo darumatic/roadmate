@@ -705,6 +705,33 @@ await check(
   })(),
 );
 
+await check(
+  'rate notices: cta is optional and only ever "rate"',
+  (async () => {
+    // The rate-us notice a 0.1.74+ admin build publishes.
+    await assertSucceeds(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({
+          message: 'Enjoy the app? Would you mind rating us?',
+          cta: 'rate',
+        }),
+      ),
+    );
+    // Values outside the allow-list — including non-strings — are rejected.
+    await assertFails(
+      setDoc(
+        doc(admin, 'announcements/current'),
+        announcement({ cta: 'subscribe' }),
+      ),
+    );
+    await assertFails(
+      setDoc(doc(admin, 'announcements/current'), announcement({ cta: true })),
+    );
+    await assertSucceeds(deleteDoc(doc(admin, 'announcements/current')));
+  })(),
+);
+
 // ---- Bans (spam control) ----
 // An admin writes bans/{uid}; while it is active that uid may not write
 // anything. Reads stay open, and so does everything the user needs to leave:

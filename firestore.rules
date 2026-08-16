@@ -448,14 +448,15 @@ service cloud.firestore {
     // must stay in sync with kAnnouncementMaxLength/kAnnouncementHtmlMaxLength
     // in lib/services/announcement.dart.
     //
-    // `messageHtml` (rich subset, rendered by 0.1.70+) and `color` (#RRGGBB
-    // background) are optional and additive; `message` stays required as the
+    // `messageHtml` (rich subset, rendered by 0.1.70+), `color` (#RRGGBB
+    // background) and `cta` ('rate' — the store-rating button, rendered by
+    // 0.1.74+) are optional and additive; `message` stays required as the
     // plain-text fallback older clients render.
     function isValidAnnouncement() {
       let d = request.resource.data;
       return d.keys().hasOnly([
           'message', 'severity', 'publishedAt', 'publishedBy', 'expiresAt',
-          'messageHtml', 'color'
+          'messageHtml', 'color', 'cta'
         ])
         && d.message is string
         && d.message.size() > 0
@@ -469,7 +470,8 @@ service cloud.firestore {
             && d.messageHtml.size() > 0
             && d.messageHtml.size() <= 480))
         && (!('color' in d.keys())
-          || (d.color is string && d.color.matches('#[0-9a-fA-F]{6}')));
+          || (d.color is string && d.color.matches('#[0-9a-fA-F]{6}')))
+        && (!('cta' in d.keys()) || d.cta in ['rate']);
     }
 
     // Shared shape for any client-created site; the create rule adds the

@@ -361,6 +361,7 @@ class AdminRepository {
     String? messageHtml,
     required AnnouncementSeverity severity,
     String? color,
+    String? cta,
     DateTime? expiresAt,
   }) {
     final data = Announcement.editData(
@@ -368,6 +369,7 @@ class AdminRepository {
       messageHtml: messageHtml,
       severity: severity,
       color: color,
+      cta: cta,
       expiresAt: expiresAt,
     );
     final expiry = data['expiresAt'];
@@ -378,6 +380,7 @@ class AdminRepository {
       // notice writes the exact pre-rich shape.
       if (data['messageHtml'] is String) 'messageHtml': data['messageHtml'],
       if (data['color'] is String) 'color': data['color'],
+      if (data['cta'] is String) 'cta': data['cta'],
       if (expiry is DateTime) 'expiresAt': Timestamp.fromDate(expiry),
       'publishedAt': FieldValue.serverTimestamp(),
       'publishedBy': _adminMarker,
