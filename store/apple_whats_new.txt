@@ -3,6 +3,7 @@ Welcome to RoadMate AU — know before you roll.
 New in this version:
 
 • Announcements from the RoadMate team: when there's important service news, it appears as a banner across the top of the app
+• An announcement may occasionally invite you to rate RoadMate — one tap opens the App Store rating page
 • The whole address on a site card is now tappable — tap it to open the site in your maps app for turn-by-turn directions
 • The app title now reads "RoadMate Australia"
 • Small behind-the-scenes fixes
