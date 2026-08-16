@@ -1,3 +1,2 @@
-• Google sign-in now uses your phone's built-in account picker — one tap, no browser page, no typing your email and password
-• Fixes the sign-in error some drivers hit on earlier versions
+• Team notices can now include a one-tap "Rate RoadMate" button that takes you straight to Google Play
 • Small fixes and polish
