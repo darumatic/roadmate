@@ -12,7 +12,36 @@
           "package_name": "com.darumatic.roadmate"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "976338726022-0ic7l3ua3hg6h2kv7lfcrtiplto50a0g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.darumatic.roadmate",
+            "certificate_hash": "3bd2b66f23b78cce7724f01213cb43803e32e1cc"
+          }
+        },
+        {
+          "client_id": "976338726022-i3tgb15f6aohv9pod7cgv7kh2kgvvvu6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.darumatic.roadmate",
+            "certificate_hash": "793e549db9f70675a83e06b94986fdf287f14f34"
+          }
+        },
+        {
+          "client_id": "976338726022-rukdq031o783jua9njjhp9lgd6c6sdll.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.darumatic.roadmate",
+            "certificate_hash": "c45ef82d3832bde2d32ad90ffc63f4ff5bebc2d8"
+          }
+        },
+        {
+          "client_id": "976338726022-21r0fcvmk41tkba3q33ks6km7tu02ct4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAPLoikmH9I70WSKe_34hoXkn1gPrrmfYc"
@@ -20,7 +49,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "976338726022-21r0fcvmk41tkba3q33ks6km7tu02ct4.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "976338726022-fop6h90chsslp02p48ucmmsnq2bbgj97.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.darumatic.roadmate"
+              }
+            }
+          ]
         }
       }
     }

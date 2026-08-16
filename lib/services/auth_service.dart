@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugPrint, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // Whether the app runs as an installed PWA (web) — false elsewhere.
@@ -10,7 +11,14 @@ import 'display_mode_stub.dart'
     as display_mode;
 
 import '../firebase_options.dart';
+import 'google_credential.dart';
 import 'username_logic.dart';
+
+/// Thrown when the user dismisses a sign-in surface (the Android Google
+/// account sheet). The UI treats it as a quiet no-op — never an error snack.
+class SignInCancelledException implements Exception {
+  const SignInCancelledException();
+}
 
 /// The first-party domain native (iOS/Android) provider sign-in round-trips
 /// through, mirroring the web authDomain so no platform falls back to the
@@ -88,7 +96,12 @@ class AuthController {
     required this.firestore,
     this.isWeb = kIsWeb,
     this.isStandalone = display_mode.isStandaloneDisplayMode,
-  });
+    bool? useGoogleCredentialSheet,
+    Future<OAuthCredential?> Function()? obtainGoogleCredential,
+  }) : useGoogleCredentialSheet = useGoogleCredentialSheet ??
+           (!kIsWeb && defaultTargetPlatform == TargetPlatform.android),
+       obtainGoogleCredential =
+           obtainGoogleCredential ?? GoogleCredentialSource().obtain;
 
   final FirebaseAuth auth;
   final FirebaseFirestore firestore;
@@ -101,13 +114,55 @@ class AuthController {
   /// those windows must use the redirect flow from the start.
   final bool Function() isStandalone;
 
+  /// Android signs in with Google via the native Credential Manager sheet
+  /// instead of `signInWithProvider`: the Custom-Tab flow delivers its result
+  /// behind the scenes and leaves the tab parked on a blank page (0.1.70
+  /// recording), and forces a full email/password/2FA round trip besides.
+  final bool useGoogleCredentialSheet;
+
+  /// Yields a Google credential from the account sheet, or null when the
+  /// user dismisses it. Injectable for tests.
+  final Future<OAuthCredential?> Function() obtainGoogleCredential;
+
   /// Returns null when a full-page redirect was started instead (blocked
   /// popup) — the page is about to navigate away and sign-in completes on
-  /// the next load via [completeRedirectSignIn].
+  /// the next load via [completeRedirectSignIn]. Throws
+  /// [SignInCancelledException] when the Android account sheet is dismissed.
   Future<UserCredential?> signInWithGoogle() {
+    if (useGoogleCredentialSheet) return _signInWithGoogleCredential();
     final provider = GoogleAuthProvider()
       ..setCustomParameters({'prompt': 'select_account'});
     return _signInWithProvider(provider);
+  }
+
+  /// The Android path: one native sheet, then a plain credential sign-in —
+  /// linking first so an anonymous user keeps their uid, mirroring
+  /// [_signInWithProvider]'s conflict handling.
+  Future<UserCredential?> _signInWithGoogleCredential() async {
+    final credential = await obtainGoogleCredential();
+    if (credential == null) throw const SignInCancelledException();
+
+    final current = auth.currentUser;
+    UserCredential signedIn;
+    if (current != null && current.isAnonymous) {
+      try {
+        signedIn = await current.linkWithCredential(credential);
+      } on FirebaseAuthException catch (e) {
+        if (e.code != 'credential-already-in-use' &&
+            e.code != 'provider-already-linked' &&
+            e.code != 'email-already-in-use') {
+          rethrow;
+        }
+        // The Google account already backs a user: sign in to it directly.
+        signedIn = await auth.signInWithCredential(e.credential ?? credential);
+      }
+    } else {
+      signedIn = await auth.signInWithCredential(credential);
+    }
+
+    await _refreshClaims(signedIn.user);
+    await syncUser(signedIn.user);
+    return signedIn;
   }
 
   /// Apple returns name/email only on the first authorization; [syncUser]
@@ -198,13 +253,18 @@ class AuthController {
     await auth.signInAnonymously();
   }
 
-  Future<UserCredential> _reauthenticate(User user) {
+  Future<UserCredential> _reauthenticate(User user) async {
     final providerId = user.providerData
         .map((info) => info.providerId)
         .firstWhere(
           (id) => id == 'apple.com' || id == 'google.com',
           orElse: () => 'google.com',
         );
+    if (providerId == 'google.com' && useGoogleCredentialSheet) {
+      final credential = await obtainGoogleCredential();
+      if (credential == null) throw const SignInCancelledException();
+      return user.reauthenticateWithCredential(credential);
+    }
     final provider = providerId == 'apple.com'
         ? AppleAuthProvider()
         : (GoogleAuthProvider()

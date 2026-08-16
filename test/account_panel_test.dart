@@ -14,6 +14,9 @@ class FakeAuthController implements AuthController {
   int signOuts = 0;
   int deleteCalls = 0;
 
+  /// Thrown by signInWithGoogle when set — models a dismissed account sheet.
+  Object? googleError;
+
   @override
   Future<UserCredential?> signInWithApple() async {
     appleSignIns++;
@@ -23,6 +26,7 @@ class FakeAuthController implements AuthController {
   @override
   Future<UserCredential?> signInWithGoogle() async {
     googleSignIns++;
+    if (googleError != null) throw googleError!;
     return FakeUserCredential();
   }
 
@@ -145,6 +149,18 @@ void main() {
       await _pump(tester, user: FakeUser(anonymous: true));
 
       expect(find.text('Delete account'), findsNothing);
+    });
+
+    testWidgets('a dismissed Google account sheet shows no snack — '
+        'cancelling is not an error', (tester) async {
+      final controller = await _pump(tester, user: FakeUser(anonymous: true));
+      controller.googleError = const SignInCancelledException();
+
+      await tester.tap(find.text('Sign in with Google'));
+      await tester.pumpAndSettle();
+
+      expect(controller.googleSignIns, 1);
+      expect(find.byType(SnackBar), findsNothing);
     });
   });
 

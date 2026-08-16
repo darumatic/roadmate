@@ -174,6 +174,8 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
           ),
         ),
       );
+    } on SignInCancelledException {
+      // Dismissing the account sheet is a decision, not a failure.
     } catch (e) {
       if (!mounted) return;
       final message = shouldFallBackToRedirect(e)
@@ -230,6 +232,16 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Your account has been deleted.')),
+      );
+    } on SignInCancelledException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Account not deleted — the sign-in needed to confirm it was '
+            'cancelled.',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;

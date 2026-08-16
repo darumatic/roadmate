@@ -41,9 +41,13 @@ class FakeFirebaseAuth implements FirebaseAuth {
     redirectSignIns++;
   }
 
+  /// Every credential handed to signInWithCredential, in order.
+  final signedInCredentials = <AuthCredential>[];
+
   @override
   Future<UserCredential> signInWithCredential(AuthCredential credential) async {
     credentialSignIns++;
+    signedInCredentials.add(credential);
     return FakeUserCredential();
   }
 
@@ -68,6 +72,7 @@ class FakeUser implements User {
     this.fakeUid = 'u-1',
     this.anonymous = false,
     this.linkPopupError,
+    this.linkCredentialError,
     this.providers = const [],
     this.authorizationCode = 'auth-code-1',
     this.firstDeleteError,
@@ -78,9 +83,12 @@ class FakeUser implements User {
   final String fakeUid;
   final bool anonymous;
   final Object? linkPopupError;
+  final Object? linkCredentialError;
   int linkRedirects = 0;
   int linkPopups = 0;
   final linkedProviders = <AuthProvider>[];
+  final linkedCredentials = <AuthCredential>[];
+  final reauthCredentials = <AuthCredential>[];
 
   final List<UserInfo> providers;
 
@@ -125,6 +133,23 @@ class FakeUser implements User {
   Future<UserCredential> linkWithProvider(AuthProvider provider) async {
     linkedProviders.add(provider);
     return FakeUserCredential(fakeUser: this);
+  }
+
+  @override
+  Future<UserCredential> linkWithCredential(AuthCredential credential) async {
+    linkedCredentials.add(credential);
+    if (linkCredentialError != null) throw linkCredentialError!;
+    return FakeUserCredential(fakeUser: this);
+  }
+
+  @override
+  Future<UserCredential> reauthenticateWithCredential(
+    AuthCredential credential,
+  ) async {
+    reauthCredentials.add(credential);
+    return FakeUserCredential(
+      additionalInfo: FakeAdditionalUserInfo(code: authorizationCode),
+    );
   }
 
   @override
@@ -327,11 +352,15 @@ AuthController _controller(
   bool isWeb = true,
   bool standalone = false,
   FirebaseFirestore? firestore,
+  bool sheet = false,
+  Future<OAuthCredential?> Function()? obtain,
 }) => AuthController(
   auth: auth,
   firestore: firestore ?? FakeFirestore(),
   isWeb: isWeb,
   isStandalone: () => standalone,
+  useGoogleCredentialSheet: sheet,
+  obtainGoogleCredential: obtain,
 );
 
 FirebaseAuthException _blocked() => FirebaseAuthException(
@@ -444,6 +473,150 @@ void main() {
       expect(credential, isNull);
       expect(anon.linkRedirects, 1);
       expect(auth.redirectSignIns, 0); // linked, not a fresh sign-in
+    });
+  });
+
+  // Android replaces the Custom-Tab provider flow with the Credential
+  // Manager account sheet: the tab flow completes behind a parked blank
+  // tab (0.1.70 recording), the sheet completes on top of the app.
+  group('signInWithGoogle via the Android account sheet', () {
+    OAuthCredential sheetCredential() =>
+        GoogleAuthProvider.credential(idToken: 'sheet-token');
+
+    test('a fresh sign-in exchanges the sheet credential', () async {
+      final auth = FakeFirebaseAuth();
+
+      final credential = await _controller(
+        auth,
+        isWeb: false,
+        sheet: true,
+        obtain: () async => sheetCredential(),
+      ).signInWithGoogle();
+
+      expect(credential, isNotNull);
+      expect(auth.credentialSignIns, 1);
+      expect(auth.popupSignIns, 0);
+      expect(auth.redirectSignIns, 0);
+    });
+
+    test('an anonymous user links the credential, keeping their uid, '
+        'and forces a token refresh', () async {
+      final anon = FakeUser(anonymous: true);
+      final auth = FakeFirebaseAuth()..current = anon;
+
+      await _controller(
+        auth,
+        isWeb: false,
+        sheet: true,
+        obtain: () async => sheetCredential(),
+      ).signInWithGoogle();
+
+      expect(anon.linkedCredentials, hasLength(1));
+      expect(anon.linkedProviders, isEmpty); // no Custom-Tab link
+      expect(auth.credentialSignIns, 0);
+      expect(anon.tokenRefreshes, [true]);
+    });
+
+    test('a link conflict signs in with the server-returned credential', () async {
+      final anon = FakeUser(
+        anonymous: true,
+        linkCredentialError: FirebaseAuthException(
+          code: 'credential-already-in-use',
+          credential: GoogleAuthProvider.credential(idToken: 'server-minted'),
+        ),
+      );
+      final auth = FakeFirebaseAuth()..current = anon;
+
+      await _controller(
+        auth,
+        isWeb: false,
+        sheet: true,
+        obtain: () async => sheetCredential(),
+      ).signInWithGoogle();
+
+      expect(auth.credentialSignIns, 1);
+      final used = auth.signedInCredentials.single as OAuthCredential;
+      expect(used.idToken, 'server-minted');
+    });
+
+    test('other link failures rethrow instead of signing in', () async {
+      final anon = FakeUser(
+        anonymous: true,
+        linkCredentialError: FirebaseAuthException(code: 'internal-error'),
+      );
+      final auth = FakeFirebaseAuth()..current = anon;
+
+      await expectLater(
+        _controller(
+          auth,
+          isWeb: false,
+          sheet: true,
+          obtain: () async => sheetCredential(),
+        ).signInWithGoogle(),
+        throwsA(isA<FirebaseAuthException>()),
+      );
+      expect(auth.credentialSignIns, 0);
+    });
+
+    test('dismissing the sheet throws SignInCancelledException and touches '
+        'no auth state', () async {
+      final auth = FakeFirebaseAuth();
+
+      await expectLater(
+        _controller(
+          auth,
+          isWeb: false,
+          sheet: true,
+          obtain: () async => null,
+        ).signInWithGoogle(),
+        throwsA(isA<SignInCancelledException>()),
+      );
+      expect(auth.credentialSignIns, 0);
+      expect(auth.popupSignIns, 0);
+      expect(auth.redirectSignIns, 0);
+    });
+
+    test('requires-recent-login deletion reauthenticates via the sheet, '
+        'never the Custom Tab', () async {
+      final user = FakeUser(
+        providers: [FakeUserInfo('google.com')],
+        firstDeleteError: FirebaseAuthException(code: 'requires-recent-login'),
+      );
+      final auth = FakeFirebaseAuth()..current = user;
+
+      await _controller(
+        auth,
+        isWeb: false,
+        sheet: true,
+        obtain: () async => sheetCredential(),
+        firestore: DeletionRecordingFirestore(),
+      ).deleteAccount();
+
+      expect(user.reauthCredentials, hasLength(1));
+      expect(user.reauthProviders, isEmpty);
+      expect(user.deleteCalls, 2);
+      expect(auth.anonSignIns, 1);
+    });
+
+    test('cancelling the deletion reauth aborts the deletion', () async {
+      final user = FakeUser(
+        providers: [FakeUserInfo('google.com')],
+        firstDeleteError: FirebaseAuthException(code: 'requires-recent-login'),
+      );
+      final auth = FakeFirebaseAuth()..current = user;
+
+      await expectLater(
+        _controller(
+          auth,
+          isWeb: false,
+          sheet: true,
+          obtain: () async => null,
+          firestore: DeletionRecordingFirestore(),
+        ).deleteAccount(),
+        throwsA(isA<SignInCancelledException>()),
+      );
+      expect(user.deleteCalls, 1);
+      expect(auth.anonSignIns, 0); // never resurrect a failed deletion
     });
   });
 
