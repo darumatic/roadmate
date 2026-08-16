@@ -2,11 +2,9 @@ Welcome to RoadMate AU — know before you roll.
 
 New in this version:
 
-• Smarter approach alerts: where a northbound and a southbound station share the one spot, RoadMate now uses your direction of travel and asks only about the station on your side of the road. Once yours is answered and you're within 100 m, one quick follow-up asks about the other side
-• Open any site in your maps app straight from its card, for turn-by-turn directions to the gate
-• Road names: pick a unique handle like "Dusty Roadtrain" and it signs your votes, your activity reports and any site you add, so other drivers can see who called it. Roll the dice for a suggestion or type your own — you're asked once, and you can change it any time from the User tab
-• Participation points, levels and badges: every vote and report earns points and moves you up the levels, with your level shown beside your name on the reports you post. The new Achievements page collects the badges you've earned — including Trailblazer, for adding a site to the map
-• Reporting stays open to every driver, no sign-in needed, from within 3 km of a site
+• Announcements from the RoadMate team: when there's important service news, it appears as a banner across the top of the app
+• The whole address on a site card is now tappable — tap it to open the site in your maps app for turn-by-turn directions
+• The app title now reads "RoadMate Australia"
 • Small behind-the-scenes fixes
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
