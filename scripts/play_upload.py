@@ -270,7 +270,18 @@ def main() -> None:
                 "(not released to anyone)."
             )
         else:
-            print(f"==> Released {args.name} to Google Play {args.track} ({langs}).")
+            print(
+                f"==> Committed {args.name} to the Google Play {args.track} "
+                f"track ({langs})."
+            )
+            print(
+                "    NOTE: if the Play Console's Publishing overview shows "
+                "'Not yet sent for review'\n"
+                "    (managed publishing), a human must click 'Send for "
+                "review' there — no API can.\n"
+                "    The release only reaches users after that click + Play "
+                "review (bit us on 0.1.72)."
+            )
     except Exception:
         api(token, "DELETE", f"/edits/{edit_id}")
         print("edit rolled back after failure", file=sys.stderr)
