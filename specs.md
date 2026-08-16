@@ -383,6 +383,15 @@ They are approximate — verify exact site positions before production.
   - Firebase auto-provisions the Let's Encrypt cert after verification (~15 min–few h).
 - **Rules deploy:** `firebase deploy --only firestore:rules --project roadmate-b1551`.
 
+### Google Play publishing
+
+`scripts/release_android.sh` → `scripts/play_upload.py` (stdlib-only; SA JSON at `~/.config/roadmate/google-play-service-account.json`) uploads the AAB and commits a completed release to the production track. Learnings from the 0.1.72 release (2026-08-16):
+
+- **An API commit is not a live release.** Play still reviews the change set after the commit, and the console's Publishing overview can show "Not yet sent for review" even though auto-send (`changesNotSentForReview=false`) is the API default. The tracks API reporting the release as `status: "completed"` describes the committed configuration only — it is never proof users can see the build.
+- **A stuck "Not yet sent for review" pile can sometimes be flushed via the API**: open a fresh edit, re-PUT the production track unchanged, then `:commit?changesNotSentForReview=false` (worked on 0.1.72). The Publishing-overview **"Send for review" button has no API** — if the flush doesn't take, it's an owner click in the console, usually because a new required declaration is attached (the page says which).
+- `play_upload.py` prints "Committed …" (not "Released") and warns about this state since 0.1.72.
+- Play **re-signs** uploads with the App Signing cert (SHA-1 `79:3E:54:9D:B9:F7:06:75:A8:3E:06:B9:49:86:FD:F2:87:F1:4F:34`) — that cert, not the upload key, is what installed apps present to Firebase/Google APIs. Both are registered as Firebase SHA fingerprints since 2026-08-15 (the missing registration was the root cause of the `invalid-cert-hash` sign-in failures).
+
 ### iOS signing material
 
 Apple team **76UL6RCLTT** (DARUMATIC PTY LTD). `hello@darumatic.com` is the Account
