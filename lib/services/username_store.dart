@@ -4,37 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'auth_service.dart';
+import 'profile_stream.dart';
 import 'rate_limit.dart';
 import 'username_logic.dart';
 
-/// What the current user signs their posts with.
-///
-/// A picked road name always wins; a signed-in account without one falls back
-/// to its provider displayName; an anonymous user without one has no
-/// signature at all — and posting paths must then ask them to pick one.
-class UserProfile {
-  const UserProfile({
-    required this.isAnonymous,
-    this.username,
-    this.displayName,
-  });
-
-  final bool isAnonymous;
-
-  /// The unique road name, when one has been claimed.
-  final String? username;
-
-  /// Provider (Google/Apple) display name, when signed in.
-  final String? displayName;
-
-  String? get signature {
-    final name = username?.trim();
-    if (name != null && name.isNotEmpty) return name;
-    if (isAnonymous) return null;
-    final display = displayName?.trim();
-    return (display == null || display.isEmpty) ? null : display;
-  }
-}
+// UserProfile moved to profile_stream.dart (pure Dart) so the profile-stream
+// logic is testable without Firebase; re-exported so importers keep working.
+export 'profile_stream.dart' show UserProfile;
 
 class UsernameTakenException implements Exception {
   const UsernameTakenException(this.name);
@@ -71,13 +47,29 @@ class FirestoreUsernameStore implements UsernameStore {
   final FirebaseFirestore firestore;
   final FirebaseAuth auth;
 
+  /// Names committed by [claimUsername], echoed into every live
+  /// [watchProfile] stream so a saved name takes effect immediately — even
+  /// when the `users/{uid}` doc listener is down (the 0.1.74 bug: a dead
+  /// listener meant every post asked for a road name again).
+  final _claims = StreamController<ClaimedName>.broadcast();
+
   @override
   Stream<UserProfile?> watchProfile() {
     // userChanges (not authStateChanges) so linking a provider onto the
     // anonymous uid is observed — same reasoning as authStateProvider.
-    return auth.userChanges().asyncExpand((user) {
-      if (user == null) return Stream<UserProfile?>.value(null);
-      return firestore
+    // The switching/retry/echo behaviour lives in profileStream
+    // (profile_stream.dart), where it is unit-tested.
+    return profileStream(
+      authUsers: auth.userChanges().map(
+        (user) => user == null
+            ? null
+            : ProfileAuthUser(
+                uid: user.uid,
+                isAnonymous: user.isAnonymous,
+                displayName: user.displayName,
+              ),
+      ),
+      profileDocOf: (user) => firestore
           .collection('users')
           .doc(user.uid)
           .snapshots()
@@ -88,14 +80,9 @@ class FirestoreUsernameStore implements UsernameStore {
               username: data?['username'] as String?,
               displayName: user.displayName ?? data?['displayName'] as String?,
             );
-          })
-          .transform(
-            StreamTransformer.fromHandlers(
-              handleError: (error, stackTrace, EventSink<UserProfile?> sink) =>
-                  sink.add(null),
-            ),
-          );
-    });
+          }),
+      localClaims: _claims.stream,
+    );
   }
 
   @override
@@ -146,6 +133,18 @@ class FirestoreUsernameStore implements UsernameStore {
       }
       rethrow;
     }
+    // Committed: tell every live profile stream right away, rather than
+    // trusting the doc listener's round trip to deliver it.
+    _claims.add(
+      ClaimedName(
+        uid: uid,
+        profile: UserProfile(
+          isAnonymous: isAnonymous,
+          username: name,
+          displayName: auth.currentUser?.displayName,
+        ),
+      ),
+    );
     return name;
   }
 }

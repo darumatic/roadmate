@@ -1,2 +1,2 @@
-• Team notices can now include a one-tap "Rate RoadMate" button that takes you straight to Google Play
+• Fixed: your road name is now remembered — reporting a site status no longer asks you to pick a nickname every time
 • Small fixes and polish
