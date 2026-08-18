@@ -12,6 +12,7 @@ import 'display_mode_stub.dart'
 
 import '../firebase_options.dart';
 import 'google_credential.dart';
+import 'role_stream.dart';
 import 'username_logic.dart';
 
 /// Thrown when the user dismisses a sign-in surface (the Android Google
@@ -51,31 +52,27 @@ final authStateProvider = StreamProvider<User?>((ref) {
   return ref.watch(firebaseAuthProvider).userChanges();
 });
 
-final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) async* {
-  if (Firebase.apps.isEmpty) {
-    yield AppUserRole.anonymous;
-    return;
-  }
+// The switching/retry behaviour lives in roleStream (role_stream.dart),
+// where it is unit-tested — the old `await for` + `yield*` shape here never
+// observed a sign-out or account switch after the first sign-in.
+final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) {
+  if (Firebase.apps.isEmpty) return Stream.value(AppUserRole.anonymous);
 
   final auth = ref.watch(firebaseAuthProvider);
   final firestore = FirebaseFirestore.instance;
-  await for (final user in auth.userChanges()) {
-    if (user == null) {
-      yield AppUserRole.anonymous;
-      continue;
-    }
-    if (user.isAnonymous) {
-      yield AppUserRole.anonymous;
-      continue;
-    }
-
-    yield* firestore.collection('userRoles').doc(user.uid).snapshots().map((
-      doc,
-    ) {
-      final role = doc.data()?['role'] as String?;
-      return role == 'admin' ? AppUserRole.admin : AppUserRole.truckie;
-    });
-  }
+  return roleStream<AppUserRole>(
+    authUsers: auth.userChanges().map(
+      (user) => user == null
+          ? null
+          : RoleAuthUser(uid: user.uid, isAnonymous: user.isAnonymous),
+    ),
+    roleDocOf: (uid) =>
+        firestore.collection('userRoles').doc(uid).snapshots().map((doc) {
+          final role = doc.data()?['role'] as String?;
+          return role == 'admin' ? AppUserRole.admin : AppUserRole.truckie;
+        }),
+    anonymousRole: AppUserRole.anonymous,
+  );
 });
 
 /// True when [e] is the browser refusing to open the sign-in popup — the one
