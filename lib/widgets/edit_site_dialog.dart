@@ -103,9 +103,6 @@ class _EditSiteDialogState extends ConsumerState<EditSiteDialog> {
     }
   }
 
-  String? _required(String? v) =>
-      (v == null || v.trim().isEmpty) ? 'Required' : null;
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -122,21 +119,21 @@ class _EditSiteDialogState extends ConsumerState<EditSiteDialog> {
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(labelText: 'Site name'),
-                validator: _required,
+                validator: requiredFieldError,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _suburb,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(labelText: 'Suburb/town'),
-                validator: _required,
+                validator: requiredFieldError,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _address,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(labelText: 'Address'),
-                validator: _required,
+                validator: requiredFieldError,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<SiteType>(

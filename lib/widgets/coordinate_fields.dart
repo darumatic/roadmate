@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/nearby/nearby_screen.dart' show currentPositionProvider;
 import '../services/geo.dart';
 import '../theme/app_theme.dart';
+import 'snacks.dart';
 
 /// Latitude/longitude inputs with a one-tap "use my current location" fill.
 ///
@@ -42,25 +43,20 @@ class _CoordinateFieldsState extends ConsumerState<CoordinateFields> {
       final pos = await ref.refresh(currentPositionProvider.future);
       if (!mounted) return;
       if (pos == null) {
-        _snack('Location unavailable — check location permission.');
+        showAppSnack(
+          context,
+          'Location unavailable — check location permission.',
+        );
         return;
       }
       widget.latController.text = pos.latitude.toStringAsFixed(6);
       widget.lngController.text = pos.longitude.toStringAsFixed(6);
-      _snack('Location captured.');
+      showAppSnack(context, 'Location captured.');
     } catch (e) {
-      if (mounted) _snack('Could not read your location.');
+      if (mounted) showAppSnack(context, 'Could not read your location.');
     } finally {
       if (mounted) setState(() => _locating = false);
     }
-  }
-
-  void _snack(String msg) {
-    ScaffoldMessenger.of(context)
-      ..removeCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
-      );
   }
 
   @override

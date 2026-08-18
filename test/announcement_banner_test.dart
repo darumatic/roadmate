@@ -9,6 +9,21 @@ import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/theme/app_theme.dart';
 import 'package:roadmate/widgets/announcement_banner.dart';
 
+/// In-memory [AnnouncementDismissStore] — test-only, so it lives here rather
+/// than in lib/ (unlike MemoryUsernameStore, which backs a production
+/// Firebase-less fallback).
+class MemoryAnnouncementDismissStore implements AnnouncementDismissStore {
+  MemoryAnnouncementDismissStore([this.dismissKey]);
+
+  String? dismissKey;
+
+  @override
+  Future<String?> load() async => dismissKey;
+
+  @override
+  Future<void> save(String key) async => dismissKey = key;
+}
+
 void main() {
   final published = DateTime.utc(2026, 7, 30, 9);
 

@@ -47,8 +47,6 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
   );
 });
 
-final statusLogicProvider = Provider<StatusLogic>((ref) => const StatusLogic());
-
 /// Road-name storage (see `username_store.dart`). Firestore in production;
 /// the in-memory store keeps tests and Firebase-less runs prompt-free.
 final usernameStoreProvider = Provider<UsernameStore>((ref) {

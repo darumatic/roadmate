@@ -23,27 +23,12 @@ class RoadMateApp extends ConsumerWidget {
     // drivers glance at it hands-free; it must not lock or sleep mid-run.
     return KeepAwakeScope(
       child: startup.when(
-        loading: () => MaterialApp(
-          title: 'RoadMate AU',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.dark,
-          home: const _StartupScreen(),
-        ),
-        error: (error, _) => MaterialApp(
-          title: 'RoadMate AU',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.dark,
-          home: _StartupErrorScreen(error: error),
-        ),
+        loading: () => _app(home: const _StartupScreen()),
+        error: (error, _) => _app(home: _StartupErrorScreen(error: error)),
         // Below the remote minimum version: block the whole app (the router
         // never mounts) until the user updates. Fails open — see min_version.
         data: (_) => (ref.watch(forceUpdateProvider).value ?? false)
-            ? MaterialApp(
-                title: 'RoadMate AU',
-                debugShowCheckedModeBanner: false,
-                theme: AppTheme.dark,
-                home: const ForceUpdateScreen(),
-              )
+            ? _app(home: const ForceUpdateScreen())
             : MaterialApp.router(
                 title: 'RoadMate AU',
                 debugShowCheckedModeBanner: false,
@@ -67,6 +52,15 @@ class RoadMateApp extends ConsumerWidget {
       ),
     );
   }
+
+  /// The one app identity (title/banner/theme) every pre-router
+  /// [MaterialApp] shares; only the home screen differs per state.
+  MaterialApp _app({required Widget home}) => MaterialApp(
+    title: 'RoadMate AU',
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.dark,
+    home: home,
+  );
 }
 
 class _StartupScreen extends StatelessWidget {

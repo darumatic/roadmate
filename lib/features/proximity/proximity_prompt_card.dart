@@ -3,10 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/enums.dart';
 import '../../services/providers.dart';
-import '../../services/ban_logic.dart';
-import '../../services/rate_limit.dart';
-import '../../services/report_proximity.dart';
+import '../../services/post_error.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/snacks.dart';
 import '../../widgets/status_labels.dart';
 import 'proximity_controller.dart';
 import 'proximity_text.dart';
@@ -237,26 +236,13 @@ class ProximityPromptCard extends ConsumerWidget {
             status,
             reporterName: ref.read(signatureNameProvider),
           );
-      _snack(messenger, 'Reported ${statusDisplayLabel(status)} — thanks!');
-    } on TooFarException catch (e) {
-      _snack(messenger, e.message);
-    } on LocationRequiredException catch (e) {
-      _snack(messenger, e.message);
-    } on BannedException catch (e) {
-      _snack(messenger, e.message);
-    } on RateLimitedException {
-      _snack(messenger, kRateLimitMessage);
-    } catch (e) {
-      _snack(messenger, 'Could not submit — please try again.');
-    }
-  }
-
-  void _snack(ScaffoldMessengerState? messenger, String msg) {
-    messenger
-      ?..removeCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      showSnackOn(
+        messenger,
+        'Reported ${statusDisplayLabel(status)} — thanks!',
       );
+    } catch (e) {
+      showSnackOn(messenger, postErrorMessage(e));
+    }
   }
 }
 

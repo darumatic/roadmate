@@ -124,4 +124,22 @@ void main() {
       expect(coordinatePairError(null, null), isNull);
     });
   });
+
+  group('requiredFieldError', () {
+    test('blank and whitespace-only are refused, content passes', () {
+      expect(requiredFieldError(null), 'Required');
+      expect(requiredFieldError(''), 'Required');
+      expect(requiredFieldError('   '), 'Required');
+      expect(requiredFieldError('Marulan'), isNull);
+    });
+  });
+
+  group('kmAwayLabel', () {
+    test('one decimal under 10 km, whole kilometres from 10 up', () {
+      expect(kmAwayLabel(3.44), '3.4 km away');
+      expect(kmAwayLabel(9.99), '10.0 km away');
+      expect(kmAwayLabel(10.4), '10 km away');
+      expect(kmAwayLabel(115.0), '115 km away');
+    });
+  });
 }

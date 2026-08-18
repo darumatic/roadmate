@@ -78,38 +78,3 @@ List<SiteReport> reportsForSite(Iterable<SiteReport> reports, String siteId) {
       if (r.siteId == siteId) r,
   ];
 }
-
-/// Displayed status of a site = the status of the most recent report within
-/// [window]. If there are no recent status reports, the site's live status is
-/// [SiteStatus.unknown] (issue #21).
-class StatusLogic {
-  const StatusLogic({this.window = statusFreshWindow});
-
-  /// How far back a report still counts as "current".
-  final Duration window;
-
-  /// Derive the live status from a site's reports, relative to [now].
-  SiteStatus deriveStatus(List<SiteReport> reports, {DateTime? now}) {
-    final at = now ?? DateTime.now();
-    final recent = _recentStatusReports(reports, at);
-    if (recent.isEmpty) return SiteStatus.unknown;
-    recent.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return recent.first.status!;
-  }
-
-  /// Whether a blitz has been reported within [window] of [now].
-  bool isBlitzActive(List<SiteReport> reports, {DateTime? now}) {
-    final at = now ?? DateTime.now();
-    return _recentStatusReports(
-      reports,
-      at,
-    ).any((r) => r.status == SiteStatus.blitz);
-  }
-
-  List<SiteReport> _recentStatusReports(List<SiteReport> reports, DateTime at) {
-    final cutoff = at.subtract(window);
-    return reports
-        .where((r) => r.status != null && r.createdAt.isAfter(cutoff))
-        .toList();
-  }
-}

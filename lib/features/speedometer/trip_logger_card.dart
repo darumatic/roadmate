@@ -14,7 +14,6 @@ import 'trip_tile.dart';
 
 const _tripGreen = Color(0xFF4ADE80);
 const _stopRed = Color(0xFFEF4444);
-const _amber = Color(0xFFF59E0B);
 
 /// The "Trip Logger" section: a live in-progress card while a trip runs, a
 /// permission-denied prompt, or a Start button when idle.
@@ -247,10 +246,10 @@ class _Idle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _amber.withValues(alpha: 0.08),
+      color: AppTheme.warning.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: _amber.withValues(alpha: 0.55)),
+        side: BorderSide(color: AppTheme.warning.withValues(alpha: 0.55)),
       ),
       child: InkWell(
         onTap: onStart,

@@ -6,6 +6,9 @@ import '../../services/geo.dart';
 import '../../services/location_source.dart';
 import '../../services/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/screen_title.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/load_error.dart';
 import '../../widgets/site_card.dart';
 
 /// Resolves the device location (or null if unavailable/denied).
@@ -43,19 +46,7 @@ class NearbyScreen extends ConsumerWidget {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  child: Text(
-                    'Nearby',
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                ),
-              ),
+              const SliverScreenTitle('Nearby'),
               ...switch ((posAsync, sitesAsync)) {
                 (AsyncLoading(), _) || (_, AsyncLoading()) => [
                   const SliverFillRemaining(
@@ -72,7 +63,7 @@ class NearbyScreen extends ConsumerWidget {
                 (AsyncData(value: null), _) => [
                   const SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _Message(
+                    child: EmptyState(
                       icon: Icons.location_off_outlined,
                       title: 'Location unavailable',
                       body:
@@ -83,11 +74,7 @@ class NearbyScreen extends ConsumerWidget {
                 _ => [
                   const SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _Message(
-                      icon: Icons.error_outline,
-                      title: 'Something went wrong',
-                      body: 'Could not determine nearby sites.',
-                    ),
+                    child: LoadError(),
                   ),
                 ],
               },
@@ -103,7 +90,7 @@ class NearbyScreen extends ConsumerWidget {
       return const [
         SliverFillRemaining(
           hasScrollBody: false,
-          child: _Message(
+          child: EmptyState(
             icon: Icons.explore_off_outlined,
             title: 'No located sites yet',
             body:
@@ -126,7 +113,7 @@ class NearbyScreen extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 4, bottom: 4),
                   child: Text(
-                    '${r.km.toStringAsFixed(r.km < 10 ? 1 : 0)} km away',
+                    kmAwayLabel(r.km),
                     style: const TextStyle(
                       color: AppTheme.accent,
                       fontSize: 12,
@@ -153,38 +140,4 @@ Future<void> _refreshNearby(WidgetRef ref) async {
     ref.read(currentPositionProvider.future),
     refreshSiteData(ref),
   ]);
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.title, required this.body});
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 48, color: AppTheme.textSecondary),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -6,16 +6,17 @@ import '../models/site.dart';
 import '../models/site_report.dart';
 import '../services/auth_service.dart';
 import '../services/providers.dart';
-import '../services/ban_logic.dart';
 import '../services/map_links.dart';
-import '../services/rate_limit.dart';
-import '../services/report_proximity.dart';
+import '../services/post_error.dart';
+import '../services/relative_time.dart';
 import '../services/site_repository.dart';
 import '../services/status_logic.dart';
 import '../services/username_logic.dart';
 import '../theme/app_theme.dart';
+import 'confirm_dialog.dart';
 import 'edit_site_dialog.dart';
 import 'level_badge.dart';
+import 'snacks.dart';
 import 'status_badge.dart';
 import 'status_labels.dart';
 import 'username_prompt.dart';
@@ -81,7 +82,7 @@ class SiteCard extends ConsumerWidget {
                 children: [
                   if (lastReportAt != null) ...[
                     Text(
-                      'reported ${_relativeTime(lastReportAt)}',
+                      'reported ${relativeTime(lastReportAt)}',
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 11,
@@ -224,30 +225,21 @@ class SiteCard extends ConsumerWidget {
   ) async {
     final name = await ensureSignatureName(context, ref);
     if (name == null) {
-      if (context.mounted) _snack(context, kRoadNameRequiredMessage);
+      if (context.mounted) showAppSnack(context, kRoadNameRequiredMessage);
       return;
     }
     if (!context.mounted) return;
     try {
       await repo.vote(site, status, reporterName: name);
       if (context.mounted) {
-        _snack(context, 'Reported ${statusDisplayLabel(status)} — thanks!');
+        showAppSnack(
+          context,
+          'Reported ${statusDisplayLabel(status)} — thanks!',
+        );
       }
-    } on TooFarException catch (e) {
-      if (!context.mounted) return;
-      _snack(context, e.message);
-    } on LocationRequiredException catch (e) {
-      if (!context.mounted) return;
-      _snack(context, e.message);
-    } on BannedException catch (e) {
-      if (!context.mounted) return;
-      _snack(context, e.message);
-    } on RateLimitedException {
-      if (!context.mounted) return;
-      _snack(context, kRateLimitMessage);
     } catch (e) {
       if (!context.mounted) return;
-      _snack(context, 'Could not submit — please try again.');
+      showAppSnack(context, postErrorMessage(e));
     }
   }
 
@@ -258,7 +250,7 @@ class SiteCard extends ConsumerWidget {
   ) async {
     final name = await ensureSignatureName(context, ref);
     if (name == null) {
-      if (context.mounted) _snack(context, kRoadNameRequiredMessage);
+      if (context.mounted) showAppSnack(context, kRoadNameRequiredMessage);
       return;
     }
     if (!context.mounted) return;
@@ -282,22 +274,10 @@ class SiteCard extends ConsumerWidget {
         activityNote: report.activityNote,
         reporterName: reporterName,
       );
-      if (context.mounted) _snack(context, 'Report submitted — thanks!');
-    } on TooFarException catch (e) {
-      if (!context.mounted) return;
-      _snack(context, e.message);
-    } on LocationRequiredException catch (e) {
-      if (!context.mounted) return;
-      _snack(context, e.message);
-    } on BannedException catch (e) {
-      if (!context.mounted) return;
-      _snack(context, e.message);
-    } on RateLimitedException {
-      if (!context.mounted) return;
-      _snack(context, kRateLimitMessage);
+      if (context.mounted) showAppSnack(context, 'Report submitted — thanks!');
     } catch (e) {
       if (!context.mounted) return;
-      _snack(context, 'Could not submit — please try again.');
+      showAppSnack(context, postErrorMessage(e));
     }
   }
 
@@ -309,7 +289,7 @@ class SiteCard extends ConsumerWidget {
     } catch (_) {
       // Fall through to the snack.
     }
-    if (context.mounted) _snack(context, 'Could not open the maps app');
+    if (context.mounted) showAppSnack(context, 'Could not open the maps app');
   }
 
   /// Admin: correct the site's name and/or coordinates. Community
@@ -321,50 +301,26 @@ class SiteCard extends ConsumerWidget {
       context: context,
       builder: (_) => EditSiteDialog(site: site),
     );
-    if (saved == true && context.mounted) _snack(context, 'Site updated');
+    if (saved == true && context.mounted) showAppSnack(context, 'Site updated');
   }
 
   /// Warns before permanently deleting the site + its reports (issue #13).
   Future<void> _confirmRemoveSite(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: const Text('Remove site?'),
-        content: Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Remove site?',
+      message:
           'This permanently deletes "${site.name}" and all of its reports '
           'for everyone. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Remove',
     );
-    if (confirmed != true) return;
+    if (!confirmed || !context.mounted) return;
     try {
       await ref.read(adminRepositoryProvider).deleteSite(site.id);
-      if (context.mounted) _snack(context, 'Site removed');
+      if (context.mounted) showAppSnack(context, 'Site removed');
     } catch (e) {
-      if (context.mounted) _snack(context, 'Could not remove site: $e');
+      if (context.mounted) showAppSnack(context, 'Could not remove site: $e');
     }
-  }
-
-  void _snack(BuildContext context, String msg) {
-    // Replace any showing snack — a cooldown explanation must not sit in a
-    // queue behind the previous "thanks!" message.
-    ScaffoldMessenger.of(context)
-      ..removeCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
-      );
   }
 }
 
@@ -556,7 +512,7 @@ class _ActivityReportTile extends StatelessWidget {
                 ),
               ),
               Text(
-                _relativeTime(report.createdAt),
+                relativeTime(report.createdAt),
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 11,
@@ -589,14 +545,6 @@ class _ActivityReportTile extends StatelessWidget {
       ),
     );
   }
-}
-
-String _relativeTime(DateTime createdAt) {
-  final diff = DateTime.now().difference(createdAt);
-  if (diff.inMinutes < 1) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  return '${diff.inDays}d ago';
 }
 
 class _VoteRow extends StatelessWidget {

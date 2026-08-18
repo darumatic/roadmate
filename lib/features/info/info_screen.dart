@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/min_version.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/screen_title.dart';
 
 /// Info tab (issue #12 redesign): a hub of link rows, each opening a native
 /// sub-page within the tab — Useful Links, About, Credits, Support the app,
@@ -36,19 +37,7 @@ class InfoScreen extends StatelessWidget {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'Info',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-              ),
-            ),
+            const SliverScreenTitle('Info'),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               sliver: SliverList.list(

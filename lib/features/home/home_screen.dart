@@ -13,7 +13,7 @@ import '../speedometer/trip_controller.dart';
 import '../speedometer/trip_logger_card.dart';
 import '../../widgets/back_to_top.dart';
 import '../../widgets/blitz_banner.dart';
-import '../../widgets/load_error.dart';
+import '../../widgets/async_body.dart';
 import '../../widgets/state_card.dart';
 import '../../widgets/status_labels.dart';
 
@@ -26,54 +26,48 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: sitesAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const LoadError(),
-          data: (sites) {
-            final byState = groupByState(sites);
-            final recent = recentlyActive(sites);
-            final states = visibleStates;
-            return BackToTop(
-              builder: (context, scrollController) => RefreshIndicator(
-                onRefresh: () => refreshSiteData(ref),
-                child: CustomScrollView(
-                  controller: scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: _topSection(context, sites, blitzSites(sites)),
+        child: asyncBody(sitesAsync, (sites) {
+          final byState = groupByState(sites);
+          final recent = recentlyActive(sites);
+          final states = visibleStates;
+          return BackToTop(
+            builder: (context, scrollController) => RefreshIndicator(
+              onRefresh: () => refreshSiteData(ref),
+              child: CustomScrollView(
+                controller: scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _topSection(context, sites, blitzSites(sites)),
+                  ),
+                  if (recent.isNotEmpty)
+                    SliverToBoxAdapter(child: _recentlyActive(context, recent)),
+                  SliverToBoxAdapter(child: _browseHeader(context)),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 260,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.95,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, i) {
+                        final state = states[i];
+                        return StateCard(
+                          state: state,
+                          sites: byState[state] ?? const [],
+                          onTap: () => context.go('/state/${state.code}'),
+                        );
+                      }, childCount: states.length),
                     ),
-                    if (recent.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: _recentlyActive(context, recent),
-                      ),
-                    SliverToBoxAdapter(child: _browseHeader(context)),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 260,
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                              childAspectRatio: 0.95,
-                            ),
-                        delegate: SliverChildBuilderDelegate((context, i) {
-                          final state = states[i];
-                          return StateCard(
-                            state: state,
-                            sites: byState[state] ?? const [],
-                            onTap: () => context.go('/state/${state.code}'),
-                          );
-                        }, childCount: states.length),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          );
+        }),
       ),
     );
   }

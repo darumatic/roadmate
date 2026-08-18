@@ -1,2 +1,2 @@
-• Fixed: your road name is now remembered — reporting a site status no longer asks you to pick a nickname every time
+• Under-the-hood cleanup: more consistent messages, dialogs and empty screens
 • Small fixes and polish

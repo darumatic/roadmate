@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/trip.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/screen_title.dart';
 import '../../widgets/account_panel.dart';
+import '../../widgets/empty_state.dart';
 import '../info/info_screen.dart';
 import '../speedometer/trip_controller.dart';
 import '../speedometer/trip_tile.dart';
@@ -29,19 +31,7 @@ class UserScreen extends ConsumerWidget {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'User',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-              ),
-            ),
+            const SliverScreenTitle('User'),
             const SliverPadding(
               padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
               sliver: SliverToBoxAdapter(child: AccountPanel()),
@@ -90,7 +80,11 @@ class UserScreen extends ConsumerWidget {
             if (trips.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
-                child: _EmptyTrips(),
+                child: EmptyState(
+                  icon: Icons.map_outlined,
+                  title: 'No trips yet',
+                  body: 'Start one from the Home speedometer to log it here.',
+                ),
               )
             else ...[
               SliverToBoxAdapter(
@@ -134,36 +128,6 @@ class UserScreen extends ConsumerWidget {
                   ),
                 ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyTrips extends StatelessWidget {
-  const _EmptyTrips();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.map_outlined, size: 44, color: AppTheme.textSecondary),
-            SizedBox(height: 12),
-            Text(
-              'No trips yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            SizedBox(height: 6),
-            Text(
-              'Start one from the Home speedometer to log it here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
           ],
         ),
       ),

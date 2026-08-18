@@ -118,7 +118,7 @@ class _SiteRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${km.toStringAsFixed(km < 10 ? 1 : 0)} km away',
+                      kmAwayLabel(km),
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontSize: 12,

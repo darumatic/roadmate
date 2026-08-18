@@ -9,10 +9,9 @@ import '../services/auth_service.dart';
 import '../services/participation_logic.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
+import 'confirm_dialog.dart';
 import 'level_badge.dart';
 import 'username_prompt.dart';
-
-const _deleteRed = Color(0xFFEF4444);
 
 class AccountPanel extends ConsumerWidget {
   const AccountPanel({super.key, this.compact = false});
@@ -139,7 +138,7 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
         ),
         const SizedBox(height: 8),
         TextButton.icon(
-          style: TextButton.styleFrom(foregroundColor: _deleteRed),
+          style: TextButton.styleFrom(foregroundColor: AppTheme.danger),
           icon: _busyProvider == 'delete'
               ? const SizedBox(
                   width: 18,
@@ -200,31 +199,18 @@ class _AccountActionsState extends ConsumerState<AccountActions> {
   }
 
   Future<void> _deleteAccount() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete account?'),
-        content: const Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete account?',
+      message:
           'This permanently deletes your sign-in, profile and favourites. '
           'Status votes and activity reports you have submitted stay in the '
           'app but are anonymised — they can no longer be linked to you. '
           'Trip logs stored on this device are not affected. '
           'This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: _deleteRed),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete account'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete account',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _busyProvider = 'delete');
     try {

@@ -31,16 +31,3 @@ class PrefsAnnouncementDismissStore implements AnnouncementDismissStore {
     await prefs.setString(_key, dismissKey);
   }
 }
-
-/// In-memory store for tests and for the Firebase-less dev run.
-class MemoryAnnouncementDismissStore implements AnnouncementDismissStore {
-  MemoryAnnouncementDismissStore([this.dismissKey]);
-
-  String? dismissKey;
-
-  @override
-  Future<String?> load() async => dismissKey;
-
-  @override
-  Future<void> save(String key) async => dismissKey = key;
-}

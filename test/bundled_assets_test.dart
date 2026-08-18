@@ -22,18 +22,28 @@ void main() {
     expect(file.existsSync(), isTrue, reason: '$logoPath missing');
 
     final bytes = file.readAsBytesSync();
-    expect(bytes.length, lessThan(60 * 1024),
-        reason: '$logoPath is ${bytes.length} bytes — it renders at 44x44 '
-            'logical pixels, so keep the bundled file under 60KB '
-            '(resize a re-export to ~132px before committing)');
+    expect(
+      bytes.length,
+      lessThan(60 * 1024),
+      reason:
+          '$logoPath is ${bytes.length} bytes — it renders at 44x44 '
+          'logical pixels, so keep the bundled file under 60KB '
+          '(resize a re-export to ~132px before committing)',
+    );
 
     expect(bytes.sublist(0, 8), pngSignature, reason: '$logoPath is not a PNG');
     // IHDR is always the first chunk: width/height at offsets 16/20.
     final width = be32(bytes, 16);
     final height = be32(bytes, 20);
-    expect(width, lessThanOrEqualTo(264),
-        reason: '$logoPath is ${width}px wide — 132px (3x of 44) is enough');
-    expect(height, lessThanOrEqualTo(264),
-        reason: '$logoPath is ${height}px tall — 132px (3x of 44) is enough');
+    expect(
+      width,
+      lessThanOrEqualTo(264),
+      reason: '$logoPath is ${width}px wide — 132px (3x of 44) is enough',
+    );
+    expect(
+      height,
+      lessThanOrEqualTo(264),
+      reason: '$logoPath is ${height}px tall — 132px (3x of 44) is enough',
+    );
   });
 }

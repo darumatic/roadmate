@@ -11,6 +11,7 @@ import '../../services/providers.dart';
 import '../../services/username_logic.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coordinate_fields.dart';
+import '../../widgets/snacks.dart';
 import '../../widgets/username_prompt.dart';
 
 /// Form for submitting a new community site. Validates required fields and
@@ -63,11 +64,7 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
     // and declining abandons the submission (nothing typed is lost).
     final submitterName = await ensureSignatureName(context, ref);
     if (submitterName == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text(kRoadNameRequiredMessage)));
-      }
+      if (mounted) showAppSnack(context, kRoadNameRequiredMessage);
       return;
     }
     if (!mounted) return;
@@ -91,28 +88,24 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
           .read(siteRepositoryProvider)
           .addSite(site, approved: isAdmin, submitterName: submitterName);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isAdmin
-                ? 'Site published — it is live now.'
-                : 'Submitted for review — thanks!',
-          ),
-        ),
+      showAppSnack(
+        context,
+        isAdmin
+            ? 'Site published — it is live now.'
+            : 'Submitted for review — thanks!',
       );
       context.canPop() ? context.pop() : context.go('/home');
+      // Deliberately narrower than postErrorMessage: addSite runs no proximity
+      // gate and no rate-limit ledger stamp, so a ban is the only refusal that
+      // needs explaining — everything else keeps its raw error for the report.
     } on BannedException catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      showAppSnack(context, e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not submit: $e')));
+      showAppSnack(context, 'Could not submit: $e');
     }
   }
 
@@ -149,8 +142,7 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
                 decoration: const InputDecoration(
                   hintText: 'e.g. Marulan Checking Station',
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+                validator: requiredFieldError,
               ),
               const SizedBox(height: 16),
               _label('State'),
@@ -180,8 +172,7 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
               TextFormField(
                 controller: _suburb,
                 decoration: const InputDecoration(hintText: 'e.g. Marulan'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+                validator: requiredFieldError,
               ),
               const SizedBox(height: 16),
               _label('Address / route'),
@@ -190,8 +181,7 @@ class _AddSiteScreenState extends ConsumerState<AddSiteScreen> {
                 decoration: const InputDecoration(
                   hintText: 'e.g. Hume Highway',
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+                validator: requiredFieldError,
               ),
               const SizedBox(height: 16),
               _label('GPS coordinates'),

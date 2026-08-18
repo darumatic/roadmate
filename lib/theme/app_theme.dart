@@ -10,6 +10,14 @@ class AppTheme {
   static const Color textPrimary = Color(0xFFF5F5F7);
   static const Color textSecondary = Color(0xFF9A9AA2);
 
+  /// Destructive actions (delete / remove / ban) — the one red, everywhere.
+  /// It used to be re-declared per file (and sometimes forgotten entirely,
+  /// leaving a destructive button unstyled).
+  static const Color danger = Color(0xFFEF4444);
+
+  /// Cautionary highlights (paused trip, over-limit) — the one amber.
+  static const Color warning = Color(0xFFF59E0B);
+
   static ThemeData get dark {
     final base = ThemeData.dark(useMaterial3: true);
     return base.copyWith(

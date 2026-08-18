@@ -16,7 +16,39 @@ import '../../services/report_purge.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/account_panel.dart';
 import '../../widgets/announcement_banner.dart';
-import '../../widgets/load_error.dart';
+import '../../widgets/confirm_dialog.dart';
+import '../../widgets/async_body.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/snacks.dart';
+
+/// The busy-lock / snack discipline every admin write shares: lock the card's
+/// buttons, run the write, snack the outcome, and — the load-bearing part —
+/// ALWAYS unlock in `finally`. This used to be hand-copied into eight
+/// handlers; a copy that drops the unlock wedges its card's buttons
+/// permanently with no visual clue at review time, so the shape lives here
+/// once. [success] receives the action's result so messages can be computed
+/// from it ("Removed 3 reports").
+mixin _AdminActionRunner<W extends ConsumerStatefulWidget> on ConsumerState<W> {
+  bool _busy = false;
+
+  Future<void> _runAdminAction<T>(
+    Future<T> Function() action, {
+    required String Function(T result) success,
+    required String failure,
+  }) async {
+    setState(() => _busy = true);
+    try {
+      final result = await action();
+      if (!mounted) return;
+      showAppSnack(context, success(result));
+    } catch (e) {
+      if (!mounted) return;
+      showAppSnack(context, '$failure: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
@@ -35,21 +67,17 @@ class AdminScreen extends ConsumerWidget {
         ),
       ),
       body: SafeArea(
-        child: roleAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const LoadError(),
-          data: (role) {
-            if (role == AppUserRole.admin) return const _AdminTabs();
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const AccountPanel(),
-                const SizedBox(height: 12),
-                _AccessMessage(role: role),
-              ],
-            );
-          },
-        ),
+        child: asyncBody(roleAsync, (role) {
+          if (role == AppUserRole.admin) return const _AdminTabs();
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              const AccountPanel(),
+              const SizedBox(height: 12),
+              _AccessMessage(role: role),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -172,29 +200,25 @@ class _PendingSitesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pendingAsync = ref.watch(pendingSitesProvider);
-    return pendingAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => const LoadError(),
-      data: (sites) {
-        if (sites.isEmpty) {
-          return const _EmptyAdminState(
-            icon: Icons.fact_check_outlined,
-            title: 'No pending sites',
-            body: 'Submitted sites waiting for approval will appear here.',
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(pendingSitesProvider),
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
-            itemCount: sites.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (_, index) => _PendingSiteCard(site: sites[index]),
-          ),
+    return asyncBody(pendingAsync, (sites) {
+      if (sites.isEmpty) {
+        return const _EmptyAdminState(
+          icon: Icons.fact_check_outlined,
+          title: 'No pending sites',
+          body: 'Submitted sites waiting for approval will appear here.',
         );
-      },
-    );
+      }
+      return RefreshIndicator(
+        onRefresh: () async => ref.invalidate(pendingSitesProvider),
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          itemCount: sites.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (_, index) => _PendingSiteCard(site: sites[index]),
+        ),
+      );
+    });
   }
 }
 
@@ -207,9 +231,8 @@ class _PendingSiteCard extends ConsumerStatefulWidget {
   ConsumerState<_PendingSiteCard> createState() => _PendingSiteCardState();
 }
 
-class _PendingSiteCardState extends ConsumerState<_PendingSiteCard> {
-  bool _busy = false;
-
+class _PendingSiteCardState extends ConsumerState<_PendingSiteCard>
+    with _AdminActionRunner {
   @override
   Widget build(BuildContext context) {
     final site = widget.site;
@@ -296,27 +319,15 @@ class _PendingSiteCardState extends ConsumerState<_PendingSiteCard> {
     );
   }
 
-  Future<void> _moderate({required bool approve}) async {
-    setState(() => _busy = true);
-    try {
-      final repo = ref.read(adminRepositoryProvider);
-      if (approve) {
-        await repo.approveSite(widget.site.id);
-      } else {
-        await repo.rejectSite(widget.site.id);
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(approve ? 'Site approved' : 'Site rejected')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not update site: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<void> _moderate({required bool approve}) {
+    final repo = ref.read(adminRepositoryProvider);
+    return _runAdminAction(
+      () => approve
+          ? repo.approveSite(widget.site.id)
+          : repo.rejectSite(widget.site.id),
+      success: (_) => approve ? 'Site approved' : 'Site rejected',
+      failure: 'Could not update site',
+    );
   }
 }
 
@@ -343,31 +354,27 @@ class _ReportFeedTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final reportsAsync = ref.watch(recentAdminReportsProvider);
-    return reportsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => const LoadError(),
-      data: (reports) {
-        final matches = reports.where((entry) => filter(entry.report)).toList();
-        if (matches.isEmpty) {
-          return _EmptyAdminState(
-            icon: emptyIcon,
-            title: emptyTitle,
-            body: emptyBody,
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(recentAdminReportsProvider),
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
-            itemCount: matches.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (_, index) =>
-                _ReportModerationCard(adminReport: matches[index]),
-          ),
+    return asyncBody(reportsAsync, (reports) {
+      final matches = reports.where((entry) => filter(entry.report)).toList();
+      if (matches.isEmpty) {
+        return _EmptyAdminState(
+          icon: emptyIcon,
+          title: emptyTitle,
+          body: emptyBody,
         );
-      },
-    );
+      }
+      return RefreshIndicator(
+        onRefresh: () async => ref.invalidate(recentAdminReportsProvider),
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          itemCount: matches.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (_, index) =>
+              _ReportModerationCard(adminReport: matches[index]),
+        ),
+      );
+    });
   }
 }
 
@@ -381,9 +388,8 @@ class _ReportModerationCard extends ConsumerStatefulWidget {
       _ReportModerationCardState();
 }
 
-class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
-  bool _busy = false;
-
+class _ReportModerationCardState extends ConsumerState<_ReportModerationCard>
+    with _AdminActionRunner {
   @override
   Widget build(BuildContext context) {
     final adminReport = widget.adminReport;
@@ -536,98 +542,53 @@ class _ReportModerationCardState extends ConsumerState<_ReportModerationCard> {
       ),
     );
     if (edit == null || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final adminReport = widget.adminReport;
-      await ref
+    final adminReport = widget.adminReport;
+    await _runAdminAction(
+      () => ref
           .read(adminRepositoryProvider)
           .updateActivityReport(
             adminReport.siteId,
             adminReport.report.id,
             activityType: edit.type,
             activityNote: edit.note,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Report updated')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not update report: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+          ),
+      success: (_) => 'Report updated',
+      failure: 'Could not update report',
+    );
   }
 
   Future<void> _banUser(String uid) async {
     final choice = await showBanUserDialog(context, uid: uid);
     if (choice == null || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      await ref
+    await _runAdminAction(
+      () => ref
           .read(adminRepositoryProvider)
-          .banUser(uid, duration: choice.duration, reason: choice.reason);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('User banned (${choice.duration.label})')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not ban user: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+          .banUser(uid, duration: choice.duration, reason: choice.reason),
+      success: (_) => 'User banned (${choice.duration.label})',
+      failure: 'Could not ban user',
+    );
   }
 
   Future<void> _purgeUserReports(String uid) async {
     final confirmed = await showPurgeUserReportsDialog(context, uid: uid);
     if (confirmed != true || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final removed = await ref
-          .read(adminRepositoryProvider)
-          .deleteRecentReportsByUser(uid);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            removed == 1 ? 'Removed 1 report' : 'Removed $removed reports',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not remove reports: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _runAdminAction(
+      () => ref.read(adminRepositoryProvider).deleteRecentReportsByUser(uid),
+      success: (removed) =>
+          removed == 1 ? 'Removed 1 report' : 'Removed $removed reports',
+      failure: 'Could not remove reports',
+    );
   }
 
-  Future<void> _deleteReport() async {
-    setState(() => _busy = true);
-    try {
-      final adminReport = widget.adminReport;
-      await ref
+  Future<void> _deleteReport() {
+    final adminReport = widget.adminReport;
+    return _runAdminAction(
+      () => ref
           .read(adminRepositoryProvider)
-          .deleteReport(adminReport.siteId, adminReport.report.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Report removed')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not remove report: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+          .deleteReport(adminReport.siteId, adminReport.report.id),
+      success: (_) => 'Report removed',
+      failure: 'Could not remove report',
+    );
   }
 }
 
@@ -640,31 +601,27 @@ class _BansTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bansAsync = ref.watch(bansProvider);
-    return bansAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) => const LoadError(),
-      data: (bans) {
-        if (bans.isEmpty) {
-          return const _EmptyAdminState(
-            icon: Icons.block_outlined,
-            title: 'Nobody is banned',
-            body:
-                'Ban a spammer from their report in the Reports or '
-                'Activity tab, and they will show up here.',
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(bansProvider),
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
-            itemCount: bans.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (_, index) => _BanCard(ban: bans[index]),
-          ),
+    return asyncBody(bansAsync, (bans) {
+      if (bans.isEmpty) {
+        return const _EmptyAdminState(
+          icon: Icons.block_outlined,
+          title: 'Nobody is banned',
+          body:
+              'Ban a spammer from their report in the Reports or '
+              'Activity tab, and they will show up here.',
         );
-      },
-    );
+      }
+      return RefreshIndicator(
+        onRefresh: () async => ref.invalidate(bansProvider),
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          itemCount: bans.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (_, index) => _BanCard(ban: bans[index]),
+        ),
+      );
+    });
   }
 }
 
@@ -677,9 +634,7 @@ class _BanCard extends ConsumerStatefulWidget {
   ConsumerState<_BanCard> createState() => _BanCardState();
 }
 
-class _BanCardState extends ConsumerState<_BanCard> {
-  bool _busy = false;
-
+class _BanCardState extends ConsumerState<_BanCard> with _AdminActionRunner {
   @override
   Widget build(BuildContext context) {
     final ban = widget.ban;
@@ -742,22 +697,12 @@ class _BanCardState extends ConsumerState<_BanCard> {
     );
   }
 
-  Future<void> _unban() async {
-    setState(() => _busy = true);
-    try {
-      await ref.read(adminRepositoryProvider).unbanUser(widget.ban.uid);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Ban lifted')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not lift ban: $e')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<void> _unban() {
+    return _runAdminAction(
+      () => ref.read(adminRepositoryProvider).unbanUser(widget.ban.uid),
+      success: (_) => 'Ban lifted',
+      failure: 'Could not lift ban',
+    );
   }
 }
 
@@ -776,13 +721,12 @@ class NoticeTab extends ConsumerStatefulWidget {
   ConsumerState<NoticeTab> createState() => _NoticeTabState();
 }
 
-class _NoticeTabState extends ConsumerState<NoticeTab> {
+class _NoticeTabState extends ConsumerState<NoticeTab> with _AdminActionRunner {
   final TextEditingController _message = TextEditingController();
   final TextEditingController _customColor = TextEditingController();
   AnnouncementSeverity _severity = AnnouncementSeverity.info;
   bool _askForRating = false;
   DateTime? _expiresAt;
-  bool _busy = false;
 
   /// Seeded into an empty message box when the rate toggle goes on — the
   /// admin can still edit it before publishing.
@@ -1050,12 +994,11 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
     // build see if the markup is nothing but tags. So it must not be empty.
     final plain = plainTextOfNotice(source).trim();
     if (plain.isEmpty) {
-      _snack('Type a message first');
+      showAppSnack(context, 'Type a message first');
       return;
     }
-    setState(() => _busy = true);
-    try {
-      await ref
+    await _runAdminAction(
+      () => ref
           .read(adminRepositoryProvider)
           .publishAnnouncement(
             message: plain,
@@ -1064,35 +1007,23 @@ class _NoticeTabState extends ConsumerState<NoticeTab> {
             color: _colorHex,
             cta: _askForRating ? kAnnouncementCtaRate : null,
             expiresAt: _expiresAt,
-          );
-      _snack('Notice published');
-    } catch (e) {
-      _snack('Could not publish: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+          ),
+      success: (_) => 'Notice published',
+      failure: 'Could not publish',
+    );
   }
 
-  Future<void> _clear() async {
-    setState(() => _busy = true);
-    try {
-      await ref.read(adminRepositoryProvider).clearAnnouncement();
-      _message.clear();
-      _loadedKey = null;
-      _expiresAt = null;
-      _snack('Notice cleared');
-    } catch (e) {
-      _snack('Could not clear: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  void _snack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  Future<void> _clear() {
+    return _runAdminAction(
+      () async {
+        await ref.read(adminRepositoryProvider).clearAnnouncement();
+        _message.clear();
+        _loadedKey = null;
+        _expiresAt = null;
+      },
+      success: (_) => 'Notice cleared',
+      failure: 'Could not clear',
+    );
   }
 }
 
@@ -1109,37 +1040,19 @@ String _banHeadline(UserBan ban, bool active) {
 /// deliberately vague ("all reports … in the last 10 hours") rather than
 /// pre-counted: pre-counting would double the reads for a destructive action
 /// the admin is about to take anyway.
-Future<bool?> showPurgeUserReportsDialog(
+Future<bool> showPurgeUserReportsDialog(
   BuildContext context, {
   required String uid,
 }) {
   final hours = purgeWindow.inHours;
-  return showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: AppTheme.surface,
-      title: const Text(
-        "Remove this user's reports?",
-        style: TextStyle(color: AppTheme.textPrimary),
-      ),
-      content: Text(
+  return showConfirmDialog(
+    context,
+    title: "Remove this user's reports?",
+    message:
         'Deletes every report and status vote $uid has posted in the last '
         '$hours hours, across all sites. Older reports are left alone. '
         'This cannot be undone.',
-        style: const TextStyle(color: AppTheme.textSecondary, height: 1.35),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Remove reports'),
-        ),
-      ],
-    ),
+    confirmLabel: 'Remove reports',
   );
 }
 
@@ -1342,6 +1255,7 @@ class _MetaLine extends StatelessWidget {
   }
 }
 
+/// [EmptyState] with the admin tabs' accent-icon policy applied in one place.
 class _EmptyAdminState extends StatelessWidget {
   const _EmptyAdminState({
     required this.icon,
@@ -1354,34 +1268,12 @@ class _EmptyAdminState extends StatelessWidget {
   final String body;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: AppTheme.accent, size: 36),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => EmptyState(
+    icon: icon,
+    iconColor: AppTheme.accent,
+    title: title,
+    body: body,
+  );
 }
 
 String _reportTitle(SiteReport report) {

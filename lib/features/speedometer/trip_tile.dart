@@ -4,10 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../../models/trip.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/confirm_dialog.dart';
 import 'trip_controller.dart';
-
-const _amber = Color(0xFFF59E0B);
-const _deleteRed = Color(0xFFEF4444);
 
 /// One saved trip, per the design: date + time range on the left, distance /
 /// average speed / elapsed-time chips, and a delete ×. Shared by the Home
@@ -64,7 +62,7 @@ class TripTile extends StatelessWidget {
                   _TripChip(
                     icon: Icons.show_chart,
                     label: 'avg ${trip.avgSpeedKmh.toStringAsFixed(0)} km/h',
-                    color: _amber,
+                    color: AppTheme.warning,
                   ),
                   _TripChip(
                     icon: Icons.schedule,
@@ -148,45 +146,22 @@ Future<void> confirmDeleteTrip(
   WidgetRef ref,
   String tripId,
 ) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Delete Trip'),
-      content: const Text('Remove this trip from your log?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: _deleteRed),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Delete'),
-        ),
-      ],
-    ),
+  final ok = await showConfirmDialog(
+    context,
+    title: 'Delete Trip',
+    message: 'Remove this trip from your log?',
+    confirmLabel: 'Delete',
   );
-  if (ok == true) await ref.read(tripHistoryProvider.notifier).remove(tripId);
+  if (ok) await ref.read(tripHistoryProvider.notifier).remove(tripId);
 }
 
 /// "Clear all" confirmation; wipes the whole trip history when confirmed.
 Future<void> confirmClearAllTrips(BuildContext context, WidgetRef ref) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Clear all trips?'),
-      content: const Text('This permanently deletes every saved trip.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Delete all'),
-        ),
-      ],
-    ),
+  final ok = await showConfirmDialog(
+    context,
+    title: 'Clear all trips?',
+    message: 'This permanently deletes every saved trip.',
+    confirmLabel: 'Delete all',
   );
-  if (ok == true) await ref.read(tripHistoryProvider.notifier).clear();
+  if (ok) await ref.read(tripHistoryProvider.notifier).clear();
 }

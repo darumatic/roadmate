@@ -53,6 +53,18 @@ double? parseCoordinate(String? raw, {required double maxAbs}) {
   return value;
 }
 
+/// Validation message for a form field that must not be blank. The one
+/// implementation of the "Required" rule — Add Site and the admin site editor
+/// used to each spell it inline.
+String? requiredFieldError(String? raw) =>
+    (raw == null || raw.trim().isEmpty) ? 'Required' : null;
+
+/// "12 km away" / "3.4 km away" — whole kilometres from 10 up, one decimal
+/// below. Shared by Nearby and the Home closest-sites card so the two rows
+/// can never disagree on rounding.
+String kmAwayLabel(double km) =>
+    '${km.toStringAsFixed(km < 10 ? 1 : 0)} km away';
+
 /// Validation message for one coordinate field, or null when acceptable.
 /// **Blank is acceptable**: coordinates are optional — a site without them is
 /// simply absent from Nearby and never raises an approach prompt.

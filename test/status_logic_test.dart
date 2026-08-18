@@ -15,61 +15,10 @@ SiteReport _activity(String id, DateTime at) => SiteReport(
 );
 
 void main() {
-  final logic = const StatusLogic(window: Duration(hours: 6));
   final now = DateTime(2026, 6, 29, 12);
 
-  group('deriveStatus', () {
-    test('defaults to unknown with no reports (issue #21)', () {
-      expect(logic.deriveStatus(const [], now: now), SiteStatus.unknown);
-    });
-
-    test('uses the most recent report within the window', () {
-      final reports = [
-        _report(SiteStatus.open, now.subtract(const Duration(hours: 3))),
-        _report(SiteStatus.blitz, now.subtract(const Duration(minutes: 30))),
-        _report(SiteStatus.closed, now.subtract(const Duration(hours: 5))),
-      ];
-      expect(logic.deriveStatus(reports, now: now), SiteStatus.blitz);
-    });
-
-    test('reports older than the window leave the status unknown', () {
-      final reports = [
-        _report(SiteStatus.blitz, now.subtract(const Duration(hours: 8))),
-      ];
-      expect(logic.deriveStatus(reports, now: now), SiteStatus.unknown);
-    });
-
-    test('ignores activity-only reports with no status', () {
-      final reports = [
-        SiteReport(
-          id: 'a',
-          siteId: 's1',
-          createdAt: now.subtract(const Duration(minutes: 5)),
-          activityNote: 'Truck queue forming',
-        ),
-      ];
-      expect(logic.deriveStatus(reports, now: now), SiteStatus.unknown);
-    });
-
-    test('the default window is the 10-hour freshness rule (issue #21)', () {
-      expect(const StatusLogic().window, const Duration(hours: 10));
-    });
-  });
-
-  group('isBlitzActive', () {
-    test('true when a recent blitz exists', () {
-      final reports = [
-        _report(SiteStatus.blitz, now.subtract(const Duration(hours: 2))),
-      ];
-      expect(logic.isBlitzActive(reports, now: now), isTrue);
-    });
-
-    test('false when the blitz is outside the window', () {
-      final reports = [
-        _report(SiteStatus.blitz, now.subtract(const Duration(hours: 7))),
-      ];
-      expect(logic.isBlitzActive(reports, now: now), isFalse);
-    });
+  test('the freshness window is the 10-hour rule (issue #21)', () {
+    expect(statusFreshWindow, const Duration(hours: 10));
   });
 
   group('effectiveStatus (issue #21)', () {

@@ -187,6 +187,11 @@ class AdminRepository {
   /// Permanently removes a site and every report and rate-limit ledger doc
   /// under it (issue #13). Admin-only per the security rules; one atomic
   /// batch so a failure never leaves orphans behind a deleted site.
+  ///
+  /// The `limits` subcollection here is the LEGACY per-site ledger from the
+  /// rolled-back issue #15 — no client writes it anymore (the live ledger is
+  /// `users/{uid}/limits/actions`), but old docs still exist under old sites,
+  /// so this cleanup must stay. See the matching note in firestore.rules.
   Future<void> deleteSite(String siteId) async {
     final siteRef = _sites.doc(siteId);
     final reports = await siteRef.collection('reports').get();

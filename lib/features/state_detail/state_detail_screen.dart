@@ -8,7 +8,7 @@ import '../../services/providers.dart';
 import '../../services/site_stats.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/back_to_top.dart';
-import '../../widgets/load_error.dart';
+import '../../widgets/async_body.dart';
 import '../../widgets/site_card.dart';
 
 class StateDetailScreen extends ConsumerStatefulWidget {
@@ -37,52 +37,46 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: sitesAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const LoadError(),
-          data: (allSites) {
-            final stateSites = allSites
-                .where((s) => s.state == widget.state)
-                .toList();
-            final filtered = pinSiteFirst(
-              searchSites(stateSites, _query),
-              widget.highlightSiteId,
-            );
-            return BackToTop(
-              builder: (context, scrollController) => RefreshIndicator(
-                onRefresh: () => refreshSiteData(ref),
-                child: CustomScrollView(
-                  controller: scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: _topBar(context, stateSites.length),
-                    ),
-                    if (filtered.isEmpty)
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: _empty(stateSites.isEmpty),
-                      )
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                        sliver: SliverList.separated(
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (_, i) => SiteCard(
-                            site: filtered[i],
-                            highlighted:
-                                filtered[i].id == widget.highlightSiteId,
-                          ),
+        child: asyncBody(sitesAsync, (allSites) {
+          final stateSites = allSites
+              .where((s) => s.state == widget.state)
+              .toList();
+          final filtered = pinSiteFirst(
+            searchSites(stateSites, _query),
+            widget.highlightSiteId,
+          );
+          return BackToTop(
+            builder: (context, scrollController) => RefreshIndicator(
+              onRefresh: () => refreshSiteData(ref),
+              child: CustomScrollView(
+                controller: scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _topBar(context, stateSites.length),
+                  ),
+                  if (filtered.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _empty(stateSites.isEmpty),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      sliver: SliverList.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) => SiteCard(
+                          site: filtered[i],
+                          highlighted: filtered[i].id == widget.highlightSiteId,
                         ),
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          );
+        }),
       ),
     );
   }
