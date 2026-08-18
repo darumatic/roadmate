@@ -11,8 +11,8 @@ import 'display_mode_stub.dart'
     as display_mode;
 
 import '../firebase_options.dart';
+import 'auth_switched_stream.dart';
 import 'google_credential.dart';
-import 'role_stream.dart';
 import 'username_logic.dart';
 
 /// Thrown when the user dismisses a sign-in surface (the Android Google
@@ -52,26 +52,26 @@ final authStateProvider = StreamProvider<User?>((ref) {
   return ref.watch(firebaseAuthProvider).userChanges();
 });
 
-// The switching/retry behaviour lives in roleStream (role_stream.dart),
-// where it is unit-tested — the old `await for` + `yield*` shape here never
-// observed a sign-out or account switch after the first sign-in.
+// The switching/retry behaviour lives in authSwitchedStream, where it is
+// unit-tested — the old `await for` + `yield*` shape here never observed a
+// sign-out or account switch after the first sign-in. Anonymous users map to
+// null: an anonymous uid has no userRoles doc, so no listener is opened and
+// they get the anonymous role directly.
 final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) {
   if (Firebase.apps.isEmpty) return Stream.value(AppUserRole.anonymous);
 
   final auth = ref.watch(firebaseAuthProvider);
   final firestore = FirebaseFirestore.instance;
-  return roleStream<AppUserRole>(
+  return authSwitchedStream<String, AppUserRole>(
     authUsers: auth.userChanges().map(
-      (user) => user == null
-          ? null
-          : RoleAuthUser(uid: user.uid, isAnonymous: user.isAnonymous),
+      (user) => (user == null || user.isAnonymous) ? null : user.uid,
     ),
-    roleDocOf: (uid) =>
+    sourceOf: (uid) =>
         firestore.collection('userRoles').doc(uid).snapshots().map((doc) {
           final role = doc.data()?['role'] as String?;
           return role == 'admin' ? AppUserRole.admin : AppUserRole.truckie;
         }),
-    anonymousRole: AppUserRole.anonymous,
+    signedOutValue: AppUserRole.anonymous,
   );
 });
 

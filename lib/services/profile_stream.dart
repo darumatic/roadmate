@@ -12,6 +12,8 @@ library;
 
 import 'dart:async';
 
+import 'auth_switched_stream.dart';
+
 /// What the current user signs their posts with.
 ///
 /// A picked road name always wins; a signed-in account without one falls back
@@ -83,87 +85,54 @@ Stream<UserProfile?> profileStream({
   Duration retryDelay = const Duration(seconds: 5),
 }) {
   final controller = StreamController<UserProfile?>();
-  StreamSubscription<ProfileAuthUser?>? authSub;
-  StreamSubscription<UserProfile?>? docSub;
+  StreamSubscription<UserProfile?>? baseSub;
   StreamSubscription<ClaimedName>? claimSub;
-  Timer? retry;
-  ProfileAuthUser? user;
-  var emittedAnything = false;
-  String? claimedUid;
-  String? claimedName;
+  ClaimedName? claimed;
 
-  void emit(UserProfile? profile) {
-    emittedAnything = true;
-    if (!controller.isClosed) controller.add(profile);
-  }
-
-  void openDoc() {
-    docSub?.cancel();
-    final current = user;
-    if (current == null) return;
-    docSub = profileDocOf(current).listen(
-      (profile) {
-        final echoed = claimedUid == current.uid ? claimedName : null;
-        if (profile != null &&
-            echoed != null &&
-            (profile.username == null || profile.username!.trim().isEmpty)) {
-          profile = UserProfile(
-            isAnonymous: profile.isAnonymous,
-            username: echoed,
-            displayName: profile.displayName,
-          );
-        }
-        emit(profile);
-      },
-      onError: (Object _) {
-        docSub?.cancel();
-        docSub = null;
-        if (!emittedAnything) emit(null);
-        retry?.cancel();
-        retry = Timer(retryDelay, openDoc);
-      },
-    );
-  }
-
-  void onAuth(ProfileAuthUser? next) {
-    final previous = user;
-    user = next;
-    if (next?.uid != claimedUid) {
-      claimedUid = null;
-      claimedName = null;
+  // The claim overlay: a base emission may not undo a name this session
+  // already committed — whether it's a stale cache snapshot without the name
+  // or a fail-soft null from a dead listener. A real sign-out (or account
+  // switch) clears [claimed] via onSwitch first, so its null passes through.
+  UserProfile? withClaim(UserProfile? fromBase) {
+    final claim = claimed;
+    if (claim == null) return fromBase;
+    if (fromBase == null) return claim.profile;
+    if (fromBase.username == null || fromBase.username!.trim().isEmpty) {
+      return UserProfile(
+        isAnonymous: fromBase.isAnonymous,
+        username: claim.profile.username,
+        displayName: fromBase.displayName,
+      );
     }
-    // Token refreshes fire userChanges too; don't churn a healthy listener
-    // when nothing the profile depends on has changed.
-    if (next != null &&
-        previous != null &&
-        docSub != null &&
-        next.uid == previous.uid &&
-        next.isAnonymous == previous.isAnonymous &&
-        next.displayName == previous.displayName) {
-      return;
-    }
-    retry?.cancel();
-    docSub?.cancel();
-    docSub = null;
-    if (next == null) {
-      emit(null);
-      return;
-    }
-    openDoc();
+    return fromBase;
   }
 
   controller.onListen = () {
-    authSub = authUsers.listen(onAuth, onError: (Object _) => emit(null));
+    baseSub =
+        authSwitchedStream<ProfileAuthUser, UserProfile?>(
+          authUsers: authUsers,
+          sourceOf: profileDocOf,
+          signedOutValue: null,
+          // userChanges fires on token refreshes too; only these three fields
+          // feed the profile, so nothing else warrants churning the listener.
+          isSameIdentity: (previous, next) =>
+              next.uid == previous.uid &&
+              next.isAnonymous == previous.isAnonymous &&
+              next.displayName == previous.displayName,
+          onSwitch: (next) {
+            if (next?.uid != claimed?.uid) claimed = null;
+          },
+          retryDelay: retryDelay,
+        ).listen((profile) {
+          if (!controller.isClosed) controller.add(withClaim(profile));
+        });
     claimSub = localClaims?.listen((claim) {
-      claimedUid = claim.uid;
-      claimedName = claim.profile.username;
-      emit(claim.profile);
+      claimed = claim;
+      if (!controller.isClosed) controller.add(claim.profile);
     });
   };
   controller.onCancel = () {
-    retry?.cancel();
-    authSub?.cancel();
-    docSub?.cancel();
+    baseSub?.cancel();
     claimSub?.cancel();
   };
   return controller.stream;

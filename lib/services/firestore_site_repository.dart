@@ -6,6 +6,7 @@ import '../models/site.dart';
 import '../models/site_report.dart';
 import '../models/user_ban.dart';
 import 'auth_service.dart';
+import 'auth_switched_stream.dart';
 import 'ban_logic.dart';
 import 'participation_logic.dart';
 import 'rate_limit.dart';
@@ -366,32 +367,38 @@ class FirestoreSiteRepository implements SiteRepository {
     }
   }
 
+  // Both auth-scoped watchers go through authSwitchedStream: the old
+  // asyncExpand shape queued a sign-in/out forever behind the previous
+  // identity's never-completing listener (an account switch kept showing the
+  // old user's favourites/stats until restart) and never recovered from a
+  // terminal listener error — the same wedge as the 0.1.74 nickname bug.
+
   @override
   Stream<ParticipationStats?> watchMyStats() {
-    return auth.authStateChanges().asyncExpand((user) {
-      final uid = user?.uid;
-      if (uid == null) return Stream.value(null);
-      return _statsRef(uid).snapshots().map((snap) {
+    return authSwitchedStream<String, ParticipationStats?>(
+      authUsers: auth.authStateChanges().map((user) => user?.uid),
+      sourceOf: (uid) => _statsRef(uid).snapshots().map((snap) {
         final stats = ParticipationStats.fromMap(snap.data() ?? const {});
         // Keep the reporterLevel stamp fresh while the listener is live.
         _cacheStats(uid, stats);
         return stats;
-      });
-    });
+      }),
+      signedOutValue: null,
+    );
   }
 
   @override
   Stream<Set<String>> watchFavourites() {
-    return auth.authStateChanges().asyncExpand((user) {
-      final uid = user?.uid;
-      if (uid == null) return Stream.value(const <String>{});
-      return firestore
+    return authSwitchedStream<String, Set<String>>(
+      authUsers: auth.authStateChanges().map((user) => user?.uid),
+      sourceOf: (uid) => firestore
           .collection('users')
           .doc(uid)
           .collection('favourites')
           .snapshots()
-          .map((snap) => snap.docs.map((d) => d.id).toSet());
-    });
+          .map((snap) => snap.docs.map((d) => d.id).toSet()),
+      signedOutValue: const <String>{},
+    );
   }
 
   @override
