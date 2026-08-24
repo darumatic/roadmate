@@ -1,9 +1,12 @@
 name: Flutter CI
 
+# Runs standalone on pull requests. On master pushes it runs as a called job
+# inside the Web Release pipeline (web-release.yml) via workflow_call, so the
+# green run that gates the deploy is the same one that tested the commit — a
+# push trigger here would run the whole suite twice per release.
 on:
-  push:
-    branches: [master]
   pull_request:
+  workflow_call:
 
 jobs:
   test:

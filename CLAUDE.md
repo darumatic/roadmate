@@ -58,16 +58,17 @@ Incremental runs carry the append-only `reports` (~80% of the database) forward 
 - **Every change follows the full release cycle (the owner has standing authorization to deploy to prod):**
   1. **Local tests** — `flutter test` + `flutter analyze` (both must be clean). When fixing a bug or adding a feature, **add/update unit tests** for it first.
   2. **Commit & push** to `master` (commit attribution: only the user — see above).
-  3. **Deploy to prod** — publish web + Firestore rules/indexes. **Do not wait for, or post-check, GitHub CI** — its jobs run the same suites already run locally (flutter analyze/test, and test/rules via `scripts/test_rules.sh`), so polling it adds nothing (`scripts/check_ci.sh <sha>` exists only for the rare manual investigation; no `gh`/token required).
-  - `scripts/release.sh` runs all three in order (and bumps the patch version — see the version tooling); prefer it over doing the steps by hand.
+  3. **The push IS the deploy** — the **Web Release** pipeline (`.github/workflows/web-release.yml`) runs the three gates (CodeQL default-setup via a check-run gate, Flutter CI, Visual Verification) and, only when all pass, publishes web + Firestore rules/indexes (~15–20 min after the push). **The terminal never deploys web.** To confirm a release landed, `scripts/check_ci.sh [sha]` polls the pipeline until the deploy finishes (public API; no `gh`/token needed).
+  - `scripts/release.sh` runs the local steps (test+analyze → bump patch → commit+push) and hands off to the pipeline; prefer it over doing the steps by hand.
+  - **Store releases are a separate manual step behind a green web release:** Actions → **Mobile Release** → Run workflow (or `gh workflow run mobile-release.yml -f platform=both`); `dry_run` builds without uploading. Its preflight refuses a commit whose Web Release isn't green. Secrets come from `scripts/setup_release_secrets.sh` (VPS half covers web+Android; the iOS half runs once on the Mac).
 
 ## Commands
 
-Deploy runs on a Linux VPS. `flutter` lives at `/opt/flutter/bin` and `firebase`/`flutterfire` at `~/.pub-cache/bin` — **neither is on the default PATH**, so scripts export `PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"`. Firebase is authenticated (`firebase login`, headless via `--no-localhost`); `.firebaserc` sets the default project so `--project` is optional.
+Local tooling runs on a Linux VPS; **deploys run on GitHub Actions**. `flutter` lives at `/opt/flutter/bin` and `firebase`/`flutterfire` at `~/.pub-cache/bin` — **neither is on the default PATH**, so scripts export `PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"`. `.firebaserc` sets the default project; in CI the firebase CLI authenticates via the `FIREBASE_SERVICE_ACCOUNT` secret (`GOOGLE_APPLICATION_CREDENTIALS`).
 
 ```bash
-./scripts/release.sh [msg]         # FULL CYCLE: test+analyze -> bump -> commit+push -> deploy
-./scripts/check_ci.sh [sha]        # poll GitHub Flutter CI for a commit until green (0=pass; manual use only, not part of the release cycle)
+./scripts/release.sh [msg]         # RELEASE: test+analyze -> bump -> commit+push (the Web Release pipeline deploys)
+./scripts/check_ci.sh [sha]        # poll the Web Release pipeline until the deploy lands (0=released)
 dart run tool/bump_version.dart    # bump patch in pubspec.yaml + regen lib/version.dart (used by release.sh)
 
 flutter run -d chrome              # run the web app
@@ -75,9 +76,11 @@ flutter test                       # all unit tests
 flutter test test/<file>_test.dart # a single test file
 flutter analyze                    # static analysis (keep clean)
 dart format .                      # format
-flutter build web --no-tree-shake-icons  # web release build
-firebase deploy --only hosting,firestore:rules,firestore:indexes   # publish web + rules + indexes (LIVE)
+./scripts/build_web.sh             # web release build + deploy guards (media copy-back, registrant check)
+gh workflow run mobile-release.yml -f platform=both   # manual store releases (Mobile Release workflow)
 ```
+
+Web deploys happen **only** via the Web Release pipeline — never run `firebase deploy` from a terminal.
 
 **Versioning:** `pubspec.yaml` `version:` is the source of truth; `lib/version.dart` (`appVersion`) is a **generated** display constant baked into the build and shown at the bottom of the Info tab. Each release bumps the patch (`1.0.0 → 1.0.1`) via `tool/bump_version.dart`; the bump logic is unit-tested in `lib/services/version_logic.dart`.
 
@@ -94,7 +97,7 @@ firebase deploy --only hosting,firestore:rules,firestore:indexes   # publish web
 
 ## iOS release & App Store review
 
-**Process:** `scripts/release.sh` covers only web (+ version bump, commit, push). Store builds are separate, manual scripts run on the Mac:
+**Process:** `scripts/release.sh` covers the local release steps (version bump, commit, push; the Web Release pipeline deploys web). Store builds are the manual **Mobile Release** workflow (Actions → Run workflow), which runs these same scripts on hosted runners — Android on ubuntu, iOS on macOS with the signing secrets uploaded once by `scripts/setup_release_secrets.sh` from the Mac. The scripts also still run by hand on the Mac:
 - `scripts/release_ios.sh` — analyze/test → `flutter build ios --config-only` (a prior `flutter build web` resets the generated Swift package to iOS 13, breaking Firebase plugins; this regenerates it) → signing preflight (distribution identity + `RoadMate App Store` profile — see **iOS signing material** in `specs.md`, incl. the .p12 backup and how to mint replacements via the ASC API) → `flutter build ipa --export-options-plist=ios/ExportOptions.plist` (**manual** export signing; the automatic default needs an Apple ID signed into Xcode.app, which this CLI-only Mac lacks) → upload via `xcrun altool` when `ASC_KEY_ID`/`ASC_ISSUER_ID` are set (key file `AuthKey_<ID>.p8` in `~/.appstoreconnect/private_keys/`), else hands the IPA to Transporter.
 - After the altool upload, **`scripts/asc_submit.py` finishes the ASC release automatically** (stdlib-only, ES256 JWT via openssl): waits for build processing (~1h; polls every 2 min), sets "What's New" from `store/apple_whats_new.txt` (**update that file before releasing** — the script refuses text mentioning Google Play/Android per guideline 2.3.10), renames the editable version, attaches the build, and creates-or-reuses a review submission and submits it. `--dry-run` for read-only checks. Manual-upload (Transporter app) path leaves the ASC steps manual.
 - `scripts/release_android.sh` builds the AAB and **uploads + commits it to Play production automatically** via `scripts/play_upload.py` (stdlib-only; auth with the roadmate-play-uploader service-account JSON at `~/.config/roadmate/google-play-service-account.json`; release notes read from `store/google_play_release_notes.txt` — update that file before releasing). Falls back to a manual Play Console upload when the key file is absent. **Committed ≠ live (0.1.72 lesson):** users get the build only after Play review; the console can show "Not yet sent for review" even though auto-send is the API default. A no-op re-commit (fresh edit, re-PUT the unchanged production track, `:commit?changesNotSentForReview=false`) flushed a stuck pile once; the Publishing-overview "Send for review" button itself has **no API** — it is an owner click. Never report a Play release as live from the tracks API: `status: "completed"` there is the committed configuration, not what users see.

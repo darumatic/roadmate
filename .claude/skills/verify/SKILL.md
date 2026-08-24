@@ -10,8 +10,9 @@ description: Build, launch and drive the RoadMate web app headlessly to verify a
 `./scripts/verify_web.sh` compiles the app and drives it in real headless
 Chrome via `integration_test/app_test.dart` (semantic finders, seed data, no
 Firebase), writing PNGs to `build/integration_screenshots/` — run it, check
-exit code 0, and read the PNGs. The same script runs nightly in CI
-(`.github/workflows/nightly-visual.yml`). When a change touches a screen the
+exit code 0, and read the PNGs. The same script runs as the Visual
+Verification gate of every Web Release
+(`.github/workflows/visual-verification.yml`). When a change touches a screen the
 suite covers (Home, Info hub, Share, state detail), extend the suite's
 assertions/screenshots instead of hand-driving. First run installs a matched
 Chrome-for-Testing + chromedriver pair into `~/.cache/roadmate-verify` (~1 min).

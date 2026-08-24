@@ -11,7 +11,8 @@ import 'package:roadmate/services/startup_service.dart';
 import 'package:roadmate/widgets/site_card.dart';
 
 /// Deterministic web smoke suite driven by `scripts/verify_web.sh` (and the
-/// nightly-visual CI workflow) in real headless Chrome. Firebase is never
+/// Visual Verification gate of every Web Release) in real headless Chrome.
+/// Firebase is never
 /// initialized, so `siteRepositoryProvider` falls back to the bundled
 /// `LocalSeedSiteRepository` — a red run always means a code regression, not
 /// changed live data. Screenshots land in build/integration_screenshots/.

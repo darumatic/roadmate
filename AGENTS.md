@@ -12,7 +12,7 @@ RoadMate is a Flutter app with Firebase-backed data. Main application code lives
 - `flutter test` runs the full test suite.
 - `flutter test test/feature_screens_test.dart` runs focused widget coverage.
 - `flutter build web` creates `build/web` for Firebase Hosting.
-- `firebase deploy --only hosting --project roadmate-b1551` deploys the web build.
+- Web deploys run only from the **Web Release** GitHub Actions pipeline (a push to `master`); never deploy from the terminal.
 - Android release bundles are built from `android/` with `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ./gradlew :app:bundleRelease`.
 
 ## Coding Style & Naming Conventions

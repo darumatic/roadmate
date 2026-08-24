@@ -65,6 +65,13 @@ if [ ! -f "$ipa" ]; then
   exit 1
 fi
 
+# A CI dry run (Mobile Release workflow) proves the archive + signing without
+# an App Store upload or review submission.
+if [ "${RELEASE_DRY_RUN:-}" = "1" ]; then
+  echo "==> RELEASE_DRY_RUN=1 — skipping the App Store upload."
+  exit 0
+fi
+
 echo "==> Upload to App Store Connect"
 if [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
   xcrun altool --upload-app --type ios -f "$ipa" \

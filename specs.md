@@ -75,6 +75,19 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   `GpsSignal` (`lib/services/gps_signal.dart`) distinguishes *waiting for a first
   fix* (amber) and *stream errored* (red), so a still speedometer explains itself
   instead of looking broken.
+- **Releases ship from GitHub, never the terminal (2026-08-24)** — a push to
+  master IS the web release: the **Web Release** pipeline runs three parallel
+  gates — CodeQL, Flutter CI, Visual Verification (ex "Nightly Visual
+  Verification"; per-push now, so its cron + skip gate died) — and only a fully
+  green chain deploys hosting + rules + indexes. Store builds moved to a
+  **manual `workflow_dispatch`** (Mobile Release) whose preflight refuses any
+  commit without a green Web Release: mobile follows a positive web release.
+  CodeQL stays on GitHub's **default setup** (the org's security configuration
+  keeps it on, and an advanced-setup workflow's SARIF uploads conflict with
+  it), so the pipeline binds it in via a check-run poll rather than `needs:`.
+  A dispatch button was chosen over an auto-queued environment approval so
+  ordinary pushes leave no pending-deployment nag — releases stay web-only by
+  default. Details under **Deployment & domain → Release pipeline**.
 
 ## Architecture (as built)
 
@@ -392,9 +405,9 @@ They are approximate — verify exact site positions before production.
 
 ## Deployment & domain
 
-- **Live web app:** https://roadmate-b1551.web.app (Firebase Hosting). Deploy with
-  `firebase deploy --only hosting --project roadmate-b1551` (build `flutter build web`
-  first; config in `firebase.json`).
+- **Live web app:** https://roadmate-b1551.web.app (Firebase Hosting; config in
+  `firebase.json`). **Deploys run only from the Web Release pipeline** (see
+  below) — never from a terminal.
 - **Custom domain:** `roadmate.club` (registrar **Namecheap**, default BasicDNS).
   Connected via the modern Firebase single-A-record method:
   - `A` · host `@` · `199.36.158.100`  (Firebase Hosting IP)
@@ -402,7 +415,42 @@ They are approximate — verify exact site positions before production.
   - `www` (optional): `CNAME` · host `www` · `roadmate-b1551.web.app` — and add
     `www.roadmate.club` as a custom domain in the console so SSL is issued.
   - Firebase auto-provisions the Let's Encrypt cert after verification (~15 min–few h).
-- **Rules deploy:** `firebase deploy --only firestore:rules --project roadmate-b1551`.
+- **Rules & indexes deploy:** ride every web release — the pipeline's deploy
+  step publishes `hosting,firestore:rules,firestore:indexes` together.
+
+### Release pipeline (GitHub Actions, 2026-08-24)
+
+Pushing `master` triggers **Web Release** (`.github/workflows/web-release.yml`):
+three parallel gates — the **CodeQL gate** (polls the check runs of GitHub's
+default-setup scan, which has no workflow file in this repo), **Flutter CI**
+(`flutter-ci.yml`, reusable: analyze + tests + Firestore-rules suite; still
+runs standalone on PRs) and **Visual Verification** (`visual-verification.yml`,
+reusable: `scripts/verify_web.sh` in headless Chrome) — then a deploy job
+(`needs:` all three) builds via `scripts/build_web.sh` (the media copy-back and
+registrant guard preserved from the old release.sh) and runs `firebase deploy
+--only hosting,firestore:rules,firestore:indexes` as the service account. A
+green push is live in ~15–20 min; `scripts/check_ci.sh [sha]` blocks on it.
+`scripts/release.sh` is now only the local half: tests → patch bump →
+commit+push.
+
+**Mobile Release** (`mobile-release.yml`) is the manual store step: Actions →
+Run workflow (platform `both`/`android`/`ios`; `dry_run` builds everything but
+uploads nothing). Preflight requires a successful Web Release for the exact
+commit and refuses non-master refs. Android runs on ubuntu (keystore + Play SA
+materialized from secrets → `release_android.sh`); iOS runs on a hosted macOS
+runner (temp keychain from the .p12 secret, the provisioning profile, the ASC
+API key → `release_ios.sh`, which uploads via altool and finishes with
+`asc_submit.py`). Both scripts honour `RELEASE_DRY_RUN=1` (stop after the
+signed artifact).
+
+**Actions secrets** (uploaded by `scripts/setup_release_secrets.sh` — machine-
+aware: run on the VPS for the web/Android half, on the Mac for iOS):
+`FIREBASE_SERVICE_ACCOUNT`, `PLAY_SERVICE_ACCOUNT_JSON`,
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_PASSWORD`;
+iOS: `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD`,
+`IOS_PROVISIONING_PROFILE_BASE64`, `ASC_KEY_ID`, `ASC_ISSUER_ID`,
+`ASC_PRIVATE_KEY`. Re-run the script after rotating anything. Pipeline
+invariants are unit-guarded by `test/release_pipeline_test.dart`.
 
 ### Google Play publishing
 

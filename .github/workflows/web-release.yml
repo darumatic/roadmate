@@ -1,0 +1,121 @@
+name: Web Release
+
+# The release pipeline. Every push to master runs the three gates in
+# parallel:
+#   - CodeQL — GitHub's default-setup scan (org security configuration, no
+#     workflow file in this repo), bound in by a check-run gate because
+#     `needs:` cannot reference it,
+#   - Flutter CI — analyze + unit tests + Firestore rules suite (reusable
+#     workflow), and
+#   - Visual Verification — the compiled web app driven in headless Chrome
+#     (reusable workflow),
+# and only when all three succeed deploys web + Firestore rules + indexes to
+# production (https://roadmate.club) with the FIREBASE_SERVICE_ACCOUNT
+# secret (uploaded by scripts/setup_release_secrets.sh). The terminal never
+# deploys web: scripts/release.sh stops at the push and this pipeline takes
+# over (watch it with scripts/check_ci.sh). Store builds are a separate
+# manual step — mobile-release.yml.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize releases and never cancel a deploy mid-flight. Rapid successive
+# commits collapse onto the newest queued run, which deploys the newest code.
+concurrency:
+  group: web-release
+  cancel-in-progress: false
+
+jobs:
+  codeql:
+    name: CodeQL gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Wait for this commit's CodeQL analysis
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 45 polls x 20s = 15 min ceiling (the scan itself takes ~2-4 min).
+          for i in $(seq 1 45); do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-code-scanning")]')"
+            total="$(echo "$runs" | jq 'length')"
+            pending="$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')"
+            failed="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "neutral")] | length')"
+            if [ "$total" -gt 0 ] && [ "$failed" -gt 0 ]; then
+              echo "CodeQL failed for $GITHUB_SHA:" >&2
+              echo "$runs" | jq -r '.[] | "  \(.name): \(.status)/\(.conclusion)"' >&2
+              exit 1
+            fi
+            if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              echo "CodeQL green:"
+              echo "$runs" | jq -r '.[] | "  \(.name): \(.conclusion)"'
+              exit 0
+            fi
+            echo "  waiting for CodeQL ($i/45): found=$total pending=$pending"
+            sleep 20
+          done
+          echo "Timed out waiting for CodeQL default-setup check runs on $GITHUB_SHA." >&2
+          echo "If default setup was turned off org-side, rework this gate before releasing." >&2
+          exit 1
+
+  flutter-ci:
+    name: Flutter CI
+    uses: ./.github/workflows/flutter-ci.yml
+
+  visual-verification:
+    name: Visual Verification
+    uses: ./.github/workflows/visual-verification.yml
+
+  deploy:
+    name: Deploy web
+    needs: [codeql, flutter-ci, visual-verification]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web release (with deploy guards)
+        run: ./scripts/build_web.sh
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase (hosting + rules + indexes)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "FIREBASE_SERVICE_ACCOUNT secret is not set —" >&2
+            echo "run ./scripts/setup_release_secrets.sh on the VPS." >&2
+            exit 1
+          fi
+          keyfile="$RUNNER_TEMP/firebase-sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$keyfile"
+          export GOOGLE_APPLICATION_CREDENTIALS="$keyfile"
+          firebase deploy --only hosting,firestore:rules,firestore:indexes --non-interactive
+          rm -f "$keyfile"
+
+      - name: Released
+        run: echo "Live at https://roadmate.club"

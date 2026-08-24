@@ -57,6 +57,13 @@ fi
 
 echo "==> Built ${aab} (${version})."
 
+# A CI dry run (Mobile Release workflow) proves the build + signing without
+# consuming a Play upload.
+if [ "${RELEASE_DRY_RUN:-}" = "1" ]; then
+  echo "==> RELEASE_DRY_RUN=1 — skipping the Play upload."
+  exit 0
+fi
+
 sa_key="$HOME/.config/roadmate/google-play-service-account.json"
 if [ -f "$sa_key" ]; then
   echo "==> Upload to Google Play (production)"

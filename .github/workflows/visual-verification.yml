@@ -1,0 +1,44 @@
+name: Visual Verification
+
+# Compiles the web app and drives it in real headless Chrome
+# (integration_test/app_test.dart via scripts/verify_web.sh), uploading the
+# screenshots as an artifact for visual review. Runs as a release gate inside
+# the Web Release pipeline (workflow_call) — every master push is verified
+# before the web deploy — and stays manually runnable via workflow_dispatch.
+# (Formerly "Nightly Visual Verification" on a cron: the nightly trigger and
+# its new-commit skip gate went away when the pipeline made this per-push.)
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Drive the web app in headless Chrome
+        run: ./scripts/verify_web.sh
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-screenshots-${{ github.sha }}
+          path: build/integration_screenshots/
+          retention-days: 14
+          if-no-files-found: warn

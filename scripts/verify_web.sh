@@ -3,7 +3,8 @@
 # headless Chrome via the integration_test suite (integration_test/app_test.dart),
 # writing screenshots to build/integration_screenshots/.
 #
-# Used by .github/workflows/nightly-visual.yml and runnable on the VPS:
+# Used by .github/workflows/visual-verification.yml (a Web Release gate) and
+# runnable on the VPS:
 #   ./scripts/verify_web.sh
 #
 # Chromedriver/Chrome resolution:
