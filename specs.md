@@ -619,6 +619,16 @@ to renew it.
 3. **iOS release** — runs on the Simulator; still needs Apple Developer signing,
    bundle-id provisioning, and App Store setup for distribution.
 4. **Optional later:** FCM push for blitz alerts; an admin/moderation console.
+6. **Backup failure alerting** — the nightly Firestore backup failed **silently
+   for 20 days** (2026-08-05 → 08-25: a `usernames` doc ID containing a space,
+   `big trucker`, was interpolated raw into the REST URL → `InvalidURL`; fixed
+   in v1.0.7 by percent-encoding via `url_path()`). Failures only landed in
+   `~/backups/backup.log`, which nobody reads. Add alerting — e.g. the cron
+   wrapper opens/comments a GitHub issue after N consecutive failures, or a
+   snapshot-freshness check somewhere visible. Until then: check
+   `ls -lt ~/backups` freshness when touching DR.
+7. **Issue auto-fixer follow-ups** — a progress comment while `claude-working`;
+   multi-issue batching; the first live end-to-end run on a real approved issue.
 
 ---
 
