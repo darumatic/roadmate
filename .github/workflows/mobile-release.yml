@@ -172,10 +172,14 @@ jobs:
           # (security find-identity) sees it.
           security set-key-partition-list -S 'apple-tool:,apple:' -s -k "" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" login.keychain-db
+          # Install the profile where any Xcode resolves it by name: 16+ reads
+          # UserData/Provisioning Profiles, older tooling the MobileDevice path.
           profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
-          mkdir -p "$profiles"
+          legacy="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles" "$legacy"
           printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode \
             > "$profiles/RoadMate_App_Store.mobileprovision"
+          cp "$profiles/RoadMate_App_Store.mobileprovision" "$legacy/"
 
       - name: Install the App Store Connect API key
         env:

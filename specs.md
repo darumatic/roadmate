@@ -491,6 +491,20 @@ at the export step. `scripts/release_ios.sh` now preflights both:
   in `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`. **Keep the name
   stable** — `ios/ExportOptions.plist` matches it by name.
 
+Signing is **manual end to end** (2026-08-24): the Runner target's Release
+configuration pins `CODE_SIGN_STYLE = Manual`, the `Apple Distribution` identity and
+the `RoadMate App Store` profile for the *archive*, and `ios/ExportOptions.plist`
+does the same for the export — both guarded by `test/ios_export_options_test.dart`.
+Until then the archive used Xcode's *automatic* signing, which wants an Apple ID
+signed into Xcode.app: on the Mac it quietly leaned on leftover *development*
+signing material (which is why the revocation above only surfaced at the export
+step), and on a hosted GitHub runner — which has no such leftovers — it failed
+outright with "No Accounts" / "No profiles for 'com.darumatic.roadmate'" (the first
+Mobile Release iOS dry run). Manual Release signing needs exactly the two
+preflighted pieces above, on any machine. The Mobile Release workflow installs the
+profile into both the Xcode 16+ location above and the legacy
+`~/Library/MobileDevice/Provisioning Profiles` so any runner Xcode resolves it.
+
 To mint replacements headlessly (the ASC API key is Admin, so no Xcode sign-in or
 2FA is needed): `openssl genrsa` + `openssl req` for a CSR → `POST /v1/certificates`
 with `certificateType: DISTRIBUTION` → import → `POST /v1/profiles` with
