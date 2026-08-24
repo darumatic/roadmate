@@ -3,8 +3,8 @@ name: Web Release
 # The release pipeline. Every push to master runs the three gates in
 # parallel:
 #   - CodeQL — GitHub's default-setup scan (org security configuration, no
-#     workflow file in this repo), bound in by a check-run gate because
-#     `needs:` cannot reference it,
+#     workflow file in this repo), bound in by a gate that polls for its
+#     dynamic workflow run because `needs:` cannot reference it,
 #   - Flutter CI — analyze + unit tests + Firestore rules suite (reusable
 #     workflow), and
 #   - Visual Verification — the compiled web app driven in headless Chrome
@@ -36,19 +36,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      checks: read
+      actions: read
     steps:
       - name: Wait for this commit's CodeQL analysis
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 45 polls x 20s = 15 min ceiling (the scan itself takes ~2-4 min).
+          # Default setup runs as a "dynamic" workflow
+          # (dynamic/github-code-scanning/codeql; run names vary — "CodeQL",
+          # "Code Quality: ...") whose check runs report under the ordinary
+          # github-actions app, so the reliable signal is the dynamic
+          # workflow run for this commit, matched by its path.
+          # 45 polls x 20s = 15 min ceiling (the scan itself takes ~2-6 min).
           for i in $(seq 1 45); do
-            runs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.app.slug == "github-code-scanning")]')"
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.path | startswith("dynamic/github-code-scanning/"))]')"
             total="$(echo "$runs" | jq 'length')"
             pending="$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')"
-            failed="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "neutral")] | length')"
+            failed="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")] | length')"
             if [ "$total" -gt 0 ] && [ "$failed" -gt 0 ]; then
               echo "CodeQL failed for $GITHUB_SHA:" >&2
               echo "$runs" | jq -r '.[] | "  \(.name): \(.status)/\(.conclusion)"' >&2
@@ -62,7 +67,7 @@ jobs:
             echo "  waiting for CodeQL ($i/45): found=$total pending=$pending"
             sleep 20
           done
-          echo "Timed out waiting for CodeQL default-setup check runs on $GITHUB_SHA." >&2
+          echo "Timed out waiting for the CodeQL default-setup run on $GITHUB_SHA." >&2
           echo "If default setup was turned off org-side, rework this gate before releasing." >&2
           exit 1
 
@@ -80,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -95,7 +100,7 @@ jobs:
         run: ./scripts/build_web.sh
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
 

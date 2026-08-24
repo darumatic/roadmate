@@ -84,7 +84,10 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   commit without a green Web Release: mobile follows a positive web release.
   CodeQL stays on GitHub's **default setup** (the org's security configuration
   keeps it on, and an advanced-setup workflow's SARIF uploads conflict with
-  it), so the pipeline binds it in via a check-run poll rather than `needs:`.
+  it), so the pipeline binds it in by polling for the commit's
+  `dynamic/github-code-scanning/*` workflow run rather than `needs:` (NOT by
+  check-run app: default setup's check runs report under plain
+  `github-actions`, which is indistinguishable from our own jobs).
   A dispatch button was chosen over an auto-queued environment approval so
   ordinary pushes leave no pending-deployment nag — releases stay web-only by
   default. Details under **Deployment & domain → Release pipeline**.
@@ -421,8 +424,10 @@ They are approximate — verify exact site positions before production.
 ### Release pipeline (GitHub Actions, 2026-08-24)
 
 Pushing `master` triggers **Web Release** (`.github/workflows/web-release.yml`):
-three parallel gates — the **CodeQL gate** (polls the check runs of GitHub's
-default-setup scan, which has no workflow file in this repo), **Flutter CI**
+three parallel gates — the **CodeQL gate** (waits for GitHub's default-setup
+scan: the `dynamic/github-code-scanning/*` workflow run for the commit — it
+has no workflow file in this repo and its run names vary, e.g. "Code Quality:
+Push on master"), **Flutter CI**
 (`flutter-ci.yml`, reusable: analyze + tests + Firestore-rules suite; still
 runs standalone on PRs) and **Visual Verification** (`visual-verification.yml`,
 reusable: `scripts/verify_web.sh` in headless Chrome) — then a deploy job
