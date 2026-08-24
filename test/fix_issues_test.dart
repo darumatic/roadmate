@@ -48,6 +48,18 @@ void main() {
     expect(script, contains("DISALLOWED_TOOLS = 'WebFetch,WebSearch'"));
   });
 
+  test('bot scripts keep their executable bit', () {
+    // The cron line and the documented invocations run these directly; a
+    // Write without chmod once shipped setup_fix_issues.sh as 100644.
+    for (final path in [
+      'scripts/fix_issues.py',
+      'scripts/setup_fix_issues.sh',
+    ]) {
+      final mode = File(path).statSync().mode;
+      expect(mode & 0x40, isNot(0), reason: '$path must be owner-executable');
+    }
+  });
+
   test('setup script provisions labels, hook and git identity', () {
     final setup = File('scripts/setup_fix_issues.sh').readAsStringSync();
     for (final label in [
