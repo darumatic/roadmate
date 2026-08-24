@@ -459,6 +459,16 @@ iOS: `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD`,
 `ASC_PRIVATE_KEY`. Re-run the script after rotating anything. Pipeline
 invariants are unit-guarded by `test/release_pipeline_test.dart`.
 
+**Release permissions (2026-08-25):** the darumatic org's base permission is
+**read**, so only the two org owners (`deccico`, `fortuneFelix`) can push to
+master (which auto-deploys web), dispatch Mobile Release, or reach the Actions
+secrets. On this repo **write = release power** — a push deploys, and a branch
+workflow can read repo secrets — so keep roadmate collaborators at read/triage
+and take contributions as fork PRs (the Flutter CI `pull_request` gate covers
+them; fork PRs get no secrets and cannot dispatch workflows). Per-repo grants
+stack on top of the base: giving someone write on another darumatic repo does
+not touch this one.
+
 ### Google Play publishing
 
 `scripts/release_android.sh` → `scripts/play_upload.py` (stdlib-only; SA JSON at `~/.config/roadmate/google-play-service-account.json`) uploads the AAB and commits a completed release to the production track. Learnings from the 0.1.72 release (2026-08-16):
