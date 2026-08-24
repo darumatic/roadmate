@@ -78,9 +78,12 @@ flutter analyze                    # static analysis (keep clean)
 dart format .                      # format
 ./scripts/build_web.sh             # web release build + deploy guards (media copy-back, registrant check)
 gh workflow run mobile-release.yml -f platform=both   # manual store releases (Mobile Release workflow)
+scripts/fix_issues.py --dry-run    # preview an issue auto-fixer tick (cron runs the real ones; see specs.md)
 ```
 
 Web deploys happen **only** via the Web Release pipeline — never run `firebase deploy` from a terminal.
+
+**Issue auto-fixer:** applying the `approved` label to a GitHub issue makes a VPS cron tick (`scripts/fix_issues.py`) implement and release it unattended — in a dedicated clone at `~/roadmate-bot/roadmate`, never this workspace. Labels are the protocol (`approved` → `claude-working` → closed on a green deploy, or sticky `claude-blocked` until re-approved). Full approval/security model in `specs.md` → "Issue auto-fixer".
 
 **Versioning:** `pubspec.yaml` `version:` is the source of truth; `lib/version.dart` (`appVersion`) is a **generated** display constant baked into the build and shown at the bottom of the Info tab. Each release bumps the patch (`1.0.0 → 1.0.1`) via `tool/bump_version.dart`; the bump logic is unit-tested in `lib/services/version_logic.dart`.
 

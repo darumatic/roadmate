@@ -91,6 +91,13 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   A dispatch button was chosen over an auto-queued environment approval so
   ordinary pushes leave no pending-deployment nag — releases stay web-only by
   default. Details under **Deployment & domain → Release pipeline**.
+- **Issue auto-fixing is label-gated cron on the VPS (2026-08-25)** — no PRs, no
+  GitHub App, no bot account: the owner applies the `approved` label and a cron
+  tick implements the fix headlessly and releases it through the normal master
+  push (all three pipeline gates still apply). Chosen over the Claude GitHub App
+  because the release flow already lives on this box and commits must stay
+  attributed to the owner. Runs as the personal (non-root) user. Details under
+  **Deployment & domain → Issue auto-fixer**.
 
 ## Architecture (as built)
 
@@ -468,6 +475,51 @@ and take contributions as fork PRs (the Flutter CI `pull_request` gate covers
 them; fork PRs get no secrets and cannot dispatch workflows). Per-repo grants
 stack on top of the base: giving someone write on another darumatic repo does
 not touch this one.
+
+### Issue auto-fixer (2026-08-25)
+
+Applying the **`approved`** label to a GitHub issue authorizes Claude to fix it
+unattended: a 15-min cron tick of `scripts/fix_issues.py` (running as the
+personal user on the VPS, inside a dedicated clone at `~/roadmate-bot/roadmate`
+— never the interactive workspace) implements the fix headlessly with the
+`claude` CLI, releases through the normal cycle (`release.sh` → the push is the
+web deploy, behind the three pipeline gates), waits on `check_ci.sh`, and
+closes the issue with a summary + version + commit sha only after the deploy is
+green. One issue per tick, oldest first. Labels are the protocol: `approved`
+(the trigger — **consumed at pickup**, so nothing ever runs twice without a
+fresh human approval) → `claude-working` → closed on green, or
+**`claude-blocked`** (gave up / failed / rejected; sticky — the bot never
+retries until the owner re-applies `approved`). `--dry-run` evaluates and
+prints the exact prompt with zero writes anywhere; `--issue N` targets one
+issue (all guards still apply).
+
+**Security model.** The label IS the gate: labeling needs triage+ access (only
+the two org owners have it), and the runner additionally requires the `labeled`
+actor to be in `ALLOWED_APPROVERS` (`deccico`). Issue text is untrusted
+third-party content on a public repo, so the snapshot is frozen at approval
+time — a body edited *after* approval is refused ("re-apply the label"),
+comments created or edited after approval are excluded — and the whole snapshot
+is fenced as DATA in the prompt. **Owner habit: read the issue, finish any
+edits, and apply the label last.** Attribution is triple-guarded (the
+`includeCoAuthoredBy` settings flag, CLAUDE.md, and a commit-msg hook in the
+bot clone rejecting `Co-Authored-By` — the hook is the deterministic one; the
+settings flag fails silently on bad JSON). Residual risk, accepted: headless
+claude runs with permission checks skipped (as the non-root personal user,
+WebFetch/WebSearch disabled) and shares that user's repo SSH key, gh token and
+admin SA key — the owner pre-reading each issue before labeling plus the three
+pipeline gates are the primary defenses.
+
+**Ops.** A **red pipeline after a bot push leaves master ahead of production**
+— the bot says so loudly on the issue; fix or revert before the next release.
+Crash-safe state lives in `~/roadmate-bot/state/current-run.json`: a stale run
+is resumed (a crash during the CI wait must not report a pushed fix as failed)
+or reported next tick, and unpushed work is saved as a `patch-N.patch` before
+the clone is reset. Logs in `~/roadmate-bot/logs/` (last 30 claude runs kept).
+Setup is `scripts/setup_fix_issues.sh` (labels, clone, git identity, hook,
+`--install-cron`). The user-level `~/.claude/settings.json` model choice
+applies to bot runs too. Guards are unit-tested in
+`scripts/fix_issues_test.py`, wired into `flutter test` by
+`test/fix_issues_test.dart` alongside source-level invariant pins.
 
 ### Google Play publishing
 
