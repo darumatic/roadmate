@@ -125,6 +125,17 @@ def document_name(project: str, database: str, path: str) -> str:
             f'{path}')
 
 
+def url_path(rel_path: str) -> str:
+    """Percent-encode a relative document/collection path for a REST URL.
+
+    Document IDs are user-chosen — a ``usernames`` key can be ``big trucker``
+    — and raw interpolation of a space into the URL raises InvalidURL, which
+    silently killed every nightly backup from 2026-08-05 until 2026-08-25.
+    Only the segment contents are encoded; ``/`` separators are kept.
+    """
+    return urllib.parse.quote(rel_path, safe='/')
+
+
 def count_by_collection_id(records):
     """Walked document totals per collection id, for the count() cross-check.
 
@@ -347,8 +358,8 @@ class Firestore:
 
     # -- operations ------------------------------------------------------
     def list_collection_ids(self, parent_path: str = ''):
-        url = (f'{self.root}/{parent_path}:listCollectionIds' if parent_path
-               else f'{self.root}:listCollectionIds')
+        url = (f'{self.root}/{url_path(parent_path)}:listCollectionIds'
+               if parent_path else f'{self.root}:listCollectionIds')
         ids, page_token = [], None
         while True:
             payload = {'pageSize': 100}
@@ -362,8 +373,8 @@ class Firestore:
 
     def list_documents(self, parent_path: str, collection_id: str):
         """All documents in a collection, including 'missing' parent docs."""
-        base = (f'{self.root}/{parent_path}/{collection_id}' if parent_path
-                else f'{self.root}/{collection_id}')
+        base = (f'{self.root}/{url_path(parent_path)}/{url_path(collection_id)}'
+                if parent_path else f'{self.root}/{url_path(collection_id)}')
         page_token, docs = None, []
         while True:
             params = {'pageSize': PAGE_SIZE, 'showMissing': 'true'}

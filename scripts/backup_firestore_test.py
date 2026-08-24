@@ -487,6 +487,38 @@ class CliTest(unittest.TestCase):
         self.assertTrue(args.incremental)
 
 
+class UrlEncodingTest(unittest.TestCase):
+    """Document IDs are user-chosen (a ``usernames`` key like ``big trucker``)
+    and raw interpolation into the REST URL raises InvalidURL on a space —
+    which silently killed every nightly backup from 2026-08-05. Paths must be
+    percent-encoded, with the ``/`` separators preserved."""
+
+    def _client(self, seen):
+        fs = bf.Firestore.__new__(bf.Firestore)
+        fs.root = 'https://firestore.example/v1/p/d/documents'
+        fs._call = lambda url, payload=None: seen.append(url) or {}
+        return fs
+
+    def test_url_path_encodes_spaces_and_keeps_slashes(self):
+        self.assertEqual(bf.url_path('usernames/big trucker'),
+                         'usernames/big%20trucker')
+
+    def test_url_path_plain_path_unchanged(self):
+        self.assertEqual(bf.url_path('sites/abc123'), 'sites/abc123')
+
+    def test_list_collection_ids_encodes_parent(self):
+        seen = []
+        self._client(seen).list_collection_ids('usernames/big trucker')
+        self.assertIn('usernames/big%20trucker:listCollectionIds', seen[0])
+        self.assertNotIn(' ', seen[0])
+
+    def test_list_documents_encodes_parent(self):
+        seen = []
+        self._client(seen).list_documents('sites/spaced id', 'reports')
+        self.assertIn('sites/spaced%20id/reports', seen[0])
+        self.assertNotIn(' ', seen[0])
+
+
 def run() -> int:
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromModule(sys.modules[__name__])
