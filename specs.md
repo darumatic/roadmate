@@ -440,8 +440,10 @@ commit+push.
 
 **Mobile Release** (`mobile-release.yml`) is the manual store step: Actions →
 Run workflow (platform `both`/`android`/`ios`; `dry_run` builds everything but
-uploads nothing). Preflight requires a successful Web Release for the exact
-commit and refuses non-master refs. Android runs on ubuntu (keystore + Play SA
+uploads nothing; `commit` releases a chosen master commit — paste the sha of
+the green pipeline run to ship, empty = latest, the GitLab-style "release this
+pipeline"). Preflight resolves that sha, requires it to be **on master** and to
+have its own successful Web Release, and refuses non-master refs. Android runs on ubuntu (keystore + Play SA
 materialized from secrets → `release_android.sh`); iOS runs on a hosted macOS
 runner (temp keychain from the .p12 secret, the provisioning profile, the ASC
 API key → `release_ios.sh`, which uploads via altool and finishes with

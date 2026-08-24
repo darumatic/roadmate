@@ -101,6 +101,23 @@ void main() {
       expect(wf, contains('RELEASE_DRY_RUN'));
     });
 
+    test('a chosen commit must be on master with its own green Web Release', () {
+      final wf = _read('.github/workflows/mobile-release.yml');
+      // The Run-workflow dialog's commit picker (empty = latest master) —
+      // GitLab-style "release the commit of that green pipeline run".
+      expect(wf, contains('commit:'));
+      // The preflight ancestry-checks a pasted sha against master...
+      expect(wf, contains(r'compare/$sha...master'));
+      // ...requires that exact sha's Web Release to be green...
+      expect(wf, contains(r'head_sha=$SHA'));
+      // ...and both store jobs build exactly the resolved commit.
+      expect(
+        RegExp(r'needs\.preflight\.outputs\.release_sha').allMatches(wf).length,
+        greaterThanOrEqualTo(2),
+        reason: 'the android and ios jobs must check out the resolved sha',
+      );
+    });
+
     test('store release scripts honour RELEASE_DRY_RUN before any upload', () {
       for (final entry in {
         'scripts/release_android.sh': 'python3 scripts/play_upload.py',

@@ -60,7 +60,7 @@ Incremental runs carry the append-only `reports` (~80% of the database) forward 
   2. **Commit & push** to `master` (commit attribution: only the user — see above).
   3. **The push IS the deploy** — the **Web Release** pipeline (`.github/workflows/web-release.yml`) runs the three gates (CodeQL default-setup via a check-run gate, Flutter CI, Visual Verification) and, only when all pass, publishes web + Firestore rules/indexes (~15–20 min after the push). **The terminal never deploys web.** To confirm a release landed, `scripts/check_ci.sh [sha]` polls the pipeline until the deploy finishes (public API; no `gh`/token needed).
   - `scripts/release.sh` runs the local steps (test+analyze → bump patch → commit+push) and hands off to the pipeline; prefer it over doing the steps by hand.
-  - **Store releases are a separate manual step behind a green web release:** Actions → **Mobile Release** → Run workflow (or `gh workflow run mobile-release.yml -f platform=both`); `dry_run` builds without uploading. Its preflight refuses a commit whose Web Release isn't green. Secrets come from `scripts/setup_release_secrets.sh` (VPS half covers web+Android; the iOS half runs once on the Mac).
+  - **Store releases are a separate manual step behind a green web release:** Actions → **Mobile Release** → Run workflow (or `gh workflow run mobile-release.yml -f platform=both`); `dry_run` builds without uploading; the optional `commit` input releases a **chosen** master commit (paste the sha of the green pipeline run to ship; empty = latest). Its preflight refuses a sha that isn't on master or whose own Web Release isn't green. Secrets come from `scripts/setup_release_secrets.sh` (VPS half covers web+Android; the iOS half runs once on the Mac).
 
 ## Commands
 

@@ -37,6 +37,10 @@ on:
         description: Build only — skip every store upload
         type: boolean
         default: false
+      commit:
+        description: Commit sha to release (empty = latest master)
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -52,6 +56,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      release_sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - name: Refuse non-master refs
         if: github.ref != 'refs/heads/master'
@@ -59,20 +65,52 @@ jobs:
           echo "Mobile releases run from master only (got $GITHUB_REF)." >&2
           exit 1
 
+      - name: Resolve the release commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+        run: |
+          # Empty input = latest master (the dispatch sha). A pasted sha lets
+          # the owner ship the exact commit of a chosen green pipeline run even
+          # after master has moved on. Never splice the input into scripts raw:
+          # validate the shape, resolve short shas, require it to be on master.
+          if [ -z "$INPUT_COMMIT" ]; then
+            sha="$GITHUB_SHA"
+          else
+            if ! printf '%s' "$INPUT_COMMIT" | grep -qiE '^[0-9a-f]{7,40}$'; then
+              echo "commit '$INPUT_COMMIT' is not a 7-40 character hex sha." >&2
+              exit 1
+            fi
+            sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$INPUT_COMMIT" --jq .sha)" \
+              || { echo "commit '$INPUT_COMMIT' not found in $GITHUB_REPOSITORY." >&2; exit 1; }
+            status="$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...master" --jq .status)"
+            case "$status" in
+              ahead|identical) ;;
+              *)
+                echo "commit $sha is not on master (compare status: $status)." >&2
+                echo "Store releases ship only commits master already contains." >&2
+                exit 1;;
+            esac
+          fi
+          echo "Releasing commit $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - name: Require a successful Web Release for this commit
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           n="$(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/web-release.yml/runs?head_sha=$GITHUB_SHA&status=success" \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/web-release.yml/runs?head_sha=$SHA&status=success" \
             --jq '.total_count')"
           if [ "${n:-0}" -lt 1 ]; then
-            echo "No successful Web Release run for $GITHUB_SHA." >&2
+            echo "No successful Web Release run for $SHA." >&2
             echo "Mobile ships only after a positive web release — let the Web" >&2
             echo "Release pipeline go green for this commit, then run this again." >&2
             exit 1
           fi
-          echo "Web Release is green for $GITHUB_SHA."
+          echo "Web Release is green for $SHA."
 
   android:
     name: Android to Google Play
@@ -82,6 +120,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -138,6 +178,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
