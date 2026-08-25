@@ -123,4 +123,17 @@ jobs:
           rm -f "$keyfile"
 
       - name: Released
-        run: echo "Live at https://roadmate.club"
+        env:
+          ROADMATE_NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          version="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' lib/version.dart | head -1)"
+          echo "Live at https://roadmate.club (v$version)"
+          # Push the owner an alert naming the version. `|| true`: the deploy
+          # has already succeeded, so a flaky ntfy call must never fail the
+          # job. An unset NTFY_TOPIC secret makes notify.py a silent no-op.
+          python3 - "$version" <<'PY' || true
+          import sys
+          sys.path.insert(0, 'scripts')
+          from notify import notify_release
+          notify_release('Web', sys.argv[1], 'Live at https://roadmate.club.')
+          PY

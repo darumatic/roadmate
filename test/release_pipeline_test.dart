@@ -79,6 +79,31 @@ void main() {
           lessThan(sh.indexOf('tool/bump_version.dart')));
     });
 
+    test('every platform pushes a release alert naming the version', () {
+      // Owner request 2026-08-25: notify on a release to ANY platform, with
+      // the version number in it. Web is the only one live on delivery; the
+      // store scripts must say "submitted", never imply users have it (0.1.72).
+      final web = _read('.github/workflows/web-release.yml');
+      expect(web, contains('notify_release'));
+      expect(web, contains("notify_release('Web'"));
+      expect(web, contains('ROADMATE_NTFY_TOPIC'));
+      // The version is read from the generated constant, not hard-coded.
+      expect(web, contains('lib/version.dart'));
+
+      final play = _read('scripts/play_upload.py');
+      expect(play, contains('notify_release('));
+      expect(play, contains('NOT live yet'));
+
+      final asc = _read('scripts/asc_submit.py');
+      expect(asc, contains('notify_release('));
+      expect(asc, contains('NOT live yet'));
+
+      // CI has no ~/.config/roadmate, so the topic arrives as a secret.
+      final mobile = _read('.github/workflows/mobile-release.yml');
+      expect('ROADMATE_NTFY_TOPIC'.allMatches(mobile).length, 2);
+      expect(_read('scripts/setup_release_secrets.sh'), contains('NTFY_TOPIC'));
+    });
+
     test('build_web.sh keeps the deploy guards', () {
       final sh = _read('scripts/build_web.sh');
       expect(sh, contains('--no-tree-shake-icons'));

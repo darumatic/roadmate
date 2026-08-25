@@ -31,6 +31,15 @@ import time
 import urllib.error
 import urllib.request
 
+# Release alerts (scripts/notify.py, same directory — both scripts are invoked
+# as `python3 scripts/<name>.py`, so it imports cleanly). Guarded because an
+# alert must NEVER be the reason a release fails.
+try:
+    from notify import notify_release
+except ImportError:                                    # pragma: no cover
+    def notify_release(*_args, **_kwargs):
+        return False
+
 APP_ID = "6788635496"  # RoadMate AU
 KEY_ID = os.environ.get("ASC_KEY_ID", "PVV887QV57")
 ISSUER_ID = os.environ.get("ASC_ISSUER_ID", "1623d92a-9373-42ee-8bca-9435f6df7f4d")
@@ -352,6 +361,12 @@ def main() -> None:
                  "attributes": {"submitted": True}}})
     expect(status, out, "submitting for review")
     print(f"==> Submitted {args.version} ({args.build}) for App Review.")
+    notify_release(
+        "iOS",
+        args.version,
+        f"Build {args.build} submitted for App Review. NOT live yet: "
+        "Apple review must pass first.",
+    )
 
 
 def self_test() -> None:

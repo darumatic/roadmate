@@ -661,6 +661,23 @@ silent no-op). The fixer alerts on **every terminal outcome** (released,
 blocked, rejected, red pipeline, auth failure, crash, misconfiguration) and
 the crontab lines alert on backup failure and on a fixer tick crashing
 (`|| notify.py …` — the direct answer to the silent 20-day backup outage).
+**Release alerts, every platform (owner request 2026-08-25).** A release to
+*any* platform pushes an ntfy alert whose title always carries the version —
+`notify_release()` in `scripts/notify.py` is the single home for that wording.
+**Web** fires from the Web Release pipeline's final deploy step (so a manual
+`release.sh` push notifies too, not just a bot run), reading the version from
+the generated `lib/version.dart`; **Android** fires in `play_upload.py` after
+the production-track commit and **iOS** in `asc_submit.py` after the review
+submission — both worded "NOT live yet", because committed/submitted is not
+released (the 0.1.72 lesson) and an alert must never imply users have it. CI
+has no `~/.config/roadmate`, so `read_topic()` takes the topic from
+`ROADMATE_NTFY_TOPIC` (GitHub secret `NTFY_TOPIC`, uploaded by
+`setup_release_secrets.sh`) before falling back to the file; unset = silent
+no-op, and the web step is `|| true` so a flaky alert can never fail a deploy
+that already succeeded. Pinned in `test/release_pipeline_test.dart`. Note a
+bot-fixed issue now produces two alerts — "auto-fix released" (your issue is
+done) and the platform release alert — which is deliberate.
+
 **An alert must be actionable without sshing into the box** (the 2026-08-25
 alerts were not): a blocked alert carries the reason *and* what Claude
 actually said — including the questions it asks when a report is too vague, so

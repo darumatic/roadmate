@@ -23,6 +23,15 @@ import time
 import urllib.error
 import urllib.request
 
+# Release alerts (scripts/notify.py, same directory — both scripts are invoked
+# as `python3 scripts/<name>.py`, so it imports cleanly). Guarded because an
+# alert must NEVER be the reason a release fails.
+try:
+    from notify import notify_release
+except ImportError:                                    # pragma: no cover
+    def notify_release(*_args, **_kwargs):
+        return False
+
 SA_KEY = os.path.expanduser("~/.config/roadmate/google-play-service-account.json")
 PKG = "com.darumatic.roadmate"
 BASE = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{PKG}"
@@ -281,6 +290,16 @@ def main() -> None:
                 "review' there — no API can.\n"
                 "    The release only reaches users after that click + Play "
                 "review (bit us on 0.1.72)."
+            )
+            # Committed is NOT live: say so, so the alert can never be read as
+            # "users have it" (the 0.1.72 lesson).
+            notify_release(
+                "Android",
+                args.name,
+                f"Committed to the Google Play {args.track} track "
+                f"({langs}). NOT live yet: Play review must pass, and if "
+                "the console shows 'Not yet sent for review' it needs your "
+                "click.",
             )
     except Exception:
         api(token, "DELETE", f"/edits/{edit_id}")

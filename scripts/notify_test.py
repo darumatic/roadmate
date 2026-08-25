@@ -75,5 +75,79 @@ class SendTest(unittest.TestCase):
         self.assertFalse(notify.send('t', 'm', topic='x', urlopen=boom))
 
 
+class TopicFromEnvTest(unittest.TestCase):
+    """CI has no ~/.config/roadmate, so the release workflows pass the topic
+    in the environment (GitHub secret NTFY_TOPIC)."""
+
+    def test_env_topic_wins_over_the_file(self):
+        self.assertEqual(
+            notify.read_topic(path='/nonexistent',
+                              environ={notify.TOPIC_ENV: 'from-env'}),
+            'from-env')
+
+    def test_env_topic_is_stripped(self):
+        self.assertEqual(
+            notify.read_topic(path='/nonexistent',
+                              environ={notify.TOPIC_ENV: '  spaced  \n'}),
+            'spaced')
+
+    def test_empty_env_falls_back_to_the_file(self):
+        with tempfile.NamedTemporaryFile('w', suffix='.topic',
+                                         delete=False) as handle:
+            handle.write('from-file\n')
+            path = handle.name
+        try:
+            self.assertEqual(
+                notify.read_topic(path=path, environ={notify.TOPIC_ENV: ''}),
+                'from-file')
+        finally:
+            os.unlink(path)
+
+    def test_no_topic_anywhere_is_none(self):
+        self.assertIsNone(
+            notify.read_topic(path='/nonexistent', environ={}))
+
+
+class ReleaseAlertTest(unittest.TestCase):
+    """Owner request 2026-08-25: a release alert for EVERY platform, and the
+    version number is always in it."""
+
+    def setUp(self):
+        self.sent = []
+
+    def record(self, title, message):
+        self.sent.append((title, message))
+        return True
+
+    def test_version_is_in_the_title(self):
+        notify.notify_release('Web', '1.0.18', send=self.record)
+        title, message = self.sent[0]
+        self.assertIn('1.0.18', title)
+        self.assertIn('Web', title)
+        self.assertIn('1.0.18', message)
+
+    def test_detail_is_appended(self):
+        notify.notify_release('Web', '1.0.18', 'Live at https://roadmate.club.',
+                              send=self.record)
+        self.assertIn('roadmate.club', self.sent[0][1])
+
+    def test_each_platform_gets_its_own_alert(self):
+        for platform in ('Web', 'Android', 'iOS'):
+            notify.notify_release(platform, '1.0.18', send=self.record)
+        self.assertEqual([t for t, _ in self.sent],
+                         ['RoadMate Web release: v1.0.18',
+                          'RoadMate Android release: v1.0.18',
+                          'RoadMate iOS release: v1.0.18'])
+
+    def test_store_alerts_must_not_claim_users_have_it(self):
+        """Committed/submitted is NOT live (the 0.1.72 lesson) — the caveat
+        travels in `detail`, so the alert can never be misread."""
+        notify.notify_release('Android', '1.0.18',
+                              'Committed to the Google Play production track. '
+                              'NOT live yet: Play review must pass.',
+                              send=self.record)
+        self.assertIn('NOT live yet', self.sent[0][1])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

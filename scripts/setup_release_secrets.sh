@@ -5,6 +5,7 @@
 #
 #   Linux (the VPS)  -> web + Android secrets, from this machine's files:
 #     FIREBASE_SERVICE_ACCOUNT         ~/.config/roadmate/firebase-adminsdk.json
+#     NTFY_TOPIC                       ~/.config/roadmate/ntfy_topic (optional)
 #     PLAY_SERVICE_ACCOUNT_JSON        ~/.config/roadmate/google-play-service-account.json
 #     ANDROID_KEYSTORE_BASE64          the keystore android/key.properties points at
 #     ANDROID_STORE_PASSWORD           storePassword from android/key.properties
@@ -44,6 +45,15 @@ if [ "$os" = "Linux" ]; then
   fb="$HOME/.config/roadmate/firebase-adminsdk.json"
   [ -f "$fb" ] || { echo "ERROR: $fb not found." >&2; exit 1; }
   set_secret FIREBASE_SERVICE_ACCOUNT < "$fb"
+
+  # Release alerts from CI (web + store). Optional: without it notify.py is a
+  # silent no-op, so a missing topic must not fail the setup.
+  ntfy="$HOME/.config/roadmate/ntfy_topic"
+  if [ -s "$ntfy" ]; then
+    tr -d '\n' < "$ntfy" | set_secret NTFY_TOPIC
+  else
+    echo "    (no $ntfy — release alerts from CI stay off)"
+  fi
 
   play="$HOME/.config/roadmate/google-play-service-account.json"
   [ -f "$play" ] || { echo "ERROR: $play not found." >&2; exit 1; }

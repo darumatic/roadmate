@@ -24,10 +24,18 @@ import urllib.error
 import urllib.request
 
 TOPIC_FILE = os.path.expanduser('~/.config/roadmate/ntfy_topic')
+# CI has no home-directory config, so release workflows pass the topic in the
+# environment instead (GitHub secret NTFY_TOPIC -> ROADMATE_NTFY_TOPIC).
+TOPIC_ENV = 'ROADMATE_NTFY_TOPIC'
 NTFY_ROOT = 'https://ntfy.sh'
 
 
-def read_topic(path=None):
+def read_topic(path=None, environ=None):
+    """The secret topic: environment first (CI), then the local file."""
+    environ = os.environ if environ is None else environ
+    topic = (environ.get(TOPIC_ENV) or '').strip()
+    if topic:
+        return topic
     path = TOPIC_FILE if path is None else path
     try:
         with open(path) as handle:
@@ -51,6 +59,21 @@ def send(title, message, topic=None, urlopen=urllib.request.urlopen):
             return 200 <= response.status < 300
     except (urllib.error.URLError, OSError):
         return False
+
+
+def notify_release(platform, version, detail='', send=send):
+    """Announce a release of one platform. The VERSION IS ALWAYS IN THE TITLE
+    (owner request 2026-08-25) — an alert that says "released" without saying
+    *what* forces a console visit to find out.
+
+    Kept here rather than in each release script so the wording has exactly one
+    home. `detail` carries the platform's caveat: web is live on delivery,
+    while Android/iOS are only *submitted* — committed is not live (0.1.72)."""
+    title = 'RoadMate %s release: v%s' % (platform, version)
+    message = '%s v%s.' % (platform, version)
+    if detail and detail.strip():
+        message = '%s %s' % (message, detail.strip())
+    return send(title, message)
 
 
 def main(argv):
