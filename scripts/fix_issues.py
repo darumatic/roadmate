@@ -40,6 +40,8 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+import notify
+
 REPO = 'darumatic/roadmate'
 LABEL_APPROVED = 'approved'
 LABEL_WORKING = 'claude-working'
@@ -59,6 +61,16 @@ LOCK_FILE = os.path.join(STATE_DIR, 'fix_issues.lock')
 
 GH_BIN = '/usr/bin/gh'
 CLAUDE_BIN = os.path.join(HOME, '.local', 'bin', 'claude')
+# The fixer writes production code unattended: pin the top model at max effort
+# (owner decision 2026-08-25). The zero-cost polling tick never touches Claude.
+CLAUDE_MODEL = 'claude-fable-5'
+CLAUDE_EFFORT = 'max'
+# Optional long-lived subscription token (from `claude setup-token`), so runs
+# stop depending on the interactive login's refresh state. Absent = use the
+# normal ~/.claude login.
+OAUTH_TOKEN_FILE = os.path.join(HOME, '.config', 'roadmate',
+                                'claude-oauth-token')
+REPORT_FILE = os.path.join(LOG_DIR, 'work-report.md')
 CLAUDE_TIMEOUT = 75 * 60      # hard ceiling per run (the CLI has no --max-turns)
 CLAUDE_KILL_GRACE = 120       # SIGTERM -> SIGKILL grace
 GH_TIMEOUT = 120              # a hung network call must not hold the lock
@@ -298,6 +310,14 @@ def parse_version(version_dart_text):
     return match.group(0) if match else None
 
 
+def is_auth_failure(log_text):
+    """A dead login/token is an owner-action problem, not a fix problem —
+    surface it as such (seen live 2026-08-25: a copied ~/.claude login dies
+    as soon as the other copy refreshes; one login cannot live in two homes)."""
+    return ('Failed to authenticate' in log_text
+            or 'OAuth session expired' in log_text)
+
+
 def parse_claude_result(log_text):
     """Tolerant scan of a claude --output-format json log (stderr is mixed in):
     the last parseable {"type": "result", ...} line. Logging aid only."""
@@ -345,6 +365,20 @@ def build_red_pipeline_comment(sha):
             '**Commit `%s` is on master but the Web Release pipeline went red — '
             'master now differs from production. Fix or revert before the next '
             'release.**\n\nPipeline: %s' % (sha, ACTIONS_URL))
+
+
+def build_report_entry(number, title, outcome, detail='', version=None,
+                       sha=None, when=''):
+    """One markdown work-report section per terminal outcome."""
+    lines = ['## %s — issue #%s: %s' % (when, number, outcome)]
+    if title:
+        lines += ['', '**%s**' % title]
+    if sha:
+        suffix = ' (v%s)' % version if version else ''
+        lines += ['', '- commit: `%s`%s' % (sha, suffix)]
+    if detail and detail.strip():
+        lines += ['', truncate(detail.strip())]
+    return '\n'.join(lines) + '\n\n'
 
 
 def logs_to_prune(names, keep=KEEP_CLAUDE_LOGS):
@@ -499,6 +533,7 @@ def preflight(require_clone=True):
     if problems:
         for problem in problems:
             log('preflight: ' + problem)
+        alert('RoadMate auto-fixer misconfigured', '; '.join(problems))
         raise SystemExit(1)
 
 
@@ -578,13 +613,23 @@ def run_claude(number, prompt):
     log_path = os.path.join(LOG_DIR, 'claude-issue-%s-%s.log' % (number, stamp))
     cmd = [CLAUDE_BIN, '-p', prompt,
            '--dangerously-skip-permissions',
+           '--model', CLAUDE_MODEL,
+           '--effort', CLAUDE_EFFORT,
            '--settings', CLAUDE_SETTINGS,
            '--disallowedTools', DISALLOWED_TOOLS,
            '--output-format', 'json',
            '--add-dir', STATE_DIR]
+    extra_env = {'DISABLE_AUTOUPDATER': '1'}
+    try:
+        with open(OAUTH_TOKEN_FILE) as handle:
+            token = handle.read().strip()
+        if token:
+            extra_env['CLAUDE_CODE_OAUTH_TOKEN'] = token
+    except OSError:
+        pass
     with open(log_path, 'w') as log_handle:
         proc = subprocess.Popen(cmd, cwd=CLONE,
-                                env=_env({'DISABLE_AUTOUPDATER': '1'}),
+                                env=_env(extra_env),
                                 stdout=log_handle, stderr=subprocess.STDOUT,
                                 start_new_session=True)
         state = read_state() or {}
@@ -613,6 +658,27 @@ def run_check_ci(sha):
     return code, out + err
 
 
+def alert(title, message):
+    """Push notification — the only channel the owner actually sees: the bot
+    acts with the owner's own GitHub token and GitHub never notifies you of
+    your own activity, so issue comments alone would go unseen."""
+    notify.send(title, message)
+
+
+def report(number, title, outcome, detail='', version=None, sha=None):
+    when = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    entry = build_report_entry(number, title, outcome, detail, version, sha,
+                               when)
+    try:
+        fresh = not os.path.exists(REPORT_FILE)
+        with open(REPORT_FILE, 'a') as handle:
+            if fresh:
+                handle.write('# RoadMate auto-fixer work report\n\n')
+            handle.write(entry)
+    except OSError:
+        pass
+
+
 def prune_logs():
     try:
         names = os.listdir(LOG_DIR)
@@ -629,9 +695,13 @@ def prune_logs():
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def block_issue(number, reason, details=''):
+def block_issue(number, reason, details='', title=''):
     post_comment(number, build_blocked_comment(reason, details))
     set_labels(number, add=(LABEL_BLOCKED,), remove=(LABEL_WORKING,))
+    alert('RoadMate auto-fix blocked',
+          'Issue #%s: %s. Re-apply the %s label after addressing it.'
+          % (number, reason, LABEL_APPROVED))
+    report(number, title, 'blocked — %s' % reason, detail=details)
 
 
 def save_patch(number, pre_sha):
@@ -641,7 +711,7 @@ def save_patch(number, pre_sha):
     return patch_path
 
 
-def finish_released(number, sha):
+def finish_released(number, sha, title=''):
     """Watch the pipeline for the pushed commit, then close or block."""
     state = read_state() or {}
     state.update({'issue': number, 'phase': 'pushed', 'pushed_sha': sha})
@@ -655,12 +725,24 @@ def finish_released(number, sha):
                 version = parse_version(handle.read())
         except OSError:
             pass
-        close_issue(number, build_success_comment(read_summary(number), version, sha))
+        summary = read_summary(number)
+        close_issue(number, build_success_comment(summary, version, sha))
         set_labels(number, remove=(LABEL_WORKING,))
+        alert('RoadMate auto-fix released',
+              'Issue #%s is fixed and live at %s (v%s, commit %s).'
+              % (number, LIVE_URL, version or 'unknown', sha))
+        report(number, title, 'released & closed', detail=summary,
+               version=version, sha=sha)
         log('issue #%s: released %s, pipeline green, issue closed' % (number, sha))
     elif verdict == 'red':
         post_comment(number, build_red_pipeline_comment(sha))
         set_labels(number, add=(LABEL_BLOCKED,), remove=(LABEL_WORKING,))
+        alert('RoadMate auto-fix: deploy FAILED',
+              'Issue #%s: commit %s is on master but the pipeline went red — '
+              'master now differs from production. %s'
+              % (number, sha, ACTIONS_URL))
+        report(number, title, 'deploy FAILED — master differs from production',
+               sha=sha)
         log('issue #%s: pipeline RED for %s — master differs from production'
             % (number, sha))
     else:
@@ -668,6 +750,10 @@ def finish_released(number, sha):
                      'Release status unknown — the pipeline watch timed out. '
                      'Verify manually: %s (commit %s).' % (ACTIONS_URL, sha))
         set_labels(number, add=(LABEL_BLOCKED,), remove=(LABEL_WORKING,))
+        alert('RoadMate auto-fix: deploy status unknown',
+              'Issue #%s: the pipeline watch timed out for commit %s. '
+              'Verify: %s' % (number, sha, ACTIONS_URL))
+        report(number, title, 'deploy status unknown', sha=sha)
         log('issue #%s: check_ci timeout for %s' % (number, sha))
     clear_state()
 
@@ -741,6 +827,9 @@ def tick(args):
             return 0
         post_comment(number, build_blocked_comment(decision.reason))
         set_labels(number, add=(LABEL_BLOCKED,), remove=(LABEL_APPROVED,))
+        alert('RoadMate auto-fix rejected',
+              'Issue #%s: %s' % (number, decision.reason))
+        report(number, snapshot['title'], 'rejected', detail=decision.reason)
         return 0
 
     comments = eligible_comments(snapshot['comments'], decision.approval_at)
@@ -767,11 +856,13 @@ def tick(args):
     log('issue #%s: starting claude run from %s' % (number, pre_sha))
 
     code, claude_log = run_claude(number, prompt)
+    log_text = ''
     try:
         with open(claude_log) as handle:
-            is_error, _ = parse_claude_result(handle.read())
+            log_text = handle.read()
     except OSError:
-        is_error = None
+        pass
+    is_error, _ = parse_claude_result(log_text)
     log('issue #%s: claude exited rc=%s is_error=%s; log %s'
         % (number, code, is_error, claude_log))
 
@@ -783,19 +874,30 @@ def tick(args):
         log_lines = git(['log', '--format=%H %s',
                          '%s..%s' % (pre_sha, remote_sha)]).splitlines()
         sha = find_marker_commit(log_lines, number) or remote_sha
-        finish_released(number, sha)
+        finish_released(number, sha, snapshot['title'])
     elif action == 'committed_not_pushed':
         patch_path = save_patch(number, pre_sha)
         block_issue(number, 'a commit was made but the push did not complete',
-                    'The work is saved on the VPS at %s.' % patch_path)
+                    'The work is saved on the VPS at %s.' % patch_path,
+                    title=snapshot['title'])
         clear_state()
         log('issue #%s: committed but not pushed; patch saved to %s'
             % (number, patch_path))
+    elif is_auth_failure(log_text):
+        block_issue(number, 'Claude authentication failed — the login or '
+                    'token has expired',
+                    'Renew it as adrian: `claude setup-token` and paste the '
+                    'token into ~/.config/roadmate/claude-oauth-token '
+                    '(chmod 600), or run `claude` once and log in.',
+                    title=snapshot['title'])
+        clear_state()
+        log('issue #%s: claude auth failure' % number)
     else:
         summary = read_summary(number)
         details = summary if summary.strip() else \
             'No summary was written — see %s on the VPS.' % claude_log
-        block_issue(number, 'the run finished without a commit', details)
+        block_issue(number, 'the run finished without a commit', details,
+                    title=snapshot['title'])
         clear_state()
         log('issue #%s: no commit made' % number)
 
@@ -821,8 +923,12 @@ def main(argv=None):
     except SystemExit:
         raise
     except Exception:
+        trace = traceback.format_exc()
         log('unhandled exception (state left for the next tick to resolve):\n'
-            + traceback.format_exc())
+            + trace)
+        alert('RoadMate auto-fixer crashed',
+              'Unhandled exception — the next tick will resolve the run '
+              'state. Tail:\n' + trace[-400:])
         return 1
 
 

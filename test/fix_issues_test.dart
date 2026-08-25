@@ -21,6 +21,19 @@ void main() {
     );
   });
 
+  test('notify.py self-test suite passes', () {
+    final result = Process.runSync('python3', [
+      'scripts/notify_test.py',
+    ], workingDirectory: Directory.current.path);
+    expect(
+      result.exitCode,
+      0,
+      reason:
+          'scripts/notify_test.py failed:\n'
+          '${result.stdout}\n${result.stderr}',
+    );
+  });
+
   test('runner keeps its security invariants', () {
     final script = File('scripts/fix_issues.py').readAsStringSync();
     // Only the owner may approve; widening this list is an owner decision.
@@ -46,6 +59,16 @@ void main() {
     expect(script, contains('--dry-run'));
     // Web tools stay off in headless runs.
     expect(script, contains("DISALLOWED_TOOLS = 'WebFetch,WebSearch'"));
+    // Fixes are written by the top model at max effort (owner decision,
+    // 2026-08-25); the polling tick itself never invokes Claude.
+    expect(script, contains("CLAUDE_MODEL = 'claude-fable-5'"));
+    expect(script, contains("CLAUDE_EFFORT = 'max'"));
+    // Long-lived subscription token support and push alerts: the bot acts
+    // with the owner's own GitHub token, so GitHub never notifies him of
+    // its activity — ntfy is the only channel he actually sees.
+    expect(script, contains('CLAUDE_CODE_OAUTH_TOKEN'));
+    expect(script, contains('import notify'));
+    expect(script, contains('work-report.md'));
   });
 
   test('bot scripts keep their executable bit', () {
@@ -54,6 +77,7 @@ void main() {
     for (final path in [
       'scripts/fix_issues.py',
       'scripts/setup_fix_issues.sh',
+      'scripts/notify.py',
     ]) {
       final mode = File(path).statSync().mode;
       expect(mode & 0x40, isNot(0), reason: '$path must be owner-executable');

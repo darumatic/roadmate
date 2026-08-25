@@ -260,6 +260,16 @@ class VersionParseTest(unittest.TestCase):
         self.assertIsNone(fx.parse_version('nothing here'))
 
 
+class AuthFailureTest(unittest.TestCase):
+    def test_detects_expired_login(self):
+        self.assertTrue(fx.is_auth_failure(
+            'Failed to authenticate: OAuth session expired and could not '
+            'be refreshed'))
+
+    def test_clean_log_is_not_auth_failure(self):
+        self.assertFalse(fx.is_auth_failure('{"type":"result"}'))
+
+
 class ParseClaudeResultTest(unittest.TestCase):
     def test_picks_last_result_line(self):
         log = ('some stderr noise\n'
@@ -300,6 +310,25 @@ class CommentTemplateTest(unittest.TestCase):
         text = fx.truncate('x' * (fx.SUMMARY_MAX + 10))
         self.assertIn('truncated', text)
         self.assertLess(len(text), fx.SUMMARY_MAX + 100)
+
+
+class ReportEntryTest(unittest.TestCase):
+    def test_success_entry(self):
+        entry = fx.build_report_entry(
+            37, 'Fix Volume', 'released & closed', detail='Did the thing.',
+            version='1.0.9', sha='abc123', when='2026-08-25 02:00 UTC')
+        self.assertIn('2026-08-25 02:00 UTC — issue #37: released & closed',
+                      entry)
+        self.assertIn('**Fix Volume**', entry)
+        self.assertIn('`abc123` (v1.0.9)', entry)
+        self.assertIn('Did the thing.', entry)
+
+    def test_blocked_entry_has_no_commit_line(self):
+        entry = fx.build_report_entry(5, '', 'blocked — too vague',
+                                      detail='needs owner input', when='w')
+        self.assertIn('issue #5: blocked — too vague', entry)
+        self.assertIn('needs owner input', entry)
+        self.assertNotIn('commit', entry)
 
 
 class LogsPruneTest(unittest.TestCase):

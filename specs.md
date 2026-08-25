@@ -514,12 +514,34 @@ pipeline gates are the primary defenses.
 Crash-safe state lives in `~/roadmate-bot/state/current-run.json`: a stale run
 is resumed (a crash during the CI wait must not report a pushed fix as failed)
 or reported next tick, and unpushed work is saved as a `patch-N.patch` before
-the clone is reset. Logs in `~/roadmate-bot/logs/` (last 30 claude runs kept).
-Setup is `scripts/setup_fix_issues.sh` (labels, clone, git identity, hook,
-`--install-cron`). The user-level `~/.claude/settings.json` model choice
-applies to bot runs too. Guards are unit-tested in
+the clone is reset. Logs in `~/roadmate-bot/logs/` — `fix_issues.log` (ticks),
+`claude-issue-<N>-<ts>.log` (full Claude session, last 30 kept), and
+**`work-report.md`**, a cumulative markdown report appended at every terminal
+outcome (what/when/commit/version/summary). The polling tick is pure
+Python + `gh` — **zero Claude cost**; only an approved issue starts a Claude
+run, pinned to **`claude-fable-5` at `--effort max`** (owner decision
+2026-08-25). Auth: the adrian login by default; if
+`~/.config/roadmate/claude-oauth-token` exists (minted via `claude
+setup-token`, chmod 600) the bot uses that long-lived subscription token
+instead, decoupling it from interactive-login refresh — a copied `~/.claude`
+login dies as soon as the other copy refreshes (seen live during the
+migration), so one login never lives in two homes. An auth failure is
+detected (`is_auth_failure`) and reported as "renew the token", not as a fix
+failure. Setup is `scripts/setup_fix_issues.sh` (labels, clone, git identity,
+hook, `--install-cron`). Guards are unit-tested in
 `scripts/fix_issues_test.py`, wired into `flutter test` by
 `test/fix_issues_test.dart` alongside source-level invariant pins.
+
+**Attention alerts (`scripts/notify.py`, 2026-08-25).** The bot and the
+backup cron act with the owner's **own** GitHub token, and GitHub never
+notifies you of your own activity — so issue comments alone would go unseen.
+`notify.py` pushes to a secret **ntfy.sh** topic (name in
+`~/.config/roadmate/ntfy_topic`, chmod 600 — treat it like a password;
+subscribe in the ntfy app or at `https://ntfy.sh/<topic>`; unconfigured =
+silent no-op). The fixer alerts on **every terminal outcome** (released,
+blocked, rejected, red pipeline, auth failure, crash, misconfiguration) and
+the crontab lines alert on backup failure and on a fixer tick crashing
+(`|| notify.py …` — the direct answer to the silent 20-day backup outage).
 
 ### Google Play publishing
 
@@ -619,14 +641,15 @@ to renew it.
 3. **iOS release** — runs on the Simulator; still needs Apple Developer signing,
    bundle-id provisioning, and App Store setup for distribution.
 4. **Optional later:** FCM push for blitz alerts; an admin/moderation console.
-6. **Backup failure alerting** — the nightly Firestore backup failed **silently
-   for 20 days** (2026-08-05 → 08-25: a `usernames` doc ID containing a space,
-   `big trucker`, was interpolated raw into the REST URL → `InvalidURL`; fixed
-   in v1.0.7 by percent-encoding via `url_path()`). Failures only landed in
-   `~/backups/backup.log`, which nobody reads. Add alerting — e.g. the cron
-   wrapper opens/comments a GitHub issue after N consecutive failures, or a
-   snapshot-freshness check somewhere visible. Until then: check
-   `ls -lt ~/backups` freshness when touching DR.
+6. ~~Backup failure alerting~~ — **done 2026-08-25**: the cron lines push an
+   ntfy alert on failure (see **Attention alerts** under Deployment). The
+   lesson stands: the nightly backup had failed **silently for 20 days**
+   (2026-08-05 → 08-25: a `usernames` doc ID containing a space, `big
+   trucker`, was interpolated raw into the REST URL → `InvalidURL`; fixed in
+   v1.0.7 by percent-encoding via `url_path()`) because failures only landed
+   in `~/backups/backup.log`, which nobody reads. Remaining nice-to-have: a
+   positive freshness check (alert when no recent snapshot exists, catching
+   e.g. cron itself being dead).
 7. **Issue auto-fixer follow-ups** — a progress comment while `claude-working`;
    multi-issue batching; the first live end-to-end run on a real approved issue.
 
