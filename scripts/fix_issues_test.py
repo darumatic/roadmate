@@ -822,5 +822,72 @@ class DeferredTickTest(unittest.TestCase):
         self.assertEqual(fx.tick_deferred(due, Args(dry_run=True)), 0)
 
 
+class FallbackRetryTest(unittest.TestCase):
+    """A credits 429 retries the SAME frozen prompt on the fallback model,
+    from a freshly reset clone."""
+
+    def setUp(self):
+        self.order = []
+        self.state = {'issue': 36, 'pre_sha': 'stale'}
+        self.saved = (fx.reset_clone, fx.run_and_settle, fx.alert, fx.log,
+                      fx.read_state, fx.write_state, fx.block_issue)
+
+        def reset_clone():
+            self.order.append('reset_clone')
+            return 'fresh_sha'
+
+        def run_and_settle(number, title, prompt, pre_sha, model=None):
+            self.order.append('run:%s:%s:%s' % (model, pre_sha, prompt))
+
+        fx.reset_clone = reset_clone
+        fx.run_and_settle = run_and_settle
+        fx.alert = lambda *a: self.order.append('alert')
+        fx.log = lambda message: None
+        fx.read_state = lambda: dict(self.state)
+        fx.write_state = self.state.update
+        fx.block_issue = lambda *a, **k: self.order.append('block')
+
+    def tearDown(self):
+        (fx.reset_clone, fx.run_and_settle, fx.alert, fx.log, fx.read_state,
+         fx.write_state, fx.block_issue) = self.saved
+
+    def settle(self, log_text, model=None):
+        fx.settle_no_commit(36, 'Alphabetical order', 'FROZEN', 'stale',
+                            '/log', log_text, model or fx.CLAUDE_MODEL)
+
+    def test_credits_retry_resets_the_clone_before_rerunning(self):
+        """release.sh commits with `git add -A`: a retry must never inherit
+        the half-finished edits of the run that hit the 429."""
+        self.settle(INCIDENT_429)
+        self.assertIn('reset_clone', self.order)
+        run = [step for step in self.order if step.startswith('run:')][0]
+        self.assertLess(self.order.index('reset_clone'), self.order.index(run))
+
+    def test_retry_uses_the_fallback_model_and_the_fresh_sha(self):
+        self.settle(INCIDENT_429)
+        self.assertIn('run:%s:fresh_sha:FROZEN' % fx.CLAUDE_FALLBACK_MODEL,
+                      self.order)
+
+    def test_state_pre_sha_follows_the_reset(self):
+        self.settle(INCIDENT_429)
+        self.assertEqual(self.state['pre_sha'], 'fresh_sha')
+
+    def test_fallback_is_alerted_once(self):
+        self.settle(INCIDENT_429)
+        self.assertEqual(self.order.count('alert'), 1)
+        self.order = []
+        self.settle(INCIDENT_429)          # state now carries fallback_alerted
+        self.assertEqual(self.order.count('alert'), 0)
+
+    def test_a_credits_failure_on_the_fallback_does_not_recurse(self):
+        """Otherwise an outage would ping-pong between the two models. The
+        fallback's own failure defers instead (which resets the clone on its
+        way out, so the wait is spent on a clean tree)."""
+        self.settle(INCIDENT_429, model=fx.CLAUDE_FALLBACK_MODEL)
+        self.assertFalse([s for s in self.order if s.startswith('run:')])
+        self.assertEqual(self.state.get('phase'), fx.PHASE_DEFERRED)
+        self.assertEqual(self.state.get('kind'), fx.FAILURE_CREDITS)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

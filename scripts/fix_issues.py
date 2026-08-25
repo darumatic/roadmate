@@ -1221,6 +1221,14 @@ def settle_no_commit(number, title, prompt, pre_sha, claude_log, log_text,
                 write_state(state)
                 alert(*build_fallback_alert(number, title, model,
                                             CLAUDE_FALLBACK_MODEL))
+            # The failed run may have edited files before the 429 (the real
+            # 2026-08-25 one worked for 85s first). Never hand a dirty clone
+            # to the retry — release.sh commits with `git add -A`, so stray
+            # half-finished edits would ship. Master may also have moved.
+            pre_sha = reset_clone()
+            state = read_state() or {}
+            state['pre_sha'] = pre_sha          # keep crash recovery accurate
+            write_state(state)
             run_and_settle(number, title, prompt, pre_sha,
                            model=CLAUDE_FALLBACK_MODEL)
             return
