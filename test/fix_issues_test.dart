@@ -59,12 +59,24 @@ void main() {
     expect(script, contains('--dry-run'));
     // Web tools stay off in headless runs.
     expect(script, contains("DISALLOWED_TOOLS = 'WebFetch,WebSearch'"));
-    // Fixes are written by the best-intelligence model at max effort (owner
-    // decision, 2026-08-25) — the 'fable' alias tracks the newest top-tier
-    // model so successors apply automatically. The polling tick itself never
-    // invokes Claude.
-    expect(script, contains("CLAUDE_MODEL = 'fable'"));
-    expect(script, contains("CLAUDE_EFFORT = 'max'"));
+    // Model + spend pin (owner decision, 2026-08-25): 'fable' at max effort
+    // billed \$9.59 for ONE issue and emptied the credit pool ~50 min later,
+    // stalling every approved issue behind it. The bot runs opus/xhigh under a
+    // daily cap; the polling tick itself never invokes Claude.
+    expect(script, contains("CLAUDE_MODEL = 'opus'"));
+    expect(script, contains("CLAUDE_EFFORT = 'xhigh'"));
+    expect(script, contains('DAILY_BUDGET_USD = 10.0'));
+    // A runner outage (429 / 5xx) must DEFER and retry, never be filed as a
+    // verdict on the issue — that burned four approvals on 2026-08-25.
+    expect(script, contains("PHASE_DEFERRED = 'deferred'"));
+    expect(script, contains('DEFER_MAX_TOTAL'));
+    expect(script, contains('def run_failure_kind('));
+    // The bot's gh token IS the owner's account, so a bot-applied `approved`
+    // would pass ALLOWED_APPROVERS and silently re-date the frozen snapshot.
+    // The bot must never add that label — only remove it at pickup.
+    expect(script, isNot(contains('add=(LABEL_APPROVED')));
+    // roadmate is a PUBLIC repo: runner paths stay out of issue comments.
+    expect(script, contains('def redact_paths('));
     // Long-lived subscription token support and push alerts: the bot acts
     // with the owner's own GitHub token, so GitHub never notifies him of
     // its activity — ntfy is the only channel he actually sees.
@@ -99,5 +111,9 @@ void main() {
     expect(setup, contains('Co-Authored-By'));
     expect(setup, contains('user.name'));
     expect(setup, contains('user.email'));
+    // A tick that dies before its own alerting can run must still reach the
+    // owner: the crontab line carries the notify.py backstop (the live
+    // crontab had it; a fresh install used to lose it silently).
+    expect(setup, contains('notify.py'));
   });
 }

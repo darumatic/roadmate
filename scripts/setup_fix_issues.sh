@@ -59,7 +59,10 @@ fi
 EOF
 chmod +x "$HOOK"
 
-CRON_LINE="*/15 * * * * $HOME/Projects/roadmate/scripts/fix_issues.py --quiet >> $BOT_HOME/logs/fix_issues.log 2>&1"
+# The `|| notify.py` tail is the backstop for an import/syntax crash that kills
+# the tick before its own alerting can run — the direct answer to the silent
+# 20-day backup outage. Keep it: a fresh install without it fails invisibly.
+CRON_LINE="*/15 * * * * $HOME/Projects/roadmate/scripts/fix_issues.py --quiet >> $BOT_HOME/logs/fix_issues.log 2>&1 || $HOME/Projects/roadmate/scripts/notify.py \"RoadMate auto-fixer tick failed\" \"fix_issues.py exited nonzero - check $BOT_HOME/logs/fix_issues.log\""
 if [ "${1:-}" = "--install-cron" ]; then
   echo "==> Crontab"
   if crontab -l 2>/dev/null | grep -q "fix_issues.py"; then

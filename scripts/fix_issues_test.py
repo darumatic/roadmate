@@ -5,6 +5,8 @@ Run directly (`python3 scripts/fix_issues_test.py`) or via `flutter test`
 (test/fix_issues_test.dart wraps this suite, mirroring the backup tooling).
 """
 
+import json
+import time
 import unittest
 
 import fix_issues as fx
@@ -381,6 +383,443 @@ class GhWrapperTest(unittest.TestCase):
     def test_gh_returns_stdout(self):
         fx.run = lambda *a, **k: (0, '[{"number": 1}]', '')
         self.assertEqual(fx.gh(['issue', 'list']), '[{"number": 1}]')
+
+
+def result_line(**fields):
+    """One claude --output-format json result line, as the CLI writes it."""
+    base = {'type': 'result', 'is_error': False, 'result': 'done'}
+    base.update(fields)
+    return json.dumps(base)
+
+
+# The verbatim result line from the run that opened the 2026-08-25 outage
+# (~/roadmate-bot/logs/claude-issue-36-20260825050007.log). The incident is the
+# spec: this exact shape was filed as "the run finished without a commit".
+INCIDENT_429 = json.dumps({
+    'is_error': True, 'terminal_reason': 'api_error', 'api_error_status': 429,
+    'total_cost_usd': 1.537821, 'type': 'result',
+    'result': "You're out of usage credits. Switch to another model, or manage "
+              'usage credits at claude.ai/settings/usage?from=cc_cli_limit_message, '
+              'to continue.'})
+
+
+class RunFailureKindTest(unittest.TestCase):
+    """None = Claude judged the issue. A kind = the RUNNER failed and the
+    issue was never judged; reporting that as a verdict burned four approvals
+    on 2026-08-25."""
+
+    def test_real_incident_log_is_credits(self):
+        self.assertEqual(fx.run_failure_kind(INCIDENT_429), fx.FAILURE_CREDITS)
+
+    def test_credits_from_429(self):
+        line = result_line(is_error=True, api_error_status=429)
+        self.assertEqual(fx.run_failure_kind(line), fx.FAILURE_CREDITS)
+
+    def test_transient_from_5xx(self):
+        for status in (500, 503, 529):
+            self.assertEqual(
+                fx.run_failure_kind(result_line(is_error=True,
+                                                api_error_status=status)),
+                fx.FAILURE_TRANSIENT, status)
+
+    def test_permanent_4xx_is_not_deferred(self):
+        """A 400 is permanent: deferring would stall for hours and then report
+        a capacity problem that never existed."""
+        for status in (400, 404, 413):
+            self.assertIsNone(
+                fx.run_failure_kind(result_line(is_error=True,
+                                                api_error_status=status)),
+                status)
+
+    def test_auth_status_is_auth(self):
+        for status in (401, 403):
+            self.assertEqual(
+                fx.run_failure_kind(result_line(is_error=True,
+                                                api_error_status=status)),
+                fx.FAILURE_AUTH, status)
+
+    def test_auth_text_beats_status(self):
+        line = result_line(is_error=True, api_error_status=429,
+                           result='OAuth session expired')
+        self.assertEqual(fx.run_failure_kind(line), fx.FAILURE_AUTH)
+
+    def test_api_error_without_status_is_transient(self):
+        line = result_line(is_error=True, terminal_reason='api_error')
+        self.assertEqual(fx.run_failure_kind(line), fx.FAILURE_TRANSIENT)
+
+    def test_clean_stop_is_not_a_runner_failure(self):
+        """Claude stopping on purpose IS a verdict about the issue."""
+        self.assertIsNone(fx.run_failure_kind(
+            result_line(is_error=False, result='Too vague to implement.')))
+
+    def test_error_without_status_or_reason_is_not_a_runner_failure(self):
+        self.assertIsNone(fx.run_failure_kind(result_line(is_error=True)))
+
+    def test_text_fallback_only_when_no_result_line(self):
+        self.assertEqual(fx.run_failure_kind('fatal: out of usage credits'),
+                         fx.FAILURE_CREDITS)
+        self.assertEqual(fx.run_failure_kind('API Error: Overloaded'),
+                         fx.FAILURE_TRANSIENT)
+
+    def test_result_text_mentioning_credits_is_not_a_runner_failure(self):
+        """A summary quoting the words must not fake an outage — Claude's own
+        text is embedded in the result object."""
+        line = result_line(is_error=False,
+                           result='I stopped: the issue says the app is out '
+                                  'of usage credits, which needs an owner '
+                                  'decision.')
+        self.assertIsNone(fx.run_failure_kind(line))
+
+    def test_markers_are_case_insensitive(self):
+        self.assertEqual(fx.run_failure_kind('OUT OF USAGE CREDITS'),
+                         fx.FAILURE_CREDITS)
+
+    def test_empty_log_is_not_a_runner_failure(self):
+        self.assertIsNone(fx.run_failure_kind(''))
+
+
+class ResultCostTest(unittest.TestCase):
+    def test_reads_total_cost_usd(self):
+        self.assertAlmostEqual(fx.result_cost(INCIDENT_429), 1.537821)
+
+    def test_zero_without_a_result_line(self):
+        self.assertEqual(fx.result_cost('no json here'), 0.0)
+
+    def test_garbage_cost_is_zero(self):
+        self.assertEqual(fx.result_cost(result_line(total_cost_usd='NaN$')), 0.0)
+
+    def test_find_result_object_picks_the_last(self):
+        log = result_line(result='first') + chr(10) + result_line(result='last')
+        self.assertEqual(fx.find_result_object(log)['result'], 'last')
+
+    def test_parse_claude_result_still_returns_the_tuple(self):
+        self.assertEqual(fx.parse_claude_result(INCIDENT_429)[0], True)
+
+
+class DeferralScheduleTest(unittest.TestCase):
+    def setUp(self):
+        self.state = {'issue': 36, 'title': 'Alphabetical order',
+                      'prompt': 'FROZEN PROMPT', 'claude_pid': 4242,
+                      'pre_sha': 'abc123'}
+
+    def test_first_deferral_waits_thirty_minutes(self):
+        record = fx.plan_deferral(self.state, 1000.0, fx.FAILURE_CREDITS)
+        self.assertEqual(record['attempts'], 1)
+        self.assertEqual(record['retry_after_epoch'], 1000.0 + 1800)
+        self.assertEqual(record['first_deferred_epoch'], 1000.0)
+        self.assertEqual(record['phase'], fx.PHASE_DEFERRED)
+
+    def test_backoff_grows_then_caps(self):
+        self.assertEqual(fx.defer_wait_seconds(1), 30 * 60)
+        self.assertEqual(fx.defer_wait_seconds(2), 60 * 60)
+        self.assertEqual(fx.defer_wait_seconds(3), 120 * 60)
+        self.assertEqual(fx.defer_wait_seconds(9), 120 * 60)
+
+    def test_budget_refuses_a_wake_past_the_ceiling(self):
+        spent = dict(self.state, attempts=4, first_deferred_epoch=0.0)
+        self.assertIsNone(fx.plan_deferral(spent, 19800.0, fx.FAILURE_CREDITS))
+
+    def test_four_retries_then_give_up(self):
+        state, now, attempts = dict(self.state), 0.0, 0
+        while True:
+            record = fx.plan_deferral(state, now, fx.FAILURE_CREDITS)
+            if record is None:
+                break
+            attempts += 1
+            now, state = record['retry_after_epoch'], record
+        self.assertEqual(attempts, 4)
+        self.assertEqual(now, 5.5 * 3600)
+
+    def test_freezes_the_prompt_verbatim(self):
+        record = fx.plan_deferral(self.state, 1.0, fx.FAILURE_CREDITS)
+        self.assertEqual(record['prompt'], 'FROZEN PROMPT')
+
+    def test_drops_claude_pid(self):
+        """kill_orphan() SIGKILLs a whole process group by pid; a pid parked
+        for hours can be reused by the owner's own claude session."""
+        record = fx.plan_deferral(self.state, 1.0, fx.FAILURE_CREDITS)
+        self.assertNotIn('claude_pid', record)
+
+    def test_drops_pre_sha(self):
+        record = fx.plan_deferral(self.state, 1.0, fx.FAILURE_CREDITS)
+        self.assertNotIn('pre_sha', record)
+
+    def test_alerted_survives_further_attempts(self):
+        first = fx.plan_deferral(self.state, 0.0, fx.FAILURE_CREDITS)
+        first['alerted'] = True
+        second = fx.plan_deferral(first, first['retry_after_epoch'],
+                                  fx.FAILURE_CREDITS)
+        self.assertTrue(second['alerted'])
+        self.assertEqual(second['attempts'], 2)
+
+    def test_retry_after_utc_is_rendered(self):
+        record = fx.plan_deferral(self.state, 0.0, fx.FAILURE_CREDITS)
+        self.assertEqual(record['retry_after_utc'], '1970-01-01 00:30 UTC')
+
+
+class DeferralDueTest(unittest.TestCase):
+    def record(self, **overrides):
+        base = {'first_deferred_epoch': 0.0, 'retry_after_epoch': 1800.0}
+        base.update(overrides)
+        return base
+
+    def test_before_retry_after_waits(self):
+        self.assertEqual(fx.deferral_due(self.record(), 1799.0), 'wait')
+
+    def test_at_retry_after_resumes(self):
+        self.assertEqual(fx.deferral_due(self.record(), 1800.0), 'resume')
+
+    def test_after_retry_after_resumes(self):
+        self.assertEqual(fx.deferral_due(self.record(), 3600.0), 'resume')
+
+    def test_budget_exhausted_gives_up(self):
+        """A cron dead for 8h must give up, not resume a stale run."""
+        self.assertEqual(fx.deferral_due(self.record(), 8 * 3600), 'give_up')
+
+    def test_missing_timestamps_give_up(self):
+        self.assertEqual(fx.deferral_due({}, 100.0), 'give_up')
+
+
+class DeferralValidityTest(unittest.TestCase):
+    def test_open_and_working_resumes(self):
+        self.assertTrue(fx.deferral_still_valid('OPEN', [fx.LABEL_WORKING]))
+
+    def test_closed_issue_drops(self):
+        self.assertFalse(fx.deferral_still_valid('CLOSED', [fx.LABEL_WORKING]))
+
+    def test_working_label_removed_drops(self):
+        """Removing claude-working is the owner's cancel gesture."""
+        self.assertFalse(fx.deferral_still_valid('OPEN', [fx.LABEL_APPROVED]))
+
+    def test_other_labels_do_not_matter(self):
+        self.assertTrue(fx.deferral_still_valid(
+            'OPEN', [fx.LABEL_WORKING, fx.LABEL_APPROVED, 'bug']))
+
+
+class CapacityReasonTest(unittest.TestCase):
+    def test_reason_names_the_outage_not_the_issue(self):
+        reason = fx.capacity_block_reason(fx.FAILURE_CREDITS, 6 * 3600, 4)
+        self.assertIn('out of usage credits', reason)
+        self.assertIn('not a problem with this issue', reason)
+        self.assertNotIn('finished without a commit', reason)
+
+    def test_transient_wording(self):
+        reason = fx.capacity_block_reason(fx.FAILURE_TRANSIENT, 3600, 1)
+        self.assertIn('API kept failing', reason)
+        self.assertIn('1 attempt ', reason + ' ')
+
+    def test_reads_well_inside_a_blocked_comment(self):
+        comment = fx.build_blocked_comment(
+            fx.capacity_block_reason(fx.FAILURE_CREDITS, 19800, 4))
+        self.assertIn('Re-apply the `approved` label', comment)
+
+    def test_duration_formatting(self):
+        self.assertEqual(fx.format_duration(19800), '5h30m')
+        self.assertEqual(fx.format_duration(3600), '1h')
+        self.assertEqual(fx.format_duration(2700), '45m')
+
+
+class PausedAlertTest(unittest.TestCase):
+    """The 2026-08-25 alerts said only 'the run finished without a commit' —
+    no cause, no model, and no hint the issue was never read."""
+
+    def test_title_says_paused_not_blocked(self):
+        title, _ = fx.build_paused_alert(36, 'Alphabetical order',
+                                         fx.FAILURE_CREDITS, 'opus', 1,
+                                         '2026-08-25 06:31 UTC')
+        self.assertIn('paused', title.lower())
+        self.assertNotIn('blocked', title.lower())
+
+    def test_message_names_cause_model_retry_and_cancel_gesture(self):
+        _, message = fx.build_paused_alert(36, 'Alphabetical order',
+                                           fx.FAILURE_CREDITS, 'opus', 2,
+                                           '2026-08-25 06:31 UTC')
+        self.assertIn('out of usage credits', message)
+        self.assertIn('opus', message)
+        self.assertIn('2026-08-25 06:31 UTC', message)
+        self.assertIn('never judged', message)
+        self.assertIn(fx.LABEL_WORKING, message)
+
+    def test_fallback_alert_names_both_models(self):
+        title, message = fx.build_fallback_alert(36, 'Alphabetical order',
+                                                 'opus', 'sonnet')
+        self.assertIn('sonnet', title)
+        self.assertIn('opus', message)
+
+    def test_budget_alert_reports_the_spend(self):
+        _, message = fx.build_budget_alert(38, 10.4, 10.0)
+        self.assertIn('$10.40', message)
+        self.assertIn('00:00 UTC', message)
+
+
+class BlockedAlertTest(unittest.TestCase):
+    def test_alert_carries_claudes_questions(self):
+        """When Claude stops to ask, the owner must see the questions in the
+        push alert — not have to ssh in and read a JSON log."""
+        _, message = fx.build_blocked_alert(
+            36, 'Alphabetical order', 'the report needs a decision',
+            'Which list should be sorted: the state grid or the site list?')
+        self.assertIn('Which list should be sorted', message)
+        self.assertIn('Alphabetical order', message)
+        self.assertIn(fx.LABEL_APPROVED, message)
+
+    def test_alert_keeps_the_private_runner_detail(self):
+        _, message = fx.build_blocked_alert(
+            36, 'T', 'reason', 'public detail',
+            'Log: /home/adrian/roadmate-bot/logs/x.log')
+        self.assertIn('/home/adrian/roadmate-bot/logs/x.log', message)
+
+    def test_long_summary_is_truncated_for_a_push(self):
+        _, message = fx.build_blocked_alert(36, 'T', 'reason', 'x' * 5000)
+        self.assertLess(len(message), 2000)
+
+
+class PublicCommentRedactionTest(unittest.TestCase):
+    """darumatic/roadmate is PUBLIC. Runner paths and credential locations
+    belong in the ntfy alert and work-report.md, never in a comment."""
+
+    def test_blocked_comment_drops_runner_paths(self):
+        comment = fx.build_blocked_comment(
+            'the run finished without a commit',
+            'See /home/adrian/roadmate-bot/logs/claude-issue-36.log on the VPS.')
+        self.assertNotIn('/home/adrian', comment)
+        self.assertIn('<runner path>', comment)
+
+    def test_success_comment_redacts_model_written_text(self):
+        """The prompt tells Claude the scratch dir, so a summary can leak it."""
+        comment = fx.build_success_comment(
+            'Wrote scratch to /home/adrian/roadmate-bot/state/scratch/x.txt',
+            '1.0.13', 'abc123')
+        self.assertNotIn('/home/adrian', comment)
+
+    def test_auth_instructions_never_reach_a_comment(self):
+        comment = fx.build_blocked_comment(
+            'Claude authentication failed on the runner',
+            'Renew it: paste into ~/.config/roadmate/claude-oauth-token now.')
+        self.assertNotIn('claude-oauth-token', comment)
+
+    def test_repo_relative_paths_survive(self):
+        comment = fx.build_success_comment(
+            'Touched lib/services/geo.dart and scripts/release.sh.',
+            '1.0.13', 'abc123')
+        self.assertIn('lib/services/geo.dart', comment)
+        self.assertIn('scripts/release.sh', comment)
+
+    def test_success_comment_records_the_model(self):
+        comment = fx.build_success_comment('done', '1.0.13', 'abc123', 'sonnet')
+        self.assertIn('Implemented by sonnet', comment)
+
+    def test_report_entry_keeps_the_private_path(self):
+        """Only the PUBLIC side is redacted; the owner's report keeps detail."""
+        entry = fx.build_report_entry(
+            36, 'T', 'blocked', detail='Log: /home/adrian/roadmate-bot/x.log',
+            model='opus', cost=1.54)
+        self.assertIn('/home/adrian/roadmate-bot/x.log', entry)
+        self.assertIn('- model: `opus`', entry)
+        self.assertIn('- cost: $1.54', entry)
+
+
+class SpendLedgerTest(unittest.TestCase):
+    def test_accumulates_within_a_day(self):
+        ledger = fx.spend_after({}, '2026-08-25', 1.54)
+        ledger = fx.spend_after(ledger, '2026-08-25', 9.59)
+        self.assertAlmostEqual(ledger['usd'], 11.13)
+
+    def test_resets_on_a_new_utc_day(self):
+        ledger = {'date': '2026-08-25', 'usd': 11.13, 'alerted': True}
+        fresh = fx.spend_after(ledger, '2026-08-26', 0.5)
+        self.assertAlmostEqual(fresh['usd'], 0.5)
+        self.assertFalse(fresh['alerted'])
+
+    def test_spend_today_ignores_a_stale_day(self):
+        self.assertEqual(
+            fx.spend_today({'date': '2026-08-24', 'usd': 9.0}, '2026-08-25'),
+            0.0)
+
+    def test_cap_blocks_at_the_budget(self):
+        ledger = {'date': '2026-08-25', 'usd': 10.0}
+        self.assertTrue(fx.budget_exceeded(ledger, '2026-08-25', 10.0))
+
+    def test_cap_allows_below_the_budget(self):
+        ledger = {'date': '2026-08-25', 'usd': 9.99}
+        self.assertFalse(fx.budget_exceeded(ledger, '2026-08-25', 10.0))
+
+    def test_a_single_fable_max_run_would_not_trip_the_cap_alone(self):
+        """$9.59 shipped #35 and emptied the pool; the cap stops the NEXT
+        run, not the one in flight."""
+        ledger = fx.spend_after({}, '2026-08-25', 9.59)
+        self.assertFalse(fx.budget_exceeded(ledger, '2026-08-25', 10.0))
+        ledger = fx.spend_after(ledger, '2026-08-25', 1.54)
+        self.assertTrue(fx.budget_exceeded(ledger, '2026-08-25', 10.0))
+
+
+class ModelPinTest(unittest.TestCase):
+    """Owner decision 2026-08-25: opus/xhigh under a daily cap, after
+    fable/max billed $9.59 for one issue and emptied the credit pool."""
+
+    def test_model_and_effort(self):
+        self.assertEqual(fx.CLAUDE_MODEL, 'opus')
+        self.assertEqual(fx.CLAUDE_EFFORT, 'xhigh')
+
+    def test_daily_budget(self):
+        self.assertEqual(fx.DAILY_BUDGET_USD, 10.0)
+
+    def test_fallback_is_a_different_model(self):
+        self.assertTrue(fx.CLAUDE_FALLBACK_MODEL)
+        self.assertNotEqual(fx.CLAUDE_FALLBACK_MODEL, fx.CLAUDE_MODEL)
+
+
+class Args(object):
+    """The argparse namespace tick() reads, as a stub."""
+
+    def __init__(self, quiet=True, dry_run=False, issue=None):
+        self.quiet = quiet
+        self.dry_run = dry_run
+        self.issue = issue
+
+
+class DeferredTickTest(unittest.TestCase):
+    """A sleeping deferral must be a TRUE no-op: no gh call, no Claude, no
+    cost — and it must own the tick, which is what stops an outage cascading
+    across the queue (2026-08-25: #36 then #37 in 45 minutes)."""
+
+    def setUp(self):
+        self.calls = []
+        self.original = (fx.gh, fx.run, fx.log, fx.preflight)
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError('a sleeping deferral must not call out')
+
+        fx.gh = forbidden
+        fx.run = forbidden
+        fx.preflight = forbidden
+        fx.log = lambda message: self.calls.append(message)
+
+    def tearDown(self):
+        fx.gh, fx.run, fx.log, fx.preflight = self.original
+
+    def sleeping(self):
+        return {'issue': 36, 'title': 'Alphabetical order', 'prompt': 'FROZEN',
+                'phase': fx.PHASE_DEFERRED, 'kind': fx.FAILURE_CREDITS,
+                'attempts': 1, 'first_deferred_epoch': time.time(),
+                'retry_after_epoch': time.time() + 1800,
+                'retry_after_utc': 'later', 'alerted': True}
+
+    def test_sleeping_deferral_makes_no_calls(self):
+        self.assertEqual(fx.tick_deferred(self.sleeping(), Args()), 0)
+
+    def test_wait_is_logged_even_under_quiet(self):
+        """A deferral is PENDING state and this line is its only trace;
+        --quiet silences the no-op tick, not held work."""
+        fx.tick_deferred(self.sleeping(), Args(quiet=True))
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn('deferred', self.calls[0])
+        self.assertIn('later', self.calls[0])
+
+    def test_dry_run_never_acts_on_a_due_deferral(self):
+        due = self.sleeping()
+        due['retry_after_epoch'] = time.time() - 1
+        self.assertEqual(fx.tick_deferred(due, Args(dry_run=True)), 0)
 
 
 if __name__ == '__main__':

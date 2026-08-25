@@ -49,3 +49,7 @@ app.*.map.json
 /android/app/release
 
 android/key.properties
+
+# Claude Code machine-local settings (per-machine permission allowlist).
+# Must stay untracked: release.sh commits with `git add -A`.
+.claude/settings.local.json

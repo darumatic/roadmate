@@ -61,13 +61,25 @@ LOCK_FILE = os.path.join(STATE_DIR, 'fix_issues.lock')
 
 GH_BIN = '/usr/bin/gh'
 CLAUDE_BIN = os.path.join(HOME, '.local', 'bin', 'claude')
-# The fixer writes production code unattended: best-intelligence model at max
-# effort (owner decision 2026-08-25). 'fable' is the CLI alias for the newest
-# model in Anthropic's top tier, so successors are picked up automatically —
-# revisit only if a new top-tier FAMILY ever replaces Fable. The zero-cost
+# The fixer writes production code unattended, so it runs a top-tier model —
+# but capacity and cost are real constraints, not footnotes. 'fable' at max
+# effort billed $9.59 for ONE issue on 2026-08-25 and emptied the credit pool
+# ~50 min later, which stalled every approved issue behind it; the owner moved
+# the bot to opus/xhigh under DAILY_BUDGET_USD the same day. The zero-cost
 # polling tick never touches Claude.
-CLAUDE_MODEL = 'fable'
-CLAUDE_EFFORT = 'max'
+CLAUDE_MODEL = 'opus'
+CLAUDE_EFFORT = 'xhigh'
+# Used only when the primary model is OUT OF USAGE CREDITS: the same frozen
+# prompt is re-run once here rather than stalling the queue, and every channel
+# says which model did the work. '' disables the fallback entirely.
+# NOTE the CLI's own --fallback-model is NOT a substitute: it covers
+# "overloaded or not available" (5xx), and was verified on 2026-08-25 to pass
+# a 429 "out of usage credits" straight through. We pass it anyway for the
+# overload case it does handle.
+CLAUDE_FALLBACK_MODEL = 'sonnet'
+# Stop STARTING work once a UTC day has billed this much. A run already in
+# flight is never killed, so the day can overshoot by one run's cost.
+DAILY_BUDGET_USD = 10.0
 # Optional long-lived subscription token (from `claude setup-token`), so runs
 # stop depending on the interactive login's refresh state. Absent = use the
 # normal ~/.claude login.
@@ -85,6 +97,35 @@ DISALLOWED_TOOLS = 'WebFetch,WebSearch'
 KEEP_CLAUDE_LOGS = 30
 COMMENT_PREFIX = '[auto-fix] '
 SUMMARY_MAX = 4000            # chars of the summary quoted into a public comment
+ALERT_SUMMARY_MAX = 900       # chars of it quoted into a push alert
+SPEND_FILE = os.path.join(STATE_DIR, 'spend.json')
+
+# Why a run ended without a commit. None (no kind) means Claude reached a real
+# verdict about the issue; these three mean the RUNNER failed and the issue was
+# never judged — see run_failure_kind().
+FAILURE_AUTH = 'auth'
+FAILURE_CREDITS = 'credits'
+FAILURE_TRANSIENT = 'transient'
+# Text markers are a LAST resort, used only when the run wrote no result object
+# at all (killed before it could). Matched lower-cased.
+CREDITS_MARKERS = ('out of usage credits', 'usage limit reached',
+                   'exceeded your usage limit')
+TRANSIENT_MARKERS = ('overloaded', 'internal server error',
+                     'service temporarily unavailable')
+
+PHASE_WORKING = 'working'
+PHASE_PUSHED = 'pushed'
+PHASE_DEFERRED = 'deferred'
+# Minutes to wait before retry 1, 2, 3+ (the last entry repeats). The 15-min
+# cron quantizes these upward: a 30-min wait resumes at the next tick boundary.
+DEFER_BACKOFF_MIN = (30, 60, 120)
+# Stop waiting and block honestly after this much wall-clock. "Out of usage
+# credits" on a subscription is usually a weekly pool, so waiting longer is
+# futile — the point of the wait is to convert a FALSE verdict on the issue
+# into an honest capacity report, cheaply, inside a working session.
+DEFER_MAX_TOTAL = 6 * 3600
+# Runner-local absolute paths must never reach a comment on a PUBLIC repo.
+LOCAL_PATH_RE = re.compile(r'(?:/(?:home|root|Users)|~)/[^\s`"\'<>()\[\],]*')
 LIVE_URL = 'https://roadmate.club'
 ACTIONS_URL = 'https://github.com/%s/actions/workflows/web-release.yml' % REPO
 
@@ -288,7 +329,7 @@ def stale_action(state, log_lines, local_head):
     """Resolve a run that died mid-flight. Returns (action, sha_or_none).
     A crash during the CI wait must not be reported as a failure — the fix may
     already be pushed (phase 'pushed', or a '(#N)' commit on origin/master)."""
-    if state.get('phase') == 'pushed' and state.get('pushed_sha'):
+    if state.get('phase') == PHASE_PUSHED and state.get('pushed_sha'):
         return ('resume_ci', state['pushed_sha'])
     sha = find_marker_commit(log_lines, state.get('issue'))
     if sha:
@@ -321,9 +362,10 @@ def is_auth_failure(log_text):
             or 'OAuth session expired' in log_text)
 
 
-def parse_claude_result(log_text):
+def find_result_object(log_text):
     """Tolerant scan of a claude --output-format json log (stderr is mixed in):
-    the last parseable {"type": "result", ...} line. Logging aid only."""
+    the last parseable {"type": "result", ...} object, or None when the run
+    died before it could write one."""
     result = None
     for line in log_text.splitlines():
         line = line.strip()
@@ -335,9 +377,235 @@ def parse_claude_result(log_text):
             continue
         if isinstance(obj, dict) and obj.get('type') == 'result':
             result = obj
+    return result
+
+
+def parse_claude_result(log_text):
+    """(is_error, result_text) from that object. Logging aid only."""
+    result = find_result_object(log_text)
     if result is None:
         return (None, '')
     return (bool(result.get('is_error')), str(result.get('result') or ''))
+
+
+def result_cost(log_text):
+    """USD the run billed before it ended, 0.0 when unknown. Failed runs count
+    too — the 429 that opened the 2026-08-25 outage had already billed $1.54."""
+    result = find_result_object(log_text) or {}
+    try:
+        return float(result.get('total_cost_usd') or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def run_failure_kind(log_text):
+    """Why a run produced no commit.
+
+    None = Claude reached a real verdict: it judged the issue and stopped on
+        purpose, or its fix failed. That IS about the issue — block and say so.
+    FAILURE_AUTH / FAILURE_CREDITS / FAILURE_TRANSIENT = the RUNNER failed and
+        the issue was never judged.
+
+    Filing the second kind as the first is exactly what happened on
+    2026-08-25: a 429 "out of usage credits" was reported as "the run finished
+    without a commit" against #36 (x3) and #37, consuming a fresh approval each
+    time and coming one tick from burning every remaining approved issue.
+    """
+    if is_auth_failure(log_text):
+        return FAILURE_AUTH
+    result = find_result_object(log_text)
+    if result is not None:
+        if not result.get('is_error'):
+            return None
+        status = result.get('api_error_status')
+        if isinstance(status, int):
+            if status in (401, 403):
+                return FAILURE_AUTH
+            if status == 429:
+                return FAILURE_CREDITS
+            if status >= 500:
+                return FAILURE_TRANSIENT
+            # Any other status (400 invalid request, 404, 413 too large) is
+            # PERMANENT: deferring would stall for hours and then report a
+            # capacity problem that never existed.
+            return None
+        if result.get('terminal_reason') == 'api_error':
+            return FAILURE_TRANSIENT
+        return None
+    # No result object at all: the run was killed before writing one. Only here
+    # may we scan raw text — Claude's own final message is quoted INTO the
+    # result object, so scanning it unconditionally would let an issue body or
+    # a summary that merely mentions "out of usage credits" fake an outage.
+    lowered = log_text.lower()
+    if any(marker in lowered for marker in CREDITS_MARKERS):
+        return FAILURE_CREDITS
+    if any(marker in lowered for marker in TRANSIENT_MARKERS):
+        return FAILURE_TRANSIENT
+    return None
+
+
+def redact_paths(text):
+    """Strip runner-local absolute paths from text bound for a comment on the
+    PUBLIC repo. Log and credential paths belong in the ntfy alert and
+    work-report.md, which only the owner reads. Applied to model-written text
+    too: the prompt tells Claude the scratch dir, so a summary can leak it."""
+    return LOCAL_PATH_RE.sub('<runner path>', text or '')
+
+
+def format_duration(seconds):
+    """'5h30m' / '45m' — compact, for block reasons and alerts."""
+    minutes = int(round(seconds / 60.0))
+    hours, minutes = divmod(minutes, 60)
+    if hours and minutes:
+        return '%dh%02dm' % (hours, minutes)
+    if hours:
+        return '%dh' % hours
+    return '%dm' % minutes
+
+
+def utc_text(epoch):
+    """'2026-08-25 06:31 UTC' — display only; timing uses the epoch fields."""
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime(
+        '%Y-%m-%d %H:%M UTC')
+
+
+def defer_wait_seconds(attempts, schedule=DEFER_BACKOFF_MIN):
+    """Seconds to wait before retry number `attempts` (1-based). The last
+    entry of the schedule repeats."""
+    index = min(max(int(attempts), 1), len(schedule)) - 1
+    return schedule[index] * 60
+
+
+def plan_deferral(state, now, kind, schedule=DEFER_BACKOFF_MIN,
+                  max_total=DEFER_MAX_TOTAL):
+    """The next deferred record, or None when scheduling another wake would
+    blow the total budget (the caller then blocks with an honest reason).
+
+    Carries the FROZEN prompt through untouched, and deliberately drops:
+      claude_pid — kill_orphan() SIGKILLs a whole PROCESS GROUP by pid, and a
+                   pid parked for hours can be reused; the victim would be the
+                   owner's own interactive claude session.
+      pre_sha    — recomputed by reset_clone() on resume, because master moves.
+    """
+    attempts = int(state.get('attempts') or 0) + 1
+    first = state.get('first_deferred_epoch')
+    first = float(first) if first is not None else float(now)
+    wait = defer_wait_seconds(attempts, schedule)
+    if now + wait - first > max_total:
+        return None
+    record = dict(state)
+    for volatile in ('claude_pid', 'pre_sha', 'pushed_sha'):
+        record.pop(volatile, None)
+    record.update({
+        'phase': PHASE_DEFERRED,
+        'kind': kind,
+        'attempts': attempts,
+        'first_deferred_epoch': first,
+        'retry_after_epoch': float(now) + wait,
+        'retry_after_utc': utc_text(now + wait),
+    })
+    return record
+
+
+def deferral_due(state, now, max_total=DEFER_MAX_TOTAL):
+    """'wait' | 'resume' | 'give_up'. Fails closed: a record missing its
+    timestamps gives up rather than sleeping forever."""
+    retry_after = state.get('retry_after_epoch')
+    first = state.get('first_deferred_epoch')
+    if retry_after is None or first is None:
+        return 'give_up'
+    if now - float(first) > max_total:
+        return 'give_up'
+    if now < float(retry_after):
+        return 'wait'
+    return 'resume'
+
+
+def deferral_still_valid(issue_state, label_names):
+    """A deferral survives only while the issue is OPEN and still carries
+    claude-working. Removing that label is the owner's cancel gesture — it is
+    the one label the bot itself applied, so taking it off drops the run
+    without re-dating the frozen approval."""
+    if issue_state != 'OPEN':
+        return False
+    return LABEL_WORKING in set(label_names)
+
+
+def capacity_block_reason(kind, waited_seconds, attempts):
+    """The honest end of a spent wait budget: name the outage, and say plainly
+    that this issue was never judged."""
+    cause = ('Claude was out of usage credits' if kind == FAILURE_CREDITS
+             else 'the Claude API kept failing')
+    return ('%s for %s across %d attempt%s — a runner capacity problem, not a '
+            'problem with this issue'
+            % (cause, format_duration(waited_seconds), attempts,
+               '' if attempts == 1 else 's'))
+
+
+def build_paused_alert(number, title, kind, model, attempts, retry_at_text):
+    """(title, message) for a run the RUNNER could not finish. Says PAUSED,
+    never "blocked", and states that nothing is required. The 2026-08-25
+    alerts said only "the run finished without a commit" — naming neither the
+    cause nor the fact that the issue had never been read."""
+    cause = ('%s is out of usage credits' % model if kind == FAILURE_CREDITS
+             else 'the Claude API is failing (%s)' % model)
+    return ('RoadMate auto-fix paused (#%s)' % number,
+            'Issue #%s "%s" was never judged — %s. Retry %d at %s. No action '
+            'needed and the approval is still held; to cancel, remove the %s '
+            'label.' % (number, title, cause, attempts, retry_at_text,
+                        LABEL_WORKING))
+
+
+def build_fallback_alert(number, title, primary, fallback):
+    return ('RoadMate auto-fix falling back to %s (#%s)' % (fallback, number),
+            'Issue #%s "%s": %s is out of usage credits, so the run is going '
+            'ahead on %s instead. The issue comment and work report record '
+            'which model shipped it.' % (number, title, primary, fallback))
+
+
+def build_budget_alert(number, spent, budget):
+    return ('RoadMate auto-fixer paused — daily budget',
+            'Today has billed $%.2f of the $%.2f cap, so issue #%s was not '
+            'started. Approvals are untouched; work resumes after 00:00 UTC.'
+            % (spent, budget, number))
+
+
+def build_blocked_alert(number, title, reason, details='', private=''):
+    """An alert the owner can act on WITHOUT sshing into the box: the reason,
+    then what Claude actually said — including the questions it asks when a
+    report is too vague to implement — then the runner-local details."""
+    parts = ['Issue #%s "%s": %s.' % (number, title, reason)]
+    if details and details.strip():
+        parts.append(truncate(details.strip(), ALERT_SUMMARY_MAX))
+    if private and private.strip():
+        parts.append(private.strip())
+    parts.append('Re-apply the %s label once addressed.' % LABEL_APPROVED)
+    return ('RoadMate auto-fix blocked (#%s)' % number, '\n\n'.join(parts))
+
+
+def spend_today(ledger, day):
+    """USD billed on `day`; 0.0 once the UTC day rolls over."""
+    if (ledger or {}).get('date') != day:
+        return 0.0
+    try:
+        return float(ledger.get('usd') or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def spend_after(ledger, day, usd):
+    """The ledger after billing `usd` on `day`. A new UTC day starts at zero,
+    and `alerted` resets with it."""
+    return {'date': day,
+            'usd': round(spend_today(ledger, day) + float(usd or 0.0), 6),
+            'alerted': bool((ledger or {}).get('alerted'))
+                       if (ledger or {}).get('date') == day else False}
+
+
+def budget_exceeded(ledger, day, budget=DAILY_BUDGET_USD):
+    """True once the day has billed the cap. Checked before STARTING work: a
+    run already in flight is never killed, so a day can overshoot by one run."""
+    return spend_today(ledger, day) >= budget
 
 
 def truncate(text, limit=SUMMARY_MAX):
@@ -346,21 +614,27 @@ def truncate(text, limit=SUMMARY_MAX):
     return text[:limit] + '\n… (truncated; the full text is in the VPS bot log)'
 
 
-def build_success_comment(summary, version, sha):
+def build_success_comment(summary, version, sha, model=None):
+    """Public. `summary` is model-written and the prompt tells Claude the
+    runner's scratch dir, so this is redacted like every other public text."""
     parts = [COMMENT_PREFIX + 'Implemented and released.']
     if summary and summary.strip():
         parts.append(truncate(summary.strip()))
-    parts.append('Live at %s (v%s, commit %s).'
-                 % (LIVE_URL, version or 'unknown', sha))
-    return '\n\n'.join(parts)
+    tail = 'Live at %s (v%s, commit %s).' % (LIVE_URL, version or 'unknown', sha)
+    if model:
+        tail += ' Implemented by %s.' % model
+    parts.append(tail)
+    return redact_paths('\n\n'.join(parts))
 
 
 def build_blocked_comment(reason, details=''):
+    """Public — goes on an issue in a PUBLIC repo. Runner-local paths and
+    credential-renewal instructions belong in block_issue(private=...)."""
     parts = [COMMENT_PREFIX + 'Stopped without releasing: ' + reason + '.']
     if details and details.strip():
         parts.append(truncate(details.strip()))
     parts.append('Re-apply the `%s` label to retry once addressed.' % LABEL_APPROVED)
-    return '\n\n'.join(parts)
+    return redact_paths('\n\n'.join(parts))
 
 
 def build_red_pipeline_comment(sha):
@@ -371,14 +645,19 @@ def build_red_pipeline_comment(sha):
 
 
 def build_report_entry(number, title, outcome, detail='', version=None,
-                       sha=None, when=''):
-    """One markdown work-report section per terminal outcome."""
+                       sha=None, when='', model=None, cost=None):
+    """One markdown work-report section per terminal outcome. Owner-only, so
+    unlike the issue comment it keeps runner paths, the model and the cost."""
     lines = ['## %s — issue #%s: %s' % (when, number, outcome)]
     if title:
         lines += ['', '**%s**' % title]
     if sha:
         suffix = ' (v%s)' % version if version else ''
         lines += ['', '- commit: `%s`%s' % (sha, suffix)]
+    if model:
+        lines += ['', '- model: `%s`' % model]
+    if cost:
+        lines += ['', '- cost: $%.2f' % cost]
     if detail and detail.strip():
         lines += ['', truncate(detail.strip())]
     return '\n'.join(lines) + '\n\n'
@@ -611,17 +890,23 @@ def acquire_lock():
     return handle
 
 
-def run_claude(number, prompt):
+def run_claude(number, prompt, model=None):
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
     log_path = os.path.join(LOG_DIR, 'claude-issue-%s-%s.log' % (number, stamp))
+    model = model or CLAUDE_MODEL
     cmd = [CLAUDE_BIN, '-p', prompt,
            '--dangerously-skip-permissions',
-           '--model', CLAUDE_MODEL,
+           '--model', model,
            '--effort', CLAUDE_EFFORT,
            '--settings', CLAUDE_SETTINGS,
            '--disallowedTools', DISALLOWED_TOOLS,
            '--output-format', 'json',
            '--add-dir', STATE_DIR]
+    # Covers "overloaded or not available" only; a 429 "out of usage credits"
+    # passes straight through it (verified 2026-08-25), which is why the
+    # credits case is handled in settle_no_commit() instead.
+    if CLAUDE_FALLBACK_MODEL and model == CLAUDE_MODEL:
+        cmd += ['--fallback-model', CLAUDE_FALLBACK_MODEL]
     extra_env = {'DISABLE_AUTOUPDATER': '1'}
     try:
         with open(OAUTH_TOKEN_FILE) as handle:
@@ -668,10 +953,11 @@ def alert(title, message):
     notify.send(title, message)
 
 
-def report(number, title, outcome, detail='', version=None, sha=None):
+def report(number, title, outcome, detail='', version=None, sha=None,
+           model=None, cost=None):
     when = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     entry = build_report_entry(number, title, outcome, detail, version, sha,
-                               when)
+                               when, model=model, cost=cost)
     try:
         fresh = not os.path.exists(REPORT_FILE)
         with open(REPORT_FILE, 'a') as handle:
@@ -680,6 +966,55 @@ def report(number, title, outcome, detail='', version=None, sha=None):
             handle.write(entry)
     except OSError:
         pass
+
+
+def utc_day(now=None):
+    now = time.time() if now is None else now
+    return datetime.fromtimestamp(now, timezone.utc).strftime('%Y-%m-%d')
+
+
+def read_spend():
+    try:
+        with open(SPEND_FILE) as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_spend(ledger):
+    tmp = SPEND_FILE + '.partial'
+    try:
+        with open(tmp, 'w') as handle:
+            json.dump(ledger, handle)
+        os.replace(tmp, SPEND_FILE)
+    except OSError:
+        pass
+
+
+def record_spend(usd):
+    """Bill a finished run against today's cap. Failed runs count too — the
+    429 that opened the 2026-08-25 outage had already billed $1.54."""
+    if not usd:
+        return
+    write_spend(spend_after(read_spend(), utc_day(), usd))
+
+
+def budget_blocks_start(number):
+    """True when today has spent the cap. Pauses rather than blocks: no label
+    is touched, so the approval survives to tomorrow. Alerts once per day."""
+    day = utc_day()
+    ledger = read_spend()
+    if not budget_exceeded(ledger, day):
+        return False
+    if not ledger.get('alerted'):
+        ledger = dict(ledger)
+        ledger['alerted'] = True
+        write_spend(ledger)
+        alert(*build_budget_alert(number, spend_today(ledger, day),
+                                  DAILY_BUDGET_USD))
+    log('issue #%s: not started — today billed $%.2f of the $%.2f cap'
+        % (number, spend_today(ledger, day), DAILY_BUDGET_USD))
+    return True
 
 
 def prune_logs():
@@ -698,13 +1033,17 @@ def prune_logs():
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def block_issue(number, reason, details='', title=''):
+def block_issue(number, reason, details='', title='', private=''):
+    """`details` is PUBLIC — it lands on an issue in a public repo. `private`
+    is owner-only (ntfy + work-report): runner paths, credential-renewal
+    instructions, spend. The alert carries BOTH plus whatever Claude said, so
+    the owner can act without sshing in — the 2026-08-25 alerts said only
+    "the run finished without a commit" and named no cause at all."""
     post_comment(number, build_blocked_comment(reason, details))
     set_labels(number, add=(LABEL_BLOCKED,), remove=(LABEL_WORKING,))
-    alert('RoadMate auto-fix blocked',
-          'Issue #%s: %s. Re-apply the %s label after addressing it.'
-          % (number, reason, LABEL_APPROVED))
-    report(number, title, 'blocked — %s' % reason, detail=details)
+    alert(*build_blocked_alert(number, title, reason, details, private))
+    detail = '\n\n'.join(part for part in (details, private) if part and part.strip())
+    report(number, title, 'blocked — %s' % reason, detail=detail)
 
 
 def save_patch(number, pre_sha):
@@ -714,10 +1053,10 @@ def save_patch(number, pre_sha):
     return patch_path
 
 
-def finish_released(number, sha, title=''):
+def finish_released(number, sha, title='', model=None, cost=None):
     """Watch the pipeline for the pushed commit, then close or block."""
     state = read_state() or {}
-    state.update({'issue': number, 'phase': 'pushed', 'pushed_sha': sha})
+    state.update({'issue': number, 'phase': PHASE_PUSHED, 'pushed_sha': sha})
     write_state(state)
     code, output = run_check_ci(sha)
     verdict = classify_check_ci(code, output)
@@ -729,13 +1068,13 @@ def finish_released(number, sha, title=''):
         except OSError:
             pass
         summary = read_summary(number)
-        close_issue(number, build_success_comment(summary, version, sha))
+        close_issue(number, build_success_comment(summary, version, sha, model))
         set_labels(number, remove=(LABEL_WORKING,))
         alert('RoadMate auto-fix released',
               'Issue #%s is fixed and live at %s (v%s, commit %s).'
               % (number, LIVE_URL, version or 'unknown', sha))
         report(number, title, 'released & closed', detail=summary,
-               version=version, sha=sha)
+               version=version, sha=sha, model=model, cost=cost)
         log('issue #%s: released %s, pipeline green, issue closed' % (number, sha))
     elif verdict == 'red':
         post_comment(number, build_red_pipeline_comment(sha))
@@ -764,7 +1103,10 @@ def finish_released(number, sha, title=''):
 def resolve_stale(state):
     """A previous run died. Kill any orphan, then resume or report — a crash
     after the push must resume the CI watch, not report a failure."""
-    log('resolving stale run state: %s' % json.dumps(state))
+    # The state now carries the frozen prompt (untrusted issue text): never
+    # dump it into the tick log.
+    log('resolving stale run state: %s'
+        % json.dumps({k: v for k, v in state.items() if k != 'prompt'}))
     kill_orphan(state)
     number = state.get('issue')
     git(['fetch', 'origin'])
@@ -785,23 +1127,239 @@ def resolve_stale(state):
     elif action == 'save_patch_and_block':
         patch_path = save_patch(number, pre_sha)
         block_issue(number, 'the run crashed mid-work',
-                    'Unpushed work is saved on the VPS at %s.' % patch_path)
+                    'Unpushed work is saved on the runner.',
+                    title=state.get('title', ''),
+                    private='Patch: %s' % patch_path)
         clear_state()
         log('issue #%s: crashed with unpushed work; patch saved' % number)
     else:
-        block_issue(number, 'the run crashed before completing')
+        block_issue(number, 'the run crashed before completing',
+                    title=state.get('title', ''))
         clear_state()
         log('issue #%s: crashed run marked blocked' % number)
 
 
+def run_and_settle(number, title, prompt, pre_sha, model=None):
+    """Run claude on the FROZEN prompt from pre_sha and settle the outcome.
+    Shared by a fresh pickup and a deferred retry so both settle identically.
+
+    The git-state checks come FIRST and the push always wins over the exit
+    code: a run that timed out after release.sh pushed is still a release."""
+    model = model or CLAUDE_MODEL
+    try:
+        os.remove(summary_path_for(number))  # never reuse a previous summary
+    except FileNotFoundError:
+        pass
+    code, claude_log = run_claude(number, prompt, model=model)
+    log_text = ''
+    try:
+        with open(claude_log) as handle:
+            log_text = handle.read()
+    except OSError:
+        pass
+    cost = result_cost(log_text)
+    record_spend(cost)
+    state = read_state()
+    if state is not None:
+        state['spend_usd'] = round(float(state.get('spend_usd') or 0.0) + cost, 6)
+        write_state(state)
+    is_error, _ = parse_claude_result(log_text)
+    log('issue #%s: claude(%s) exited rc=%s is_error=%s cost=$%.2f; log %s'
+        % (number, model, code, is_error, cost, claude_log))
+
+    git(['fetch', 'origin'])
+    remote_sha = git(['rev-parse', 'origin/master'])
+    local_head = git(['rev-parse', 'HEAD'])
+    action = next_action_after_claude(pre_sha, remote_sha, local_head)
+    if action == 'released':
+        log_lines = git(['log', '--format=%H %s',
+                         '%s..%s' % (pre_sha, remote_sha)]).splitlines()
+        sha = find_marker_commit(log_lines, number) or remote_sha
+        finish_released(number, sha, title, model=model, cost=cost)
+    elif action == 'committed_not_pushed':
+        patch_path = save_patch(number, pre_sha)
+        block_issue(number, 'a commit was made but the push did not complete',
+                    'The work is saved on the runner.', title=title,
+                    private='Patch: %s' % patch_path)
+        clear_state()
+        log('issue #%s: committed but not pushed; patch saved to %s'
+            % (number, patch_path))
+    else:
+        settle_no_commit(number, title, prompt, pre_sha, claude_log, log_text,
+                         model)
+    prune_logs()
+
+
+def settle_no_commit(number, title, prompt, pre_sha, claude_log, log_text,
+                     model):
+    """No commit. Did Claude JUDGE the issue (block — that is about the
+    issue), or did the RUNNER fail (auth -> owner action; credits -> fall back
+    or defer; transient -> defer)? Conflating the two is the 2026-08-25 bug."""
+    kind = run_failure_kind(log_text)
+    if kind == FAILURE_AUTH:
+        block_issue(number,
+                    'Claude authentication failed on the runner — an owner '
+                    'action is needed; nothing to change on this issue',
+                    title=title,
+                    private='Renew it as adrian: `claude setup-token` and '
+                            'paste the token into '
+                            '~/.config/roadmate/claude-oauth-token (chmod '
+                            '600), or run `claude` once and log in.')
+        clear_state()
+        log('issue #%s: claude auth failure' % number)
+        return
+    if kind in (FAILURE_CREDITS, FAILURE_TRANSIENT):
+        if (kind == FAILURE_CREDITS and CLAUDE_FALLBACK_MODEL
+                and model == CLAUDE_MODEL):
+            log('issue #%s: %s is out of usage credits — retrying on %s'
+                % (number, model, CLAUDE_FALLBACK_MODEL))
+            # Every resume retries the pinned model first, so without this
+            # flag a 6h outage would push four identical fallback alerts.
+            state = read_state() or {}
+            if not state.get('fallback_alerted'):
+                state['fallback_alerted'] = True
+                write_state(state)
+                alert(*build_fallback_alert(number, title, model,
+                                            CLAUDE_FALLBACK_MODEL))
+            run_and_settle(number, title, prompt, pre_sha,
+                           model=CLAUDE_FALLBACK_MODEL)
+            return
+        state = read_state() or {}
+        state.update({'issue': number, 'title': title, 'prompt': prompt})
+        record = plan_deferral(state, time.time(), kind)
+        if record is None:
+            give_up_deferred(state, kind)
+        else:
+            defer_run(record, model)
+        return
+    summary = read_summary(number)
+    details = summary if summary.strip() else \
+        'No summary was written; the run log is on the runner.'
+    block_issue(number, 'the run finished without a commit', details,
+                title=title, private='Log: %s' % claude_log)
+    clear_state()
+    log('issue #%s: no commit made' % number)
+
+
+def defer_run(record, model):
+    """Postpone a run the RUNNER could not finish: no label change, no issue
+    comment, no work-report entry — just a state record holding the FROZEN
+    prompt and a retry time. tick() resolves state before picking up any new
+    issue, so a pending deferral is ALSO what stops an outage cascading across
+    the queue (on 2026-08-25 it walked #36 then #37 in 45 minutes)."""
+    number = record.get('issue')
+    reset_clone()                     # leave the clone clean while we wait
+    already_alerted = bool(record.get('alerted'))
+    record['alerted'] = True          # set BEFORE sending: never double-alert
+    write_state(record)
+    if not already_alerted:
+        alert(*build_paused_alert(number, record.get('title', ''),
+                                  record.get('kind'), model,
+                                  record.get('attempts', 1),
+                                  record.get('retry_after_utc', 'the next tick')))
+    log('issue #%s: %s — deferred (attempt %d), retrying after %s'
+        % (number, record.get('kind'), record.get('attempts', 1),
+           record.get('retry_after_utc')))
+
+
+def give_up_deferred(state, kind=None):
+    """The wait budget is spent: block with an ACCURATE reason. Never
+    re-applies `approved` — the bot's gh token is the owner's OWN account, so
+    a bot-applied approval would pass ALLOWED_APPROVERS and silently re-date
+    the frozen snapshot this run was authorised against."""
+    number = state.get('issue')
+    kind = kind or state.get('kind')
+    attempts = max(int(state.get('attempts') or 0), 1)
+    first = state.get('first_deferred_epoch')
+    waited = time.time() - float(first) if first else 0.0
+    block_issue(number, capacity_block_reason(kind, waited, attempts),
+                title=state.get('title', ''),
+                private='%d attempt%s over %s, $%.2f billed. Top up at '
+                        'claude.ai/settings/usage, or change CLAUDE_MODEL / '
+                        'CLAUDE_FALLBACK_MODEL in scripts/fix_issues.py.'
+                        % (attempts, '' if attempts == 1 else 's',
+                           format_duration(waited),
+                           float(state.get('spend_usd') or 0.0)))
+    clear_state()
+    log('issue #%s: gave up after %s of %s'
+        % (number, format_duration(waited), kind))
+
+
+def resume_deferred(state):
+    """Re-run a deferred issue from its STORED prompt. No snapshot re-fetch
+    and no label write: the approval that authorised this run is the one
+    frozen at pickup, and the bot's gh token IS the owner's account — so a
+    bot-applied `approved` would pass the allowlist and re-date the freeze,
+    quietly accepting a body edited after the owner approved it."""
+    number = state.get('issue')
+    prompt = state.get('prompt')
+    if not number or not prompt:
+        log('deferred record is unusable (no issue/prompt); dropping it')
+        clear_state()
+        return
+    if budget_blocks_start(number):
+        return
+    view = json.loads(gh(['issue', 'view', str(number), '-R', REPO,
+                          '--json', 'state,labels']))
+    labels = [label['name'] for label in view.get('labels', [])]
+    if not deferral_still_valid(view.get('state'), labels):
+        log('issue #%s: deferral dropped — issue is %s, labels %s'
+            % (number, view.get('state'), labels))
+        if LABEL_WORKING in labels:
+            set_labels(number, remove=(LABEL_WORKING,))
+        clear_state()
+        return
+    pre_sha = reset_clone()
+    resumed = dict(state)
+    resumed.update({'phase': PHASE_WORKING, 'pre_sha': pre_sha,
+                    'started_at': datetime.now(timezone.utc).isoformat()})
+    resumed.pop('claude_pid', None)
+    write_state(resumed)
+    log('issue #%s: resuming deferred run (attempt %d) from %s'
+        % (number, int(state.get('attempts') or 0), pre_sha))
+    run_and_settle(number, state.get('title', ''), prompt, pre_sha)
+
+
+def tick_deferred(state, args):
+    """A postponed run owns the tick: nothing new is picked up until it is
+    resumed or given up. While it sleeps this is a true no-op — no gh call, no
+    Claude, no cost. That is why the check sits ABOVE preflight()."""
+    number = state.get('issue')
+    verdict = deferral_due(state, time.time())
+    if verdict == 'wait':
+        # Always logged, even under cron's --quiet: a deferral is PENDING
+        # state, and this line is its only trace. (--quiet exists to silence
+        # the "no approved issues" no-op, not to hide held work — the silent
+        # 20-day backup outage is this repo's standing lesson.)
+        log('issue #%s: deferred (%s) until %s'
+            % (number, state.get('kind'), state.get('retry_after_utc')))
+        return 0
+    if args.dry_run:
+        log('dry-run: the deferred run for issue #%s is due; a real tick '
+            'would %s' % (number, verdict))
+        return 0
+    preflight()
+    if verdict == 'give_up':
+        give_up_deferred(state)
+        return 0
+    resume_deferred(state)
+    return 0
+
+
 def tick(args):
+    # Before preflight: a sleeping deferral must cost nothing at all, and
+    # preflight() calls gh on every tick.
+    state = read_state()
+    if state and state.get('phase') == PHASE_DEFERRED:
+        return tick_deferred(state, args)
+
     preflight(require_clone=not args.dry_run)
 
-    state = read_state()
     if state:
         if args.dry_run:
             log('dry-run: unresolved run state exists (%s); a real tick would '
-                'resolve it first' % json.dumps(state))
+                'resolve it first'
+                % json.dumps({k: v for k, v in state.items() if k != 'prompt'}))
             return 0
         resolve_stale(state)
         return 0
@@ -847,64 +1405,21 @@ def tick(args):
         print('--- end prompt ---')
         return 0
 
+    # Checked BEFORE the approval label is consumed, so an over-budget day
+    # pauses the queue instead of burning approvals.
+    if budget_blocks_start(number):
+        return 0
     pre_sha = reset_clone()
-    try:
-        os.remove(summary_path_for(number))  # never reuse a previous summary
-    except FileNotFoundError:
-        pass
     set_labels(number, add=(LABEL_WORKING,),
                remove=(LABEL_APPROVED, LABEL_BLOCKED))
-    write_state({'issue': number, 'phase': 'working', 'pre_sha': pre_sha,
+    # The prompt is frozen into the state: a deferred retry re-runs THIS text,
+    # never a re-fetched snapshot (see resume_deferred).
+    write_state({'issue': number, 'phase': PHASE_WORKING, 'pre_sha': pre_sha,
+                 'title': snapshot['title'], 'prompt': prompt,
                  'started_at': datetime.now(timezone.utc).isoformat()})
     log('issue #%s: starting claude run from %s' % (number, pre_sha))
 
-    code, claude_log = run_claude(number, prompt)
-    log_text = ''
-    try:
-        with open(claude_log) as handle:
-            log_text = handle.read()
-    except OSError:
-        pass
-    is_error, _ = parse_claude_result(log_text)
-    log('issue #%s: claude exited rc=%s is_error=%s; log %s'
-        % (number, code, is_error, claude_log))
-
-    git(['fetch', 'origin'])
-    remote_sha = git(['rev-parse', 'origin/master'])
-    local_head = git(['rev-parse', 'HEAD'])
-    action = next_action_after_claude(pre_sha, remote_sha, local_head)
-    if action == 'released':
-        log_lines = git(['log', '--format=%H %s',
-                         '%s..%s' % (pre_sha, remote_sha)]).splitlines()
-        sha = find_marker_commit(log_lines, number) or remote_sha
-        finish_released(number, sha, snapshot['title'])
-    elif action == 'committed_not_pushed':
-        patch_path = save_patch(number, pre_sha)
-        block_issue(number, 'a commit was made but the push did not complete',
-                    'The work is saved on the VPS at %s.' % patch_path,
-                    title=snapshot['title'])
-        clear_state()
-        log('issue #%s: committed but not pushed; patch saved to %s'
-            % (number, patch_path))
-    elif is_auth_failure(log_text):
-        block_issue(number, 'Claude authentication failed — the login or '
-                    'token has expired',
-                    'Renew it as adrian: `claude setup-token` and paste the '
-                    'token into ~/.config/roadmate/claude-oauth-token '
-                    '(chmod 600), or run `claude` once and log in.',
-                    title=snapshot['title'])
-        clear_state()
-        log('issue #%s: claude auth failure' % number)
-    else:
-        summary = read_summary(number)
-        details = summary if summary.strip() else \
-            'No summary was written — see %s on the VPS.' % claude_log
-        block_issue(number, 'the run finished without a commit', details,
-                    title=snapshot['title'])
-        clear_state()
-        log('issue #%s: no commit made' % number)
-
-    prune_logs()
+    run_and_settle(number, snapshot['title'], prompt, pre_sha)
     return 0
 
 

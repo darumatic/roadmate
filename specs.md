@@ -98,6 +98,12 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   because the release flow already lives on this box and commits must stay
   attributed to the owner. Runs as the personal (non-root) user. Details under
   **Deployment & domain → Issue auto-fixer**.
+- **The auto-fixer runs `opus`/`xhigh` under a $10/day cap, and treats a runner
+  outage as a pause, not a verdict (2026-08-25)** — a `fable`/`max` run billed
+  $9.59 for one issue and emptied the credit pool; the resulting 429s were
+  filed as "the run finished without a commit" against #36 and #37, burning an
+  approval each time. Capacity failures now defer and retry on the frozen
+  prompt; only Claude's own judgement blocks an issue.
 
 ## Architecture (as built)
 
@@ -542,12 +548,17 @@ or reported next tick, and unpushed work is saved as a `patch-N.patch` before
 the clone is reset. Logs in `~/roadmate-bot/logs/` — `fix_issues.log` (ticks),
 `claude-issue-<N>-<ts>.log` (full Claude session, last 30 kept), and
 **`work-report.md`**, a cumulative markdown report appended at every terminal
-outcome (what/when/commit/version/summary). The polling tick is pure
-Python + `gh` — **zero Claude cost**; only an approved issue starts a Claude
-run, pinned to the **best-intelligence model at max effort** — the `fable`
-CLI alias at `--effort max`, so top-tier successors apply automatically
-(owner decision 2026-08-25; same intent set as the interactive default in
-`~/.claude/settings.json`). Auth: the adrian login by default; if
+outcome (what/when/commit/version/summary, plus the model and the run's cost).
+The polling tick is pure Python + `gh` — **zero Claude cost**; only an approved
+issue starts a Claude run, pinned to **`opus` at `--effort xhigh` under a
+`DAILY_BUDGET_USD` of $10** (owner decision 2026-08-25). That supersedes the
+earlier `fable`/`max` pin from the same day: one `fable`/`max` run billed
+**$9.59** for a single issue and emptied the credit pool ~50 minutes later,
+which is what triggered the outage below. The cap is checked **before** the
+`approved` label is consumed, so an over-budget day pauses the queue instead of
+burning approvals; a run already in flight is never killed, so a day can
+overshoot by one run's cost. Spend is ledgered per UTC day in
+`~/roadmate-bot/state/spend.json`. Auth: the adrian login by default; if
 `~/.config/roadmate/claude-oauth-token` exists (minted via `claude
 setup-token`, chmod 600) the bot uses that long-lived subscription token
 instead, decoupling it from interactive-login refresh — a copied `~/.claude`
@@ -559,6 +570,72 @@ hook, `--install-cron`). Guards are unit-tested in
 `scripts/fix_issues_test.py`, wired into `flutter test` by
 `test/fix_issues_test.dart` alongside source-level invariant pins.
 
+**Infrastructure is never a verdict (the 2026-08-25 credits outage).** The
+runner used to classify the end of a run by git state alone: no commit meant
+"the run finished without a commit", which blocked the issue. So when `fable`
+ran out of usage credits, four runs in 45 minutes stamped `claude-blocked` on
+**#36** (x3, the owner re-approving each time) and **#37**, posted four
+misleading comments on a public repo, consumed a fresh approval each time, and
+were one tick from burning every remaining approved issue — **none of those
+issues was ever read by Claude**. The alerts said only "the run finished
+without a commit", naming neither the cause nor that fact.
+
+`run_failure_kind()` now separates the two cases. `None` means Claude reached a
+real verdict (it judged the issue and stopped, or its fix failed) — that IS
+about the issue, so it still blocks. `auth` / `credits` / `transient` mean the
+**runner** failed and the issue was never judged. It reads the result object's
+`api_error_status` (401/403 → auth, 429 → credits, ≥500 → transient, **any
+other status → permanent, block with the real reason** — a 400 must not stall
+for hours), falling back to `terminal_reason`, and to raw-text markers **only
+when the run wrote no result object at all** (Claude's own final message is
+quoted *into* that object, so scanning text unconditionally would let an issue
+body mentioning "out of usage credits" fake an outage).
+
+On `credits` the same **frozen prompt** is re-run once on
+`CLAUDE_FALLBACK_MODEL` (`sonnet`; `''` disables it) rather than stalling the
+queue, and every channel records which model shipped the work. The CLI's own
+`--fallback-model` is **not** a substitute — it covers "overloaded or not
+available" and was verified on 2026-08-25 to pass a 429 straight through; it is
+passed anyway for the overload case it does handle.
+
+Otherwise the run is **deferred**: `phase: 'deferred'` in
+`current-run.json` carrying the frozen prompt, `attempts`,
+`first_deferred_epoch`, `retry_after_epoch`, `alerted` and `spend_usd` — **no
+label change, no issue comment, no work-report entry**. Reusing the existing
+state file is deliberate: `tick()` resolves state before picking up any new
+issue, so a pending deferral is also what **stops an outage cascading across
+the queue**. The check sits *above* `preflight()`, so a sleeping deferral costs
+nothing at all. Backoff is 30/60/120 min capped (→ retries at +30m, +1h30m,
++3h30m, +5h30m; the 15-min cron quantizes each wait upward), and after
+`DEFER_MAX_TOTAL` (6h) it blocks with an **accurate** reason naming the outage
+and saying the issue was never judged. Waiting longer is usually futile — "out
+of usage credits" is a weekly pool, not an hourly rate limit — so the point of
+the wait is to convert a false verdict into an honest capacity report, cheaply,
+inside a working session; the real lever is topping up or changing the model.
+
+Two rules that must survive any edit:
+- **A resume re-runs the STORED prompt, never a re-fetched snapshot.** The
+  bot's `gh` token *is* the owner's own `deccico` account, so a bot-applied
+  `approved` would pass `ALLOWED_APPROVERS` and silently re-date the frozen
+  approval, quietly accepting a body edited after the owner approved it. The
+  bot therefore never *adds* the approval label (pinned in
+  `test/fix_issues_test.dart`); it only removes it at pickup.
+- **A deferred record drops `claude_pid`.** `kill_orphan()` SIGKILLs a whole
+  process *group* by pid, and a pid parked for hours can be reused — the victim
+  would be the owner's own interactive `claude` session.
+
+A resume re-verifies cheaply that the issue is still OPEN and still carries
+`claude-working`; **removing `claude-working` is the owner's cancel gesture**,
+since it is the one label the bot itself applied.
+
+**Public repo hygiene.** `darumatic/roadmate` is public, and the blocked
+comments were embedding `/home/adrian/roadmate-bot/logs/...` (the auth branch
+would have published the OAuth token path and renewal steps). `block_issue`
+now splits `details` (public) from `private` (ntfy + `work-report.md` only),
+and `redact_paths()` scrubs runner-local absolute paths from **both** comment
+builders — including the success comment, because the prompt tells Claude the
+scratch dir, so model-written text can leak it too.
+
 **Attention alerts (`scripts/notify.py`, 2026-08-25).** The bot and the
 backup cron act with the owner's **own** GitHub token, and GitHub never
 notifies you of your own activity — so issue comments alone would go unseen.
@@ -569,6 +646,14 @@ silent no-op). The fixer alerts on **every terminal outcome** (released,
 blocked, rejected, red pipeline, auth failure, crash, misconfiguration) and
 the crontab lines alert on backup failure and on a fixer tick crashing
 (`|| notify.py …` — the direct answer to the silent 20-day backup outage).
+**An alert must be actionable without sshing into the box** (the 2026-08-25
+alerts were not): a blocked alert carries the reason *and* what Claude
+actually said — including the questions it asks when a report is too vague, so
+the owner can add the detail to the issue and re-approve — plus the runner-only
+details. A paused alert (credits/transient) names the cause, the model, the
+retry time and the cancel gesture, and its title says **paused**, never
+"blocked", because nothing is required of the owner; it is sent **once** per
+outage (`alerted` is set in the state *before* the send).
 
 ### Google Play publishing
 
@@ -678,7 +763,11 @@ to renew it.
    positive freshness check (alert when no recent snapshot exists, catching
    e.g. cron itself being dead).
 7. **Issue auto-fixer follow-ups** — a progress comment while `claude-working`;
-   multi-issue batching; the first live end-to-end run on a real approved issue.
+   multi-issue batching. Also: a post-give-up cooldown so one outage cannot
+   stall each queued issue for 6h in turn; per-kind backoff schedules;
+   hardening `should_kill` to require `-p` in the cmdline; a distinct block
+   reason for hitting the 75-min `CLAUDE_TIMEOUT` (today it reads as "finished
+   without a commit").
 
 ---
 
