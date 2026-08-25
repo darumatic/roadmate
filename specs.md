@@ -635,6 +635,14 @@ A resume re-verifies cheaply that the issue is still OPEN and still carries
 `claude-working`; **removing `claude-working` is the owner's cancel gesture**,
 since it is the one label the bot itself applied.
 
+**The bot makes this workspace go stale.** It pushes to master unattended, so
+`~/Projects/roadmate` falls behind with nobody touching it — and bumping the
+version on a stale base mints a version the bot already used, with the push
+rejected only *after* the whole suite has run (that happened twice on
+2026-08-25). `scripts/release.sh` therefore **fetches and rebases on
+`origin/master` before it tests or bumps** (pinned in
+`test/release_pipeline_test.dart`). Pull before starting terminal work here.
+
 **Public repo hygiene.** `darumatic/roadmate` is public, and the blocked
 comments were embedding `/home/adrian/roadmate-bot/logs/...` (the auth branch
 would have published the OAuth token path and renewal steps). `block_issue`

@@ -65,6 +65,20 @@ void main() {
       expect(sh, contains('git push'));
     });
 
+    test('release.sh rebases on origin/master before testing and bumping', () {
+      // The issue auto-fixer pushes to master unattended, so this workspace
+      // goes stale on its own. Bumping on a stale base mints a version the
+      // bot already used and the push is rejected only after the whole suite
+      // has run (twice on 2026-08-25). The sync must come first.
+      final sh = _read('scripts/release.sh');
+      expect(sh, contains('git fetch origin'));
+      expect(sh, contains('git rebase origin/master'));
+      expect(sh.indexOf('git rebase origin/master'),
+          lessThan(sh.indexOf('flutter test')));
+      expect(sh.indexOf('git rebase origin/master'),
+          lessThan(sh.indexOf('tool/bump_version.dart')));
+    });
+
     test('build_web.sh keeps the deploy guards', () {
       final sh = _read('scripts/build_web.sh');
       expect(sh, contains('--no-tree-shake-icons'));

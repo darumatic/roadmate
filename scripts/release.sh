@@ -23,6 +23,24 @@ cd "$(dirname "$0")/.."
 
 msg="${1:-}"
 
+# The issue auto-fixer pushes to master on its own (scripts/fix_issues.py), so
+# this workspace goes stale without anyone touching it. Rebase FIRST: bumping
+# the version on a stale base produces a duplicate version and a push that is
+# rejected only after the whole suite has run (seen twice on 2026-08-25).
+echo "==> Sync with origin/master"
+git fetch origin
+if [ -n "$(git status --porcelain)" ]; then
+  # Uncommitted work: rebase it across on a stash so the bump lands on top of
+  # whatever the bot released while we were working.
+  git stash push -u -m "release.sh autostash" >/dev/null
+  trap 'git stash pop >/dev/null 2>&1 || true' EXIT
+  git rebase origin/master
+  git stash pop >/dev/null
+  trap - EXIT
+else
+  git rebase origin/master
+fi
+
 echo "==> Local checks (analyze + test)"
 flutter analyze
 flutter test
