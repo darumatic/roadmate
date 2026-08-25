@@ -519,8 +519,10 @@ the clone is reset. Logs in `~/roadmate-bot/logs/` — `fix_issues.log` (ticks),
 **`work-report.md`**, a cumulative markdown report appended at every terminal
 outcome (what/when/commit/version/summary). The polling tick is pure
 Python + `gh` — **zero Claude cost**; only an approved issue starts a Claude
-run, pinned to **`claude-fable-5` at `--effort max`** (owner decision
-2026-08-25). Auth: the adrian login by default; if
+run, pinned to the **best-intelligence model at max effort** — the `fable`
+CLI alias at `--effort max`, so top-tier successors apply automatically
+(owner decision 2026-08-25; same intent set as the interactive default in
+`~/.claude/settings.json`). Auth: the adrian login by default; if
 `~/.config/roadmate/claude-oauth-token` exists (minted via `claude
 setup-token`, chmod 600) the bot uses that long-lived subscription token
 instead, decoupling it from interactive-login refresh — a copied `~/.claude`

@@ -59,9 +59,11 @@ void main() {
     expect(script, contains('--dry-run'));
     // Web tools stay off in headless runs.
     expect(script, contains("DISALLOWED_TOOLS = 'WebFetch,WebSearch'"));
-    // Fixes are written by the top model at max effort (owner decision,
-    // 2026-08-25); the polling tick itself never invokes Claude.
-    expect(script, contains("CLAUDE_MODEL = 'claude-fable-5'"));
+    // Fixes are written by the best-intelligence model at max effort (owner
+    // decision, 2026-08-25) — the 'fable' alias tracks the newest top-tier
+    // model so successors apply automatically. The polling tick itself never
+    // invokes Claude.
+    expect(script, contains("CLAUDE_MODEL = 'fable'"));
     expect(script, contains("CLAUDE_EFFORT = 'max'"));
     // Long-lived subscription token support and push alerts: the bot acts
     // with the owner's own GitHub token, so GitHub never notifies him of

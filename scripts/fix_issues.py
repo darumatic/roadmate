@@ -61,9 +61,12 @@ LOCK_FILE = os.path.join(STATE_DIR, 'fix_issues.lock')
 
 GH_BIN = '/usr/bin/gh'
 CLAUDE_BIN = os.path.join(HOME, '.local', 'bin', 'claude')
-# The fixer writes production code unattended: pin the top model at max effort
-# (owner decision 2026-08-25). The zero-cost polling tick never touches Claude.
-CLAUDE_MODEL = 'claude-fable-5'
+# The fixer writes production code unattended: best-intelligence model at max
+# effort (owner decision 2026-08-25). 'fable' is the CLI alias for the newest
+# model in Anthropic's top tier, so successors are picked up automatically —
+# revisit only if a new top-tier FAMILY ever replaces Fable. The zero-cost
+# polling tick never touches Claude.
+CLAUDE_MODEL = 'fable'
 CLAUDE_EFFORT = 'max'
 # Optional long-lived subscription token (from `claude setup-token`), so runs
 # stop depending on the interactive login's refresh state. Absent = use the
