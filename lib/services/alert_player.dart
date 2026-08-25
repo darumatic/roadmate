@@ -2,25 +2,29 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 
 /// Audio session for the over-limit warning (issue #18): the beep must be
-/// heard over music playing on the device.
+/// heard over music playing on the device — and (issue #37) it must leave the
+/// driver's own media volume exactly as it was before, during and after.
 ///
 /// - Android: the alarm stream (`usageType: alarm`) plays at alarm volume
-///   regardless of the media volume, and `gainTransientMayDuck` momentarily
-///   lowers ("ducks") any music instead of pausing it.
+///   regardless of the media volume, so the beep carries over music without
+///   any help. Focus is `none`: a transient focus request
+///   (`gainTransientMayDuck`, previously used here) asks the music app to
+///   attenuate itself — that duck, not a volume change of ours, is what drivers
+///   heard as "the app halved my music", and it can linger past the beep.
 /// - iOS: the `playback` category sounds even when the silent switch is on
-///   (this is a safety alert), and `duckOthers` lowers other apps' audio for
-///   the duration of the beep.
+///   (this is a safety alert), and `mixWithOthers` plays the beep alongside
+///   other apps' audio at its own level instead of ducking or pausing it.
 AudioContext alertAudioContext() => AudioContext(
   android: const AudioContextAndroid(
     isSpeakerphoneOn: false,
     stayAwake: false,
     contentType: AndroidContentType.sonification,
     usageType: AndroidUsageType.alarm,
-    audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+    audioFocus: AndroidAudioFocus.none,
   ),
   iOS: AudioContextIOS(
     category: AVAudioSessionCategory.playback,
-    options: const {AVAudioSessionOptions.duckOthers},
+    options: const {AVAudioSessionOptions.mixWithOthers},
   ),
 );
 
