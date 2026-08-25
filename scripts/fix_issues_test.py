@@ -764,9 +764,11 @@ class ModelPinTest(unittest.TestCase):
     def test_daily_budget(self):
         self.assertEqual(fx.DAILY_BUDGET_USD, 10.0)
 
-    def test_fallback_is_a_different_model(self):
-        self.assertTrue(fx.CLAUDE_FALLBACK_MODEL)
-        self.assertNotEqual(fx.CLAUDE_FALLBACK_MODEL, fx.CLAUDE_MODEL)
+    def test_no_downgrade_fallback(self):
+        """Owner rule: the fixer runs a top-tier model or it waits. Opus is
+        the floor, so with opus as the primary there is nothing to fall back
+        to and the fallback must stay empty — never sonnet or lower."""
+        self.assertEqual(fx.CLAUDE_FALLBACK_MODEL, '')
 
 
 class Args(object):
@@ -830,7 +832,11 @@ class FallbackRetryTest(unittest.TestCase):
         self.order = []
         self.state = {'issue': 36, 'pre_sha': 'stale'}
         self.saved = (fx.reset_clone, fx.run_and_settle, fx.alert, fx.log,
-                      fx.read_state, fx.write_state, fx.block_issue)
+                      fx.read_state, fx.write_state, fx.block_issue,
+                      fx.CLAUDE_FALLBACK_MODEL)
+        # The machinery stays covered even though it ships disabled: this is
+        # what a legitimate (non-downgrade) fallback would do.
+        fx.CLAUDE_FALLBACK_MODEL = 'a-peer-model'
 
         def reset_clone():
             self.order.append('reset_clone')
@@ -849,7 +855,8 @@ class FallbackRetryTest(unittest.TestCase):
 
     def tearDown(self):
         (fx.reset_clone, fx.run_and_settle, fx.alert, fx.log, fx.read_state,
-         fx.write_state, fx.block_issue) = self.saved
+         fx.write_state, fx.block_issue,
+         fx.CLAUDE_FALLBACK_MODEL) = self.saved
 
     def settle(self, log_text, model=None):
         fx.settle_no_commit(36, 'Alphabetical order', 'FROZEN', 'stale',
@@ -865,8 +872,15 @@ class FallbackRetryTest(unittest.TestCase):
 
     def test_retry_uses_the_fallback_model_and_the_fresh_sha(self):
         self.settle(INCIDENT_429)
-        self.assertIn('run:%s:fresh_sha:FROZEN' % fx.CLAUDE_FALLBACK_MODEL,
-                      self.order)
+        self.assertIn('run:a-peer-model:fresh_sha:FROZEN', self.order)
+
+    def test_no_fallback_configured_defers_instead_of_downgrading(self):
+        """As shipped (CLAUDE_FALLBACK_MODEL = ''), a credits outage waits
+        for the pinned model to come back — it never drops a tier."""
+        fx.CLAUDE_FALLBACK_MODEL = ''
+        self.settle(INCIDENT_429)
+        self.assertFalse([step for step in self.order if step.startswith('run:')])
+        self.assertEqual(self.state.get('phase'), fx.PHASE_DEFERRED)
 
     def test_state_pre_sha_follows_the_reset(self):
         self.settle(INCIDENT_429)

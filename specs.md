@@ -553,7 +553,8 @@ the clone is reset. Logs in `~/roadmate-bot/logs/` — `fix_issues.log` (ticks),
 outcome (what/when/commit/version/summary, plus the model and the run's cost).
 The polling tick is pure Python + `gh` — **zero Claude cost**; only an approved
 issue starts a Claude run, pinned to **`opus` at `--effort xhigh` under a
-`DAILY_BUDGET_USD` of $10** (owner decision 2026-08-25). That supersedes the
+`DAILY_BUDGET_USD` of $10** (owner decision 2026-08-25), and **never a lesser
+tier than Opus** — not even to keep working through an outage. That supersedes the
 earlier `fable`/`max` pin from the same day: one `fable`/`max` run billed
 **$9.59** for a single issue and emptied the credit pool ~50 minutes later,
 which is what triggered the outage below. The cap is checked **before** the
@@ -593,12 +594,16 @@ when the run wrote no result object at all** (Claude's own final message is
 quoted *into* that object, so scanning text unconditionally would let an issue
 body mentioning "out of usage credits" fake an outage).
 
-On `credits` the same **frozen prompt** is re-run once on
-`CLAUDE_FALLBACK_MODEL` (`sonnet`; `''` disables it) rather than stalling the
-queue, and every channel records which model shipped the work. The CLI's own
-`--fallback-model` is **not** a substitute — it covers "overloaded or not
-available" and was verified on 2026-08-25 to pass a 429 straight through; it is
-passed anyway for the overload case it does handle.
+**A capacity outage never buys speed with quality.** `CLAUDE_FALLBACK_MODEL`
+exists (the frozen prompt is re-run once on it, and every channel records which
+model shipped the work) but ships **empty**, and it may only ever name a
+peer-or-better model — **owner rule 2026-08-25: the fixer runs a top-tier model
+or it waits; Opus is the floor and the third-best model is never acceptable**.
+With `opus` as the primary there is nothing at or above it to fall back to, so
+a credits outage simply defers. If a better model is ever re-pinned as primary
+(e.g. `fable` once topped up), `opus` becomes the legitimate value. The CLI's
+own `--fallback-model` is **not** a substitute either: it covers "overloaded or
+not available" and was verified on 2026-08-25 to pass a 429 straight through.
 
 Otherwise the run is **deferred**: `phase: 'deferred'` in
 `current-run.json` carrying the frozen prompt, `attempts`,

@@ -69,14 +69,18 @@ CLAUDE_BIN = os.path.join(HOME, '.local', 'bin', 'claude')
 # polling tick never touches Claude.
 CLAUDE_MODEL = 'opus'
 CLAUDE_EFFORT = 'xhigh'
-# Used only when the primary model is OUT OF USAGE CREDITS: the same frozen
-# prompt is re-run once here rather than stalling the queue, and every channel
-# says which model did the work. '' disables the fallback entirely.
+# Used only when the primary model is OUT OF USAGE CREDITS, and it may NEVER be
+# a downgrade. OWNER RULE (2026-08-25): the fixer writes production code
+# unattended, so it runs a top-tier model or it waits — Opus is the floor, and
+# the third-best model is never acceptable. Empty is therefore correct while
+# `opus` IS the primary: there is nothing at or above it to fall back to, so a
+# credits outage defers and retries instead (see settle_no_commit). If a better
+# model is ever re-pinned as primary (e.g. `fable` once its credits are topped
+# up), `opus` becomes the legitimate value here.
 # NOTE the CLI's own --fallback-model is NOT a substitute: it covers
 # "overloaded or not available" (5xx), and was verified on 2026-08-25 to pass
-# a 429 "out of usage credits" straight through. We pass it anyway for the
-# overload case it does handle.
-CLAUDE_FALLBACK_MODEL = 'sonnet'
+# a 429 "out of usage credits" straight through.
+CLAUDE_FALLBACK_MODEL = ''
 # Stop STARTING work once a UTC day has billed this much. A run already in
 # flight is never killed, so the day can overshoot by one run's cost.
 DAILY_BUDGET_USD = 10.0

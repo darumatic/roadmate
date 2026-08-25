@@ -66,6 +66,10 @@ void main() {
     expect(script, contains("CLAUDE_MODEL = 'opus'"));
     expect(script, contains("CLAUDE_EFFORT = 'xhigh'"));
     expect(script, contains('DAILY_BUDGET_USD = 10.0'));
+    // Owner rule: a top-tier model or nothing — the fixer never drops to a
+    // lesser tier to keep working. Enabling a fallback is a deliberate edit
+    // here, and only ever to a peer-or-better model.
+    expect(script, contains("CLAUDE_FALLBACK_MODEL = ''"));
     // A runner outage (429 / 5xx) must DEFER and retry, never be filed as a
     // verdict on the issue — that burned four approvals on 2026-08-25.
     expect(script, contains("PHASE_DEFERRED = 'deferred'"));
