@@ -97,6 +97,49 @@ void main() {
     });
   });
 
+  group('sortByName (issue #36)', () {
+    test('orders sites A-Z within a state, ignoring case', () {
+      final nsw = [
+        _site(id: 'a', state: AusState.nsw, name: 'Marulan'),
+        _site(id: 'b', state: AusState.nsw, name: 'eastern creek'),
+        _site(id: 'c', state: AusState.nsw, name: 'Bulahdelah'),
+        _site(id: 'd', state: AusState.nsw, name: ' Awaba'),
+      ];
+      expect(sortByName(nsw).map((s) => s.name), [
+        ' Awaba',
+        'Bulahdelah',
+        'eastern creek',
+        'Marulan',
+      ]);
+    });
+
+    test('breaks ties on suburb then id, and leaves the input untouched', () {
+      final same = [
+        _site(
+          id: '2',
+          state: AusState.vic,
+          name: 'Weighbridge',
+          suburb: 'Sale',
+        ),
+        _site(
+          id: '1',
+          state: AusState.vic,
+          name: 'Weighbridge',
+          suburb: 'Sale',
+        ),
+        _site(
+          id: '3',
+          state: AusState.vic,
+          name: 'Weighbridge',
+          suburb: 'Euroa',
+        ),
+      ];
+      expect(sortByName(same).map((s) => s.id), ['3', '1', '2']);
+      // The caller's list is not reordered in place.
+      expect(same.map((s) => s.id), ['2', '1', '3']);
+    });
+  });
+
   group('pinSiteFirst', () {
     test('moves the matching site to the front, keeping the rest in order', () {
       final pinned = pinSiteFirst(sites, '3');

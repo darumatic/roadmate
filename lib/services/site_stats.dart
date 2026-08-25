@@ -58,6 +58,24 @@ Map<AusState, List<Site>> groupByState(Iterable<Site> sites) {
   return map;
 }
 
+/// Sites sorted alphabetically by name, case-insensitively (issue #36: the
+/// state list is far easier to scan A–Z than in the repository's newest-first
+/// order). Ties fall back to suburb then id so the order is stable.
+List<Site> sortByName(Iterable<Site> sites) {
+  final sorted = sites.toList()
+    ..sort((a, b) {
+      final byName = a.name.trim().toLowerCase().compareTo(
+        b.name.trim().toLowerCase(),
+      );
+      if (byName != 0) return byName;
+      final bySuburb = a.suburb.trim().toLowerCase().compareTo(
+        b.suburb.trim().toLowerCase(),
+      );
+      return bySuburb != 0 ? bySuburb : a.id.compareTo(b.id);
+    });
+  return sorted;
+}
+
 /// Moves the site with [id] to the front of [sites] (issue #10: the tapped
 /// card shows on top of the state list). No-op when [id] is null or absent.
 List<Site> pinSiteFirst(List<Site> sites, String? id) {

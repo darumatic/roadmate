@@ -169,6 +169,37 @@ void main() {
       expect(find.text('Marulan'), findsNothing);
     });
 
+    testWidgets('lists the state\'s sites alphabetically (issue #36)', (
+      tester,
+    ) async {
+      // Tall enough that every card is built, not just the visible prefix.
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(900, 1600));
+
+      // Repository order is newest-first, not alphabetical.
+      final repo = FeatureFakeSiteRepository(
+        sites: [
+          _site(id: 'nsw-1', name: 'Marulan', state: AusState.nsw),
+          _site(id: 'nsw-2', name: 'eastern creek', state: AusState.nsw),
+          _site(id: 'nsw-3', name: 'Bulahdelah', state: AusState.nsw),
+        ],
+      );
+
+      await _pumpScreen(
+        tester,
+        const StateDetailScreen(state: AusState.nsw),
+        repo,
+      );
+      await tester.pumpAndSettle();
+
+      final cards = tester.widgetList<SiteCard>(find.byType(SiteCard)).toList();
+      expect(cards.map((c) => c.site.name), [
+        'Bulahdelah',
+        'eastern creek',
+        'Marulan',
+      ]);
+    });
+
     testWidgets('pins and highlights the tapped site (issue #10)', (
       tester,
     ) async {

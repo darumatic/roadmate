@@ -41,8 +41,10 @@ class _StateDetailScreenState extends ConsumerState<StateDetailScreen> {
           final stateSites = allSites
               .where((s) => s.state == widget.state)
               .toList();
+          // A–Z within the state (issue #36); the tapped site still pins
+          // to the top so it needs no scrolling to find (issue #10).
           final filtered = pinSiteFirst(
-            searchSites(stateSites, _query),
+            sortByName(searchSites(stateSites, _query)),
             widget.highlightSiteId,
           );
           return BackToTop(
