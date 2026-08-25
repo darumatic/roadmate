@@ -44,6 +44,13 @@ class UsernameGate extends ConsumerWidget {
       username: profile?.username,
       dismissed: dismissed,
     );
+    // The gate sits ABOVE the router, so no Scaffold resizes for the on-screen
+    // keyboard here: pinned to the bottom of the window, the card (and the
+    // road name being typed into it) disappeared behind the keyboard the
+    // moment the field took focus. Lift it by the keyboard's own height —
+    // what Dialog does for the post-time picker, which is why that path was
+    // never affected.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     // The Stack is always returned — collapsing to the bare child when the
     // card hides would reparent the whole app subtree (router included) and
     // reset every screen's state the moment a name is saved or dismissed.
@@ -62,7 +69,7 @@ class UsernameGate extends ConsumerWidget {
               child: Positioned(
                 left: 12,
                 right: 12,
-                bottom: 12,
+                bottom: 12 + keyboard,
                 child: SafeArea(
                   child: Material(
                     color: Colors.transparent,

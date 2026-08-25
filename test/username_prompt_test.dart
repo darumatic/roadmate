@@ -266,6 +266,52 @@ void main() {
       expect(find.text('the app'), findsOneWidget);
     });
 
+    // Regression (issue #38): mounted above the router, the card is in a
+    // subtree nothing resizes for the on-screen keyboard — pinned to the
+    // bottom of the window it sat behind the keyboard, so a user could not
+    // see the road name they were typing.
+    testWidgets('the picker card lifts above the on-screen keyboard', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 2400); // 400x800 logical
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(FakeUser())),
+            myProfileProvider.overrideWith(
+              (ref) => Stream.value(const UserProfile(isAnonymous: true)),
+            ),
+          ],
+          child: MaterialApp(
+            // The production shape: the gate wraps the Navigator itself.
+            builder: (context, child) =>
+                UsernameGate(child: child ?? const SizedBox.shrink()),
+            home: const Scaffold(body: Center(child: Text('the app'))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('PICK YOUR ROAD NAME'), findsOneWidget);
+
+      // Focusing the field raises 300 logical pixels of keyboard.
+      tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+      await tester.pumpAndSettle();
+
+      const keyboardTop = 800.0 - 300.0;
+      expect(
+        tester.getRect(find.byType(TextField)).bottom,
+        lessThanOrEqualTo(keyboardTop),
+      );
+      // …and so does the rest of the card, down to the buttons under it.
+      expect(
+        tester.getRect(find.text('Save')).bottom,
+        lessThanOrEqualTo(keyboardTop),
+      );
+    });
+
     testWidgets('showing and dismissing the card never resets the app '
         'subtree state', (tester) async {
       final store = MemoryUsernameStore(
