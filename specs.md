@@ -356,6 +356,31 @@ just before this landed, so on mobile the button starts at 0.1.74). Covered acro
 `test/announcement_banner_test.dart`, `test/admin_broadcast_test.dart` and the
 `cta` checks in `test/rules/rules_test.mjs`.
 
+**Rate popup (1.0.12+, issue #35).** A rate notice no longer bands as a banner:
+`AnnouncementGate` floats it over the app as a centred card, `RateAppPopup`
+(`lib/widgets/rate_app_popup.dart`), behind a `ModalBarrier` scrim — brand
+mark, the admin's message (rich markup included, through the `NoticeText`
+widget the banner shares), a fixed "A quick rating helps more drivers find
+RoadMate." line, five accent stars and a stacked **Rate RoadMate** / **Not
+now**. Modelled on the store-rating prompts of other apps, restyled to the
+app's dark/orange look. It is an in-tree overlay like the approach and
+road-name cards — never a dialog route (the gate sits above the Navigator, and
+the back button must never point at a popup) — and the gate order in `app.dart`
+is now `UpdateGate → ProximityGate → AnnouncementGate → UsernameGate`, so the
+approach prompt still floats above it and the road-name picker waits beneath
+its scrim. Every answer settles the notice: **Rate** (or a star) opens the
+store and closes the popup, **Not now** or a tap on the scrim just closes it,
+and all of them are remembered per device under the same `dismissKey` as a
+closed banner — re-asking is an admin re-publish, exactly like editing a
+banner. Unlike the banner, the popup waits for the dismiss store to answer
+before showing (an interruption must not flash at someone who already answered
+it). Severity and the custom `color` are ignored for popups; web/desktop still
+get nothing (`rateUrlFor` null). The admin Notice tab previews a rate
+draft/live notice as the popup card. **Retrocompat:** nothing on the wire
+changed — mobile builds 0.1.74–1.0.11 keep showing a rate notice as the banner
+with its button. Covered in `test/announcement_banner_test.dart` and
+`test/admin_broadcast_test.dart`.
+
 **Moderation:** community-submitted sites are created pending and stay hidden
 (`watchSites` filters `approved == true`) until approved. Approval is **manual
 for MVP** — flip `approved` to `true` in the Firebase console. An in-app admin

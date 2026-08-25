@@ -9,6 +9,7 @@ import 'package:roadmate/services/announcement.dart';
 import 'package:roadmate/services/auth_service.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/widgets/announcement_banner.dart';
+import 'package:roadmate/widgets/rate_app_popup.dart';
 
 typedef PublishedNotice = ({
   String message,
@@ -190,12 +191,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // An empty box is seeded with the plea, and the preview already carries
-    // the specialised store button mobile users will see.
+    // An empty box is seeded with the plea, and the preview already shows the
+    // popup mobile users will get, store button and all — not a banner.
     expect(
       tester.widget<TextField>(messageField()).controller?.text,
       'Enjoy the app? Would you mind rating us?',
     );
+    expect(find.byType(RateAppPopup), findsOneWidget);
+    expect(find.byType(AnnouncementBanner), findsNothing);
     expect(find.text('Rate RoadMate'), findsOneWidget);
 
     await tester.tap(find.text('Publish'));
@@ -273,10 +276,12 @@ void main() {
       ),
     );
 
-    // The admin sees exactly what users see — the live banner up top and the
-    // seeded draft's preview below — and the form is ready for edits,
-    // including the rate toggle mirroring the live CTA.
-    expect(find.byType(AnnouncementBanner), findsNWidgets(2));
+    // The admin sees exactly what users see — the live notice up top and the
+    // seeded draft's preview below, both as the popup a rate ask opens as —
+    // and the form is ready for edits, including the rate toggle mirroring
+    // the live CTA.
+    expect(find.byType(RateAppPopup), findsNWidgets(2));
+    expect(find.byType(AnnouncementBanner), findsNothing);
     expect(
       tester.widget<TextField>(messageField()).controller?.text,
       'Roadworks on the Hume.',

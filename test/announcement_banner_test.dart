@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'package:roadmate/services/announcement_dismiss_store.dart';
 import 'package:roadmate/services/providers.dart';
 import 'package:roadmate/theme/app_theme.dart';
 import 'package:roadmate/widgets/announcement_banner.dart';
+import 'package:roadmate/widgets/rate_app_popup.dart';
 
 /// In-memory [AnnouncementDismissStore] — test-only, so it lives here rather
 /// than in lib/ (unlike MemoryUsernameStore, which backs a production
@@ -22,6 +25,14 @@ class MemoryAnnouncementDismissStore implements AnnouncementDismissStore {
 
   @override
   Future<void> save(String key) async => dismissKey = key;
+}
+
+/// A store still reading from disk: answers only when the test says so.
+class PendingDismissStore extends MemoryAnnouncementDismissStore {
+  final answer = Completer<String?>();
+
+  @override
+  Future<String?> load() => answer.future;
 }
 
 void main() {
@@ -48,19 +59,36 @@ void main() {
 
   /// The banner alone, outside the gate — how the rich-rendering tests pump it,
   /// with link taps recorded rather than launched.
-  Widget bare(
-    Announcement announcement, {
-    String? rateUrl,
-    ValueChanged<String>? onOpenLink,
-  }) {
+  Widget bare(Announcement announcement, {ValueChanged<String>? onOpenLink}) {
     return MaterialApp(
       theme: AppTheme.dark,
       home: Scaffold(
         body: AnnouncementBanner(
           announcement: announcement,
-          rateUrl: rateUrl,
           onDismiss: () {},
           onOpenLink: onOpenLink,
+        ),
+      ),
+    );
+  }
+
+  /// The rate popup alone, outside the gate, with the store and any link tap
+  /// recorded rather than launched and every answer counted.
+  Widget popup(
+    Announcement announcement, {
+    required ValueChanged<String> onOpenLink,
+    required VoidCallback onDismiss,
+  }) {
+    return MaterialApp(
+      theme: AppTheme.dark,
+      home: Scaffold(
+        body: Center(
+          child: RateAppPopup(
+            announcement: announcement,
+            rateUrl: 'https://store.example/rate',
+            onDismiss: onDismiss,
+            onOpenLink: onOpenLink,
+          ),
         ),
       ),
     );
@@ -90,6 +118,8 @@ void main() {
     // Above, not over: the banner takes a strip and the app keeps the rest.
     final bannerY = tester.getBottomLeft(find.byType(AnnouncementBanner)).dy;
     expect(bannerY, lessThanOrEqualTo(tester.getTopLeft(find.text('app')).dy));
+    // The popup belongs to the rate CTA alone, never to an ordinary notice.
+    expect(find.byType(RateAppPopup), findsNothing);
   });
 
   testWidgets('no notice leaves the app untouched', (tester) async {
@@ -97,6 +127,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AnnouncementBanner), findsNothing);
+    expect(find.byType(RateAppPopup), findsNothing);
     expect(find.text('app'), findsOneWidget);
   });
 
@@ -208,36 +239,99 @@ void main() {
     expect(text.style?.color, Colors.white);
   });
 
-  testWidgets('a rate notice shows the store button and opens the store', (
+  testWidgets('the rate popup opens the store and closes on Rate', (
     tester,
   ) async {
     String? opened;
+    var answered = 0;
     await tester.pumpWidget(
-      bare(
+      popup(
         notice(
           message: 'Enjoy the app? Would you mind rating us?',
           cta: kAnnouncementCtaRate,
         ),
-        rateUrl: 'https://store.example/rate',
         onOpenLink: (url) => opened = url,
+        onDismiss: () => answered++,
       ),
     );
 
+    // The shape of the ask: the plea, five stars, the store button, a way out.
+    expect(
+      find.text('Enjoy the app? Would you mind rating us?'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.star_rounded), findsNWidgets(5));
+    expect(find.text('Not now'), findsOneWidget);
+
     await tester.tap(find.widgetWithText(FilledButton, 'Rate RoadMate'));
     expect(opened, 'https://store.example/rate');
+    // Rating settles the notice: the popup must not be waiting on return.
+    expect(answered, 1);
   });
 
-  testWidgets('an ordinary notice never grows a rate button', (tester) async {
-    // Even with a store available: the button belongs to the CTA, not the
-    // platform.
+  testWidgets('the stars are a shortcut to the store', (tester) async {
+    String? opened;
+    var answered = 0;
     await tester.pumpWidget(
-      bare(notice(), rateUrl: 'https://store.example/rate'),
+      popup(
+        notice(cta: kAnnouncementCtaRate),
+        onOpenLink: (url) => opened = url,
+        onDismiss: () => answered++,
+      ),
     );
-    expect(find.text('Rate RoadMate'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.star_rounded).at(2));
+    expect(opened, 'https://store.example/rate');
+    expect(answered, 1);
+  });
+
+  testWidgets('Not now closes the popup without opening the store', (
+    tester,
+  ) async {
+    String? opened;
+    var answered = 0;
+    await tester.pumpWidget(
+      popup(
+        notice(cta: kAnnouncementCtaRate),
+        onOpenLink: (url) => opened = url,
+        onDismiss: () => answered++,
+      ),
+    );
+
+    await tester.tap(find.text('Not now'));
+    expect(opened, isNull);
+    expect(answered, 1);
+  });
+
+  testWidgets('a rich rate notice renders its markup in the popup', (
+    tester,
+  ) async {
+    String? opened;
+    await tester.pumpWidget(
+      popup(
+        notice(
+          message: 'Loving RoadMate? Tell us',
+          messageHtml:
+              '<b>Loving RoadMate?</b> <a href="https://x.io/why">Tell us</a>',
+          cta: kAnnouncementCtaRate,
+        ),
+        onOpenLink: (url) => opened = url,
+        onDismiss: () {},
+      ),
+    );
+
+    expect(
+      find.textContaining('Loving RoadMate? Tell us', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('<b>', findRichText: true), findsNothing);
+
+    await tester.tapOnText(find.textRange.ofSubstring('Tell us'));
+    expect(opened, 'https://x.io/why');
   });
 
   testWidgets(
-    'through the gate, Android gets the rate notice with its button',
+    'through the gate, Android gets a rate notice as a popup over the app',
     (tester) async {
       // flutter test reports TargetPlatform.android, so the gate resolves the
       // Play listing — the same path a phone takes.
@@ -249,10 +343,95 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(AnnouncementBanner), findsOneWidget);
+      // A popup behind a scrim, not a strip: the app stays underneath. (The
+      // scrim is looked up inside the gate — the test's page route has one
+      // of its own.)
+      expect(find.byType(RateAppPopup), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AnnouncementGate),
+          matching: find.byType(ModalBarrier),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(AnnouncementBanner), findsNothing);
       expect(find.text('Rate RoadMate'), findsOneWidget);
+      expect(find.text('app'), findsOneWidget);
     },
   );
+
+  testWidgets('through the gate, Not now closes the popup and remembers it', (
+    tester,
+  ) async {
+    final store = MemoryAnnouncementDismissStore();
+    final announcement = notice(cta: kAnnouncementCtaRate);
+    await tester.pumpWidget(gate(announcement, store));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RateAppPopup), findsNothing);
+    expect(find.text('app'), findsOneWidget);
+    // Remembered like a closed banner: only an admin re-publish asks again.
+    expect(store.dismissKey, announcement.dismissKey);
+  });
+
+  testWidgets('a tap outside the popup is Not now', (tester) async {
+    final store = MemoryAnnouncementDismissStore();
+    final announcement = notice(cta: kAnnouncementCtaRate);
+    await tester.pumpWidget(gate(announcement, store));
+    await tester.pumpAndSettle();
+
+    // The corner is scrim: the card sits in the middle of the screen.
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RateAppPopup), findsNothing);
+    expect(store.dismissKey, announcement.dismissKey);
+  });
+
+  testWidgets('a rate notice already answered on this device never pops up', (
+    tester,
+  ) async {
+    final announcement = notice(cta: kAnnouncementCtaRate);
+    await tester.pumpWidget(
+      gate(
+        announcement,
+        MemoryAnnouncementDismissStore(announcement.dismissKey),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RateAppPopup), findsNothing);
+    expect(find.text('app'), findsOneWidget);
+  });
+
+  testWidgets('the popup waits for the dismiss store to answer', (
+    tester,
+  ) async {
+    final store = PendingDismissStore();
+    await tester.pumpWidget(gate(notice(cta: kAnnouncementCtaRate), store));
+    await tester.pumpAndSettle();
+
+    // An interruption must not flash at a driver who already answered it, so
+    // the popup holds until the store says whether they did.
+    expect(find.byType(RateAppPopup), findsNothing);
+    expect(find.text('app'), findsOneWidget);
+
+    store.answer.complete(null);
+    await tester.pumpAndSettle();
+    expect(find.byType(RateAppPopup), findsOneWidget);
+  });
+
+  testWidgets('the banner does not wait for the dismiss store', (tester) async {
+    // News goes up at once — a frame of an already-read notice beats
+    // withholding an urgent one while the store reads from disk.
+    await tester.pumpWidget(gate(notice(), PendingDismissStore()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnnouncementBanner), findsOneWidget);
+  });
 
   testWidgets('a rate notice is hidden entirely where there is no store', (
     tester,
@@ -266,6 +445,7 @@ void main() {
       gate(notice(cta: kAnnouncementCtaRate), MemoryAnnouncementDismissStore()),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(RateAppPopup), findsNothing);
     expect(find.byType(AnnouncementBanner), findsNothing);
     expect(find.text('app'), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;

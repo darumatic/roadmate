@@ -1,23 +1,28 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../services/announcement.dart';
 import '../services/min_version.dart';
 import '../services/notice_markup.dart';
 import '../services/providers.dart';
 import '../theme/app_theme.dart';
+import 'notice_text.dart';
+import 'rate_app_popup.dart';
 
-/// Wraps the whole app (via `MaterialApp.router`'s builder, alongside
-/// [UpdateGate]) and puts the current admin notice in a slim banner above the
-/// content — so one message reaches every user on every tab and screen.
+/// Wraps the whole app (via `MaterialApp.router`'s builder, inside
+/// [ProximityGate]) and shows the current admin notice: a slim banner above
+/// the content — so one message reaches every user on every tab and screen —
+/// or, for a rate ask ([Announcement.asksForRating]), a [RateAppPopup] floated
+/// over the content behind a scrim (issue #35).
 ///
-/// Same shape as [UpdateGate] deliberately: a [Column] that steals a strip from
-/// the top rather than an overlay, so nothing can cover the nav bar or a
-/// dialog. With no notice (the normal case) the child is returned untouched and
-/// this costs a single document listener.
+/// The banner is the same shape as [UpdateGate] deliberately: a [Column] that
+/// steals a strip from the top rather than an overlay, so nothing can cover
+/// the nav bar or a dialog. The popup is an in-tree overlay rather than a
+/// dialog route for the same reason as the approach and road-name cards: this
+/// gate sits above the router's Navigator, and the back button must never
+/// point at a popup. With no notice (the normal case) the child renders
+/// untouched and this costs a single document listener.
 class AnnouncementGate extends ConsumerStatefulWidget {
   const AnnouncementGate({super.key, required this.child});
 
@@ -30,8 +35,11 @@ class AnnouncementGate extends ConsumerStatefulWidget {
 class _AnnouncementGateState extends ConsumerState<AnnouncementGate> {
   /// The notice this device has dismissed, read once at startup. Null until the
   /// store answers, which is why the banner may appear for a frame and then go —
-  /// preferable to withholding an urgent notice while waiting on disk.
+  /// preferable to withholding an urgent notice while waiting on disk. The
+  /// popup does wait ([_dismissLoaded]): it is an interruption, not news, and
+  /// one flashed at a driver who already answered it would be a bug.
   String? _dismissedKey;
+  bool _dismissLoaded = false;
 
   @override
   void initState() {
@@ -41,11 +49,15 @@ class _AnnouncementGateState extends ConsumerState<AnnouncementGate> {
 
   Future<void> _loadDismissed() async {
     final key = await ref.read(announcementDismissStoreProvider).load();
-    if (mounted) setState(() => _dismissedKey = key);
+    if (!mounted) return;
+    setState(() {
+      _dismissedKey = key;
+      _dismissLoaded = true;
+    });
   }
 
   Future<void> _dismiss(Announcement announcement) async {
-    // Optimistic: the banner goes now, the write follows. A failed write only
+    // Optimistic: the notice goes now, the write follows. A failed write only
     // means the notice returns next launch.
     setState(() => _dismissedKey = announcement.dismissKey);
     await ref
@@ -53,25 +65,72 @@ class _AnnouncementGateState extends ConsumerState<AnnouncementGate> {
         .save(announcement.dismissKey);
   }
 
+  /// The rate popup and its scrim — or nothing: a rate ask shows only where
+  /// there is a store to rate in (`rateUrlFor` is null on web/desktop, so web
+  /// users get no rate notice at all) and only once the dismiss store has
+  /// answered.
+  List<Widget> _ratePopup(BuildContext context, Announcement notice) {
+    final rateUrl = rateUrlFor(isWeb: kIsWeb, platform: defaultTargetPlatform);
+    if (rateUrl == null || !_dismissLoaded) return const [];
+    return [
+      Positioned.fill(
+        child: ModalBarrier(
+          color: Colors.black54,
+          // A tap outside is "Not now": it settles the notice too.
+          onDismiss: () => _dismiss(notice),
+          semanticsLabel: MaterialLocalizations.of(
+            context,
+          ).modalBarrierDismissLabel,
+        ),
+      ),
+      Positioned.fill(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: RateAppPopup(
+                announcement: notice,
+                rateUrl: rateUrl,
+                onDismiss: () => _dismiss(notice),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final announcement = ref.watch(announcementProvider).value;
-    // Where this runtime could be rated — null on web/desktop, so a rate
-    // notice is not shown at all there (nothing to rate, no button to press).
-    final rateUrl = rateUrlFor(isWeb: kIsWeb, platform: defaultTargetPlatform);
-    final visible =
+    final notice =
         announcement != null &&
-        announcement.isVisibleAt(DateTime.now(), dismissedKey: _dismissedKey) &&
-        (!announcement.asksForRating || rateUrl != null);
-    if (!visible) return widget.child;
+            announcement.isVisibleAt(
+              DateTime.now(),
+              dismissedKey: _dismissedKey,
+            )
+        ? announcement
+        : null;
+    // The Column/Stack is returned whatever shows: collapsing to the bare child
+    // when nothing does would reparent the whole app subtree (router included)
+    // and reset every screen's state each time a notice comes or goes — the
+    // same reasoning as UsernameGate.
     return Column(
       children: [
-        AnnouncementBanner(
-          announcement: announcement,
-          rateUrl: rateUrl,
-          onDismiss: () => _dismiss(announcement),
+        if (notice != null && !notice.asksForRating)
+          AnnouncementBanner(
+            announcement: notice,
+            onDismiss: () => _dismiss(notice),
+          ),
+        Expanded(
+          child: Stack(
+            children: [
+              widget.child,
+              if (notice != null && notice.asksForRating)
+                ..._ratePopup(context, notice),
+            ],
+          ),
         ),
-        Expanded(child: widget.child),
       ],
     );
   }
@@ -82,150 +141,49 @@ class _AnnouncementGateState extends ConsumerState<AnnouncementGate> {
 /// url_launcher plugin.
 ///
 /// Rich notices ([Announcement.messageHtml], the safe subset of
-/// `notice_markup.dart`) render as styled spans with tappable links; plain
-/// notices render exactly as they always have. A custom [Announcement.color]
-/// replaces the severity background, with black/white text picked for
-/// contrast.
-class AnnouncementBanner extends StatefulWidget {
+/// `notice_markup.dart`) render as styled spans with tappable links
+/// ([NoticeText]); plain notices render exactly as they always have. A custom
+/// [Announcement.color] replaces the severity background, with black/white
+/// text picked for contrast. Rate notices never come here — the gate floats
+/// them as a [RateAppPopup] instead.
+class AnnouncementBanner extends StatelessWidget {
   const AnnouncementBanner({
     super.key,
     required this.announcement,
     required this.onDismiss,
-    this.rateUrl,
     this.onOpenLink,
   });
 
   final Announcement announcement;
   final VoidCallback onDismiss;
 
-  /// The store-review URL the Rate button opens when [announcement] asks for a
-  /// rating. The gate passes the running platform's own store (`rateUrlFor`);
-  /// the admin preview passes a stand-in so the button is visible while
-  /// composing. Null means no button — the caller decides, never this widget.
-  final String? rateUrl;
-
   /// Where link taps go. Null (production) opens the URL in the browser /
   /// external app; tests inject a recorder.
   final ValueChanged<String>? onOpenLink;
-
-  @override
-  State<AnnouncementBanner> createState() => _AnnouncementBannerState();
-}
-
-class _AnnouncementBannerState extends State<AnnouncementBanner> {
-  /// Recognizers backing the current build's link spans — replaced wholesale
-  /// each build and disposed with the state, as [TextSpan.recognizer] requires.
-  final List<TapGestureRecognizer> _recognizers = [];
-
-  @override
-  void dispose() {
-    _disposeRecognizers();
-    super.dispose();
-  }
-
-  void _disposeRecognizers() {
-    for (final recognizer in _recognizers) {
-      recognizer.dispose();
-    }
-    _recognizers.clear();
-  }
-
-  void _open(String url) {
-    final handler = widget.onOpenLink;
-    if (handler != null) {
-      handler(url);
-      return;
-    }
-    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  }
 
   /// Warnings borrow the brand accent (the same orange the update banner and
   /// BLITZ use); ordinary notices stay in the card grey so they read as
   /// information, not alarm. An admin-picked colour overrides either.
   Color get _background {
-    final custom = widget.announcement.colorValue;
+    final custom = announcement.colorValue;
     if (custom != null) return Color(custom);
-    return widget.announcement.severity == AnnouncementSeverity.warning
+    return announcement.severity == AnnouncementSeverity.warning
         ? AppTheme.accent
         : AppTheme.surfaceAlt;
   }
 
   Color get _foreground {
-    final custom = widget.announcement.colorValue;
+    final custom = announcement.colorValue;
     if (custom != null) {
       return prefersDarkForeground(custom) ? Colors.black : Colors.white;
     }
-    return widget.announcement.severity == AnnouncementSeverity.warning
+    return announcement.severity == AnnouncementSeverity.warning
         ? Colors.white
         : AppTheme.textPrimary;
   }
 
-  /// The message as spans: plain notices stay a single [Text]; rich ones map
-  /// each parsed [NoticeSpan] onto the base style, links underlined and wired
-  /// to [_open].
-  Widget _message(TextStyle base) {
-    final html = widget.announcement.messageHtml;
-    if (html == null) return Text(widget.announcement.message, style: base);
-    _disposeRecognizers();
-    final spans = <TextSpan>[];
-    for (final span in parseNoticeMarkup(html)) {
-      TapGestureRecognizer? recognizer;
-      final link = span.linkUrl;
-      if (link != null) {
-        recognizer = TapGestureRecognizer()..onTap = () => _open(link);
-        _recognizers.add(recognizer);
-      }
-      spans.add(
-        TextSpan(
-          text: span.text,
-          recognizer: recognizer,
-          style: TextStyle(
-            // The base is already w600; bold steps up from there.
-            fontWeight: span.bold ? FontWeight.w800 : null,
-            fontStyle: span.italic ? FontStyle.italic : null,
-            decoration: (span.underline || link != null)
-                ? TextDecoration.underline
-                : null,
-            color: span.color != null ? Color(span.color!) : null,
-          ),
-        ),
-      );
-    }
-    return Text.rich(TextSpan(style: base, children: spans));
-  }
-
-  /// The specialised store CTA of a rate notice: inverted colours so it stands
-  /// out on any banner background, opening whichever store [widget.rateUrl]
-  /// points at (Play on Android, the App Store rating sheet on iOS).
-  Widget _rateButton(String url) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: FilledButton.icon(
-          onPressed: () => _open(url),
-          icon: const Icon(Icons.star_rounded, size: 16),
-          label: const Text('Rate RoadMate'),
-          style: FilledButton.styleFrom(
-            backgroundColor: _foreground,
-            foregroundColor: _background,
-            visualDensity: VisualDensity.compact,
-            minimumSize: const Size(0, 34),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            textStyle: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final announcement = widget.announcement;
-    final rateUrl = announcement.asksForRating ? widget.rateUrl : null;
     return Material(
       color: _background,
       child: SafeArea(
@@ -244,19 +202,14 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _message(
-                      TextStyle(
-                        color: _foreground,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (rateUrl != null) _rateButton(rateUrl),
-                  ],
+                child: NoticeText(
+                  announcement: announcement,
+                  onOpenLink: onOpenLink,
+                  style: TextStyle(
+                    color: _foreground,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               IconButton(
@@ -264,7 +217,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
                 color: _foreground,
                 visualDensity: VisualDensity.compact,
                 tooltip: 'Dismiss',
-                onPressed: widget.onDismiss,
+                onPressed: onDismiss,
               ),
             ],
           ),

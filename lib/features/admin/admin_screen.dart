@@ -19,6 +19,7 @@ import '../../widgets/announcement_banner.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/rate_app_popup.dart';
 import '../../widgets/snacks.dart';
 
 /// The busy-lock / snack discipline every admin write shares: lock the card's
@@ -779,6 +780,22 @@ class _NoticeTabState extends ConsumerState<NoticeTab> with _AdminActionRunner {
     );
   }
 
+  /// What users will see for [notice]: the popup for a rate ask, the banner
+  /// otherwise. The stand-in rateUrl keeps the popup complete here even though
+  /// the admin is usually on web, where the gate shows no rate notice at all.
+  Widget _preview(Announcement notice) {
+    if (notice.asksForRating) {
+      return Center(
+        child: RateAppPopup(
+          announcement: notice,
+          rateUrl: kPlayStoreUrl,
+          onDismiss: () {},
+        ),
+      );
+    }
+    return AnnouncementBanner(announcement: notice, onDismiss: () {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final live = ref.watch(announcementProvider).value;
@@ -795,14 +812,7 @@ class _NoticeTabState extends ConsumerState<NoticeTab> with _AdminActionRunner {
       padding: const EdgeInsets.all(20),
       children: [
         if (live != null) ...[
-          // The stand-in rateUrl keeps the Rate button visible in these
-          // previews even though the admin is usually on web, where the gate
-          // would hide a rate notice entirely.
-          AnnouncementBanner(
-            announcement: live,
-            rateUrl: kPlayStoreUrl,
-            onDismiss: () {},
-          ),
+          _preview(live),
           const SizedBox(height: 8),
           Text(
             live.publishedAt == null
@@ -880,8 +890,8 @@ class _NoticeTabState extends ConsumerState<NoticeTab> with _AdminActionRunner {
           contentPadding: EdgeInsets.zero,
           title: const Text('Ask users to rate the app'),
           subtitle: const Text(
-            'Adds a Rate button — Android opens Google Play, iOS the App '
-            'Store. Web users never see this notice.',
+            'Opens as a popup with a Rate button — Android goes to Google '
+            'Play, iOS to the App Store. Web users never see this notice.',
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           onChanged: (on) => setState(() {
@@ -912,11 +922,7 @@ class _NoticeTabState extends ConsumerState<NoticeTab> with _AdminActionRunner {
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 6),
-          AnnouncementBanner(
-            announcement: draft,
-            rateUrl: kPlayStoreUrl,
-            onDismiss: () {},
-          ),
+          _preview(draft),
         ],
         const SizedBox(height: 12),
         FilledButton.icon(
@@ -943,8 +949,8 @@ class _NoticeTabState extends ConsumerState<NoticeTab> with _AdminActionRunner {
           'Delivered in the app, not as a push notification — users see it the '
           'next time they open RoadMate. Builds older than 0.1.55 cannot show '
           'notices at all; mobile builds up to 0.1.67 show the text without '
-          'formatting, links or colour, and up to 0.1.73 without the Rate '
-          'button.',
+          'formatting, links or colour, up to 0.1.73 without the Rate '
+          'button, and up to 1.0.11 as a banner rather than a popup.',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
         ),
       ],

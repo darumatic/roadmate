@@ -1,5 +1,5 @@
 /// Admin → all users broadcast: one short message shown as a banner across the
-/// top of every screen.
+/// top of every screen (or, when it asks for a store rating, as a popup).
 ///
 /// **One document, `announcements/current`.** A single-doc snapshot listener is
 /// the cheapest thing Firestore offers — one read when a client opens the app,
@@ -88,9 +88,11 @@ class Announcement {
   /// renders as a plain notice — a CTA must never cost anyone the message.
   final String? cta;
 
-  /// Whether this notice asks the reader to rate the app. The gate hides such
-  /// a notice entirely on platforms with no store to rate in (web, desktop);
-  /// mobile builds 0.1.55–0.1.73 show just the text, without the button.
+  /// Whether this notice asks the reader to rate the app — shown as a popup
+  /// (`RateAppPopup`) rather than a banner from 1.0.12. The gate hides such a
+  /// notice entirely on platforms with no store to rate in (web, desktop);
+  /// mobile builds 0.1.55–0.1.73 show just the text, without the button, and
+  /// 0.1.74–1.0.11 the banner with its button.
   bool get asksForRating => cta == kAnnouncementCtaRate;
 
   /// [color] as opaque ARGB, or null when unset (invalid values were already

@@ -35,13 +35,15 @@ class RoadMateApp extends ConsumerWidget {
                 theme: AppTheme.dark,
                 routerConfig: appRouter,
                 // Web: offer a one-tap refresh when a newer build is deployed.
+                // The approach prompt floats over whatever screen is showing.
                 // Below it, the admin notice (when there is one) takes a strip
-                // off the top of every screen. The approach prompt floats over
-                // whatever screen is showing, and the road-name picker floats
-                // under it (an approaching site always outranks housekeeping).
+                // off the top of every screen — or, for a rate ask, floats a
+                // popup over the app — and the road-name picker floats under
+                // both (an approaching site always outranks housekeeping, and
+                // a rate popup is answered in one tap before the picker).
                 builder: (context, child) => UpdateGate(
-                  child: AnnouncementGate(
-                    child: ProximityGate(
+                  child: ProximityGate(
+                    child: AnnouncementGate(
                       child: UsernameGate(
                         child: child ?? const SizedBox.shrink(),
                       ),
