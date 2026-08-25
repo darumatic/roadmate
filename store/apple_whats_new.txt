@@ -2,9 +2,12 @@ Welcome to RoadMate AU — know before you roll.
 
 New in this version:
 
+• Fixed: speed alerts no longer turn your music down — the alarm now sounds over it
+• Each state's sites are now listed in alphabetical order, so they're quicker to find
+• Choosing your road name: the box now sits above the keyboard, so you can see what you type
 • Fixed: your road name is now remembered — reporting a site status no longer asks you to pick a nickname every time
 • Announcements from the RoadMate team: when there's important service news, it appears as a banner across the top of the app
-• An announcement may occasionally invite you to rate RoadMate — one tap opens the App Store rating page
+• An announcement may occasionally invite you to rate RoadMate — it now appears as a popup, and one tap opens the App Store rating page
 • The whole address on a site card is now tappable — tap it to open the site in your maps app for turn-by-turn directions
 • The app title now reads "RoadMate Australia"
 • Small behind-the-scenes fixes

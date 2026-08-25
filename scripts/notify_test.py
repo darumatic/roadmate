@@ -5,8 +5,35 @@ import io
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import notify
+
+
+# The store release scripts run `flutter analyze` + `flutter test` with the
+# release secrets already in the environment: mobile-release.yml exports
+# ROADMATE_NTFY_TOPIC onto the very step that runs release_android.sh /
+# release_ios.sh. read_topic() takes the environment *before* the file, so an
+# ambient topic silently rewrites every "nothing is configured" expectation
+# below - that is what failed the v1.0.19 Mobile Release twice, on both
+# platforms, minutes into the build. Web CI never catches it, because
+# web-release.yml exports the topic only on its final deploy step.
+#
+# A test that asserts on the *file* source must therefore own the environment.
+# The env-before-file rule itself stays covered by TopicFromEnvTest, which
+# passes its own `environ` dicts and never reads the ambient one.
+_env_patch = None
+
+
+def setUpModule():
+    global _env_patch
+    _env_patch = mock.patch.dict(os.environ, {}, clear=False)
+    _env_patch.start()
+    os.environ.pop(notify.TOPIC_ENV, None)
+
+
+def tearDownModule():
+    _env_patch.stop()
 
 
 class FakeResponse:

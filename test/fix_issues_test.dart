@@ -34,6 +34,29 @@ void main() {
     );
   });
 
+  // A store build runs this same suite with the release secrets already
+  // exported: mobile-release.yml sets ROADMATE_NTFY_TOPIC on the very step
+  // that runs release_android.sh / release_ios.sh, and notify.read_topic takes
+  // the environment before the file. v1.0.19's Mobile Release died right here,
+  // twice, on both platforms; web CI stayed green because web-release.yml
+  // exports the topic only on its deploy step. So run it the way a release does.
+  test('notify.py self-test survives an ambient ntfy topic (release CI)', () {
+    final result = Process.runSync(
+      'python3',
+      ['scripts/notify_test.py'],
+      workingDirectory: Directory.current.path,
+      environment: {'ROADMATE_NTFY_TOPIC': 'ci-topic-fixture'},
+    );
+    expect(
+      result.exitCode,
+      0,
+      reason:
+          'scripts/notify_test.py failed with a topic in the environment - '
+          'this is exactly how a Mobile Release runs it:\n'
+          '${result.stdout}\n${result.stderr}',
+    );
+  });
+
   test('runner keeps its security invariants', () {
     final script = File('scripts/fix_issues.py').readAsStringSync();
     // Only the owner may approve; widening this list is an owner decision.

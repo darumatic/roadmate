@@ -678,6 +678,23 @@ that already succeeded. Pinned in `test/release_pipeline_test.dart`. Note a
 bot-fixed issue now produces two alerts — "auto-fix released" (your issue is
 done) and the platform release alert — which is deliberate.
 
+**The test suite must own `ROADMATE_NTFY_TOPIC` (v1.0.19, 2026-08-25).** The
+store scripts run `flutter analyze` + `flutter test` *inside* the release step,
+so `mobile-release.yml` has the real topic exported while the suite runs — and
+`read_topic()` deliberately takes the environment **before** the file. That
+combination silently rewrote every "nothing is configured" expectation in
+`scripts/notify_test.py`, and the Mobile Release of v1.0.19 died there twice,
+on both platforms, minutes into the build. **Web CI cannot catch this class of
+bug**: `web-release.yml` exports the topic only on its final deploy step, never
+on the Flutter CI job, so the very same commit was green on web and red on
+mobile. The suite now scrubs the variable in `setUpModule` (env precedence
+stays covered by `TopicFromEnvTest`, which passes its own `environ` dicts), and
+`test/fix_issues_test.dart` runs the Python suite a **second** time with a
+topic set — reproducing a store build's environment in the ordinary local
+`flutter test`. The general rule: a test asserting on the *file* source of any
+secret must neutralise the environment source too, or it only passes where the
+secret is absent.
+
 **An alert must be actionable without sshing into the box** (the 2026-08-25
 alerts were not): a blocked alert carries the reason *and* what Claude
 actually said — including the questions it asks when a report is too vague, so

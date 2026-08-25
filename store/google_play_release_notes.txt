@@ -1,2 +1,6 @@
+• Speed alerts no longer turn your music down — the alarm now sounds over it
+• Each state's sites are now listed in alphabetical order
+• Choosing your road name: the box now sits above the keyboard, so you can see what you type
+• A rating invitation now appears as a popup instead of a banner
 • Under-the-hood cleanup: more consistent messages, dialogs and empty screens
 • Small fixes and polish
