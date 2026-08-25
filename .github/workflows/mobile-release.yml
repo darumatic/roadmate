@@ -244,6 +244,12 @@ jobs:
           RELEASE_DRY_RUN: ${{ inputs.dry_run == true && '1' || '' }}
           # asc_submit.py pushes a release alert naming the version.
           ROADMATE_NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          # Apple refuses every upload built against an SDK older than iOS 26
+          # ("Validation failed (409) SDK version issue" - it killed the
+          # v1.0.20 submission). The macos-15 image ships Xcode 26.x but still
+          # defaults to 16.4 / iOS 18.5, so point the toolchain at an explicit
+          # Xcode 26: pinned, not "latest", so a build stays reproducible.
+          DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
         run: |
           # Without ASC credentials release_ios.sh falls back to the
           # Transporter app, which does not exist on a runner — refuse instead

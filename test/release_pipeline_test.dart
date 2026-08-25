@@ -157,6 +157,29 @@ void main() {
       );
     });
 
+    test('the iOS build is pinned to an Xcode that carries the iOS 26 SDK', () {
+      // Apple rejects every upload built against an older SDK: "Validation
+      // failed (409) SDK version issue ... must be built with the iOS 26 SDK
+      // or later". It failed the v1.0.20 submission *after* a clean build and
+      // an 8-minute upload, so the toolchain is pinned here rather than left
+      // to the runner image's default (macos-15 still defaults to Xcode 16.4 /
+      // iOS 18.5 even though it ships Xcode 26.x).
+      final wf = _read('.github/workflows/mobile-release.yml');
+      final match = RegExp(
+        r'DEVELOPER_DIR: /Applications/Xcode_(\d+)[.\d]*\.app/Contents/Developer',
+      ).firstMatch(wf);
+      expect(
+        match,
+        isNotNull,
+        reason: 'the iOS job must pin DEVELOPER_DIR to an explicit Xcode',
+      );
+      expect(
+        int.parse(match!.group(1)!),
+        greaterThanOrEqualTo(26),
+        reason: 'Apple requires the iOS 26 SDK (Xcode 26+) for uploads',
+      );
+    });
+
     test('store release scripts honour RELEASE_DRY_RUN before any upload', () {
       for (final entry in {
         'scripts/release_android.sh': 'python3 scripts/play_upload.py',

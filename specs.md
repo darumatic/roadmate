@@ -704,6 +704,22 @@ retry time and the cancel gesture, and its title says **paused**, never
 "blocked", because nothing is required of the owner; it is sent **once** per
 outage (`alerted` is set in the state *before* the send).
 
+**Apple's SDK floor: builds need Xcode 26+ (2026-08-25).** App Store Connect
+now refuses every upload built against an older SDK — *"Validation failed (409)
+SDK version issue. This app was built with the iOS 18.5 SDK. All iOS and iPadOS
+apps must be built with the iOS 26 SDK or later, included in Xcode 26 or
+later"*. It killed the v1.0.20 submission **after** a clean analyze/test, a
+successful signed archive and a full `altool` upload, so the cost of getting it
+wrong is a whole iOS build cycle, not a fast failure. The `macos-15` runner
+ships Xcode 26.0.1/26.1.1/26.2/26.3 but still **defaults to 16.4 (iOS 18.5)**,
+so `mobile-release.yml` pins `DEVELOPER_DIR` to an explicit
+`/Applications/Xcode_26.3.app/Contents/Developer` — pinned rather than
+"latest", so a build stays reproducible, and guarded by
+`test/release_pipeline_test.dart` (the check parses the major version and
+requires ≥ 26, so a future downgrade fails locally). **The same floor applies
+to the Mac**: a local `scripts/release_ios.sh` run needs Xcode 26 or later
+installed, whatever `xcode-select -p` currently points at.
+
 ### Google Play publishing
 
 `scripts/release_android.sh` → `scripts/play_upload.py` (stdlib-only; SA JSON at `~/.config/roadmate/google-play-service-account.json`) uploads the AAB and commits a completed release to the production track. Learnings from the 0.1.72 release (2026-08-16):
