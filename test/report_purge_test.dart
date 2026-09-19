@@ -6,6 +6,8 @@ import 'package:roadmate/services/status_logic.dart';
 
 final _now = DateTime(2026, 7, 31, 12);
 
+Duration _hours(int h) => Duration(hours: h);
+
 SiteReport _report({
   String id = 'r1',
   SiteStatus? status,
@@ -102,6 +104,42 @@ void main() {
       expect(tallies.blitzVotes, 0);
       expect(tallies.closedVotes, 0);
       expect(tallies.currentStatus, SiteStatus.open);
+    });
+
+    // Issue #48: the recount is written straight onto the site doc, where a
+    // display-only status must never land — every shipped build would read it
+    // back as OPEN.
+    test('a Camera Only / BGD report never reaches the recounted status', () {
+      final tallies = talliesFrom([
+        _report(id: 'vote', status: SiteStatus.closed, age: _hours(2)),
+        SiteReport(
+          id: 'camera',
+          siteId: 'nsw-1',
+          createdAt: _now.subtract(_hours(1)),
+          activityType: ActivityReportType.noActivity,
+        ),
+      ], now: _now);
+
+      // The newer report is an activity report: it moves lastReportAt only.
+      expect(tallies.currentStatus, SiteStatus.closed);
+      expect(tallies.closedVotes, 1);
+      expect(tallies.lastReportAt, _now.subtract(_hours(1)));
+    });
+
+    test('a hand-built report carrying a display-only status is skipped '
+        'rather than crashing the recount', () {
+      final tallies = talliesFrom([
+        _report(id: 'a', status: SiteStatus.cameraOnly),
+        _report(id: 'b', status: SiteStatus.unknown),
+        _report(id: 'c', status: SiteStatus.blitz, age: _hours(1)),
+      ], now: _now);
+
+      expect(tallies.currentStatus, SiteStatus.blitz);
+      expect(tallies.currentStatus.isStored, isTrue);
+      expect(
+        [tallies.openVotes, tallies.blitzVotes, tallies.closedVotes],
+        [0, 1, 0],
+      );
     });
   });
 

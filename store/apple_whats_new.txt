@@ -2,6 +2,7 @@ Welcome to RoadMate AU — know before you roll.
 
 New in this version:
 
+• New status: Camera Only / BGD (boom gate down). One big blue button under Open/Working, Blitz and Closed — on every site card and on the alert you get as you approach a site
 • Fixed: speed alerts no longer turn your music down — the alarm now sounds over it
 • Each state's sites are now listed in alphabetical order, so they're quicker to find
 • Choosing your road name: the box now sits above the keyboard, so you can see what you type
@@ -14,7 +15,7 @@ New in this version:
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:
 
-• Live OPEN / BLITZ / CLOSED site status, voted in real time by other truckies
+• Live OPEN / BLITZ / CLOSED / CAMERA ONLY site status, voted in real time by other truckies
 • Site alerts as you approach an inspection site, on screen or in the background
 • Blitz alerts when unusual enforcement activity is reported
 • Browse by state or find the nearest sites with GPS

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 
 import '../models/enums.dart';
 import '../models/site.dart';
@@ -269,6 +270,23 @@ class FirestoreSiteRepository implements SiteRepository {
     SiteStatus status, {
     String? reporterName,
   }) async {
+    // Camera Only / BGD has no stored form — every shipped build reads an
+    // unknown status string as OPEN — so it is posted as the 'Camera Only'
+    // activity report old builds already list, and derived back into a status
+    // by builds that know it (status_logic.dart). Credited as the one-tap
+    // vote it is, not as a 10-point report. Both checks run before any
+    // Firebase call, so the routing is unit-testable without Firebase.
+    if (status == SiteStatus.cameraOnly) {
+      return postActivity(
+        site,
+        cameraOnlyWireType,
+        reporterName: reporterName,
+        credit: ParticipationAction.vote,
+      );
+    }
+    if (!status.isStored) {
+      throw ArgumentError.value(status, 'status', 'has no stored form');
+    }
     final uid = await ensureSignedIn(auth);
     await _ensureNearSite(site);
     final siteId = site.id;
@@ -298,25 +316,41 @@ class FirestoreSiteRepository implements SiteRepository {
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
+  }) {
+    return postActivity(
+      site,
+      activityType,
+      activityNote: activityNote,
+      reporterName: reporterName,
+      credit: ParticipationAction.report,
+    );
+  }
+
+  /// Posts an activity report: the report doc plus the site's `lastReportAt`
+  /// touch, in one batch. Shared by [report] and by a Camera Only / BGD press
+  /// ([vote]), which is this very write — the only difference is [credit],
+  /// the participation counter the author earns (a private doc no other
+  /// client reads), so what every other build sees is identical.
+  @protected
+  @visibleForTesting
+  Future<void> postActivity(
+    Site site,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+    required ParticipationAction credit,
   }) async {
     final uid = await ensureSignedIn(auth);
     await _ensureNearSite(site);
     final siteId = site.id;
-    final data = <String, dynamic>{
-      'siteId': siteId,
-      'activityType': activityType.wire,
-      'uid': uid,
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-    final note = activityNote?.trim();
-    final name = reporterName?.trim();
-    if (note != null && note.isNotEmpty) data['activityNote'] = note;
-    if (name != null && name.isNotEmpty) data['reporterName'] = name;
-    // The author's level after this report, denormalized into the doc so
-    // report rows can show it without any per-author read.
-    data['reporterLevel'] = reporterLevelToStamp(
-      await _statsForStamp(uid),
-      ParticipationAction.report,
+    final data = activityReportPayload(
+      siteId: siteId,
+      uid: uid,
+      type: activityType,
+      note: activityNote,
+      reporterName: reporterName,
+      reporterLevel: reporterLevelToStamp(await _statsForStamp(uid), credit),
+      serverTime: FieldValue.serverTimestamp(),
     );
 
     // One atomic batch so a report never lands without its site touch.
@@ -325,9 +359,9 @@ class FirestoreSiteRepository implements SiteRepository {
       batch.update(_sites.doc(siteId), {
         'lastReportAt': FieldValue.serverTimestamp(),
       });
-      _stampStats(batch, uid, ParticipationAction.report);
+      _stampStats(batch, uid, credit);
     });
-    _bumpStats(uid, ParticipationAction.report);
+    _bumpStats(uid, credit);
   }
 
   @override

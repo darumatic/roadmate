@@ -94,6 +94,163 @@ void main() {
     });
   });
 
+  // Issue #48: Camera Only / BGD has no stored form — shipped builds read an
+  // unknown status string as OPEN — so it travels as the legacy activity
+  // report and is derived back into a status here, from the reports stream.
+  group('Camera Only / BGD is derived from the reports (issue #48)', () {
+    Site site({
+      String id = 's1',
+      SiteStatus stored = SiteStatus.closed,
+      DateTime? lastReportAt,
+    }) => Site(
+      id: id,
+      name: 'Marulan',
+      type: SiteType.checkingStation,
+      state: AusState.nsw,
+      suburb: 'Marulan',
+      address: 'Hume Hwy',
+      currentStatus: stored,
+      lastReportAt: lastReportAt,
+    );
+
+    SiteReport camera(
+      DateTime at, {
+      ActivityReportType type = ActivityReportType.noActivity,
+      String siteId = 's1',
+    }) =>
+        SiteReport(id: 'c', siteId: siteId, createdAt: at, activityType: type);
+
+    SiteStatus display(Site s, List<SiteReport> reports) => withEffectiveStatus(
+      [s],
+      recentReports: reports,
+      now: now,
+    ).single.currentStatus;
+
+    DateTime ago(int hours, [int minutes = 0]) =>
+        now.subtract(Duration(hours: hours, minutes: minutes));
+
+    test('a press is stored as the legacy Camera Only activity report', () {
+      expect(cameraOnlyWireType, ActivityReportType.noActivity);
+      expect(cameraOnlyWireType.wire, 'Camera Only');
+    });
+
+    test('reportedStatusOf: a vote says its status, Camera Only and BGD say '
+        'the fourth, other activity says nothing', () {
+      expect(
+        reportedStatusOf(_report(SiteStatus.blitz, now)),
+        SiteStatus.blitz,
+      );
+      expect(reportedStatusOf(camera(now)), SiteStatus.cameraOnly);
+      expect(
+        reportedStatusOf(camera(now, type: ActivityReportType.defectChecks)),
+        SiteStatus.cameraOnly,
+      );
+      expect(reportedStatusOf(_activity('q', now)), isNull);
+    });
+
+    test('lights when the newest status-bearing report is Camera Only', () {
+      final s = site(lastReportAt: ago(1));
+      expect(display(s, [camera(ago(1))]), SiteStatus.cameraOnly);
+    });
+
+    test("an old build's BGD report lights it too", () {
+      final s = site(lastReportAt: ago(1));
+      expect(
+        display(s, [camera(ago(1), type: ActivityReportType.defectChecks)]),
+        SiteStatus.cameraOnly,
+      );
+    });
+
+    test('a later vote supersedes it — even one cast from an old build', () {
+      final s = site(stored: SiteStatus.open, lastReportAt: ago(1));
+      expect(
+        display(s, [_report(SiteStatus.open, ago(1)), camera(ago(3))]),
+        SiteStatus.open,
+      );
+    });
+
+    test('it supersedes an earlier vote: Closed is no longer the status', () {
+      final s = site(lastReportAt: ago(1));
+      expect(
+        display(s, [camera(ago(1)), _report(SiteStatus.closed, ago(2))]),
+        SiteStatus.cameraOnly,
+      );
+    });
+
+    test('the newest report wins whatever order the stream delivers them', () {
+      final s = site(lastReportAt: ago(1));
+      expect(
+        display(s, [_report(SiteStatus.closed, ago(2)), camera(ago(1))]),
+        SiteStatus.cameraOnly,
+      );
+    });
+
+    test('other activity after it leaves it standing', () {
+      final s = site(lastReportAt: ago(0, 30));
+      expect(
+        display(s, [_activity('q', ago(0, 30)), camera(ago(2))]),
+        SiteStatus.cameraOnly,
+      );
+    });
+
+    test('a Camera Only report past the 10h window is ignored', () {
+      final s = site(lastReportAt: ago(10, 1));
+      expect(display(s, [camera(ago(10, 1))]), SiteStatus.unknown);
+    });
+
+    test("another site's Camera Only report changes nothing here", () {
+      final s = site(lastReportAt: ago(1));
+      expect(display(s, [camera(ago(1), siteId: 'other')]), SiteStatus.closed);
+    });
+
+    test('the report proves its own freshness: it lights even when the site '
+        'doc carries no lastReportAt, and lifts it for "reported Xm ago"', () {
+      final at = ago(1);
+      final shown = withEffectiveStatus(
+        [site()],
+        recentReports: [camera(at)],
+        now: now,
+      ).single;
+      expect(shown.currentStatus, SiteStatus.cameraOnly);
+      expect(shown.lastReportAt, at);
+    });
+
+    test('a later touch on the site doc is kept over the report time', () {
+      final touched = ago(0, 5);
+      final shown = withEffectiveStatus(
+        [site(lastReportAt: touched)],
+        recentReports: [camera(ago(1))],
+        now: now,
+      ).single;
+      expect(shown.lastReportAt, touched);
+    });
+
+    test('with no reports it is exactly the stored-status rule old builds '
+        'apply — a loading or failed stream fails soft', () {
+      final sites = [
+        site(id: 'fresh', lastReportAt: ago(1)),
+        site(id: 'stale', stored: SiteStatus.blitz, lastReportAt: ago(11)),
+      ];
+      expect(withEffectiveStatus(sites, now: now).map((s) => s.currentStatus), [
+        SiteStatus.closed,
+        SiteStatus.unknown,
+      ]);
+    });
+
+    test('latestStatusReports keeps one newest status-bearing report per '
+        'site', () {
+      final latest = latestStatusReports([
+        _activity('q', ago(0, 10)),
+        camera(ago(1)),
+        _report(SiteStatus.open, ago(2)),
+        camera(ago(3), siteId: 's2'),
+        camera(ago(11), siteId: 's3'),
+      ], now: now);
+      expect(latest.keys, unorderedEquals(['s1', 's2']));
+      expect(latest['s1']!.createdAt, ago(1));
+    });
+  });
+
   group('recentActivityReports', () {
     test('keeps fresh activity reports and drops expired ones', () {
       final reports = [

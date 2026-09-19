@@ -192,6 +192,9 @@ class LocalProximityNotifier implements ProximityNotifier {
     SiteStatus.open => 'Open',
     SiteStatus.blitz => 'Blitz',
     SiteStatus.closed => 'Closed',
+    // Never offered here — Android shows at most three notification actions,
+    // so Camera Only / BGD is answered from the in-app card the tap opens.
+    SiteStatus.cameraOnly => 'Camera Only / BGD',
     SiteStatus.unknown => 'Unknown',
   };
 }

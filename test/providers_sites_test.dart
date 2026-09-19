@@ -1,0 +1,120 @@
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:roadmate/models/enums.dart';
+import 'package:roadmate/models/site.dart';
+import 'package:roadmate/models/site_report.dart';
+import 'package:roadmate/services/providers.dart';
+import 'package:roadmate/services/site_repository.dart';
+
+/// Hands the test both listeners' streams; nothing else is touched.
+class _StreamsRepository implements SiteRepository {
+  final sites = StreamController<List<Site>>();
+  final reports = StreamController<List<SiteReport>>();
+
+  @override
+  Stream<List<Site>> watchSites() => sites.stream;
+
+  @override
+  Stream<List<SiteReport>> watchAllRecentReports() => reports.stream;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// `sitesProvider` derives the displayed status from two listeners (issue #48:
+/// Camera Only / BGD exists only in the reports stream). These pin how it
+/// behaves while the second one is late, present, or broken.
+void main() {
+  final reportedAt = DateTime.now().subtract(const Duration(hours: 1));
+  final marulan = Site(
+    id: 's1',
+    name: 'Marulan',
+    type: SiteType.checkingStation,
+    state: AusState.nsw,
+    suburb: 'Marulan',
+    address: 'Hume Hwy',
+    currentStatus: SiteStatus.closed,
+    lastReportAt: reportedAt,
+  );
+  final cameraOnly = SiteReport(
+    id: 'r1',
+    siteId: 's1',
+    createdAt: reportedAt,
+    activityType: ActivityReportType.noActivity,
+  );
+
+  late _StreamsRepository repo;
+  late ProviderContainer container;
+
+  setUp(() {
+    repo = _StreamsRepository();
+    container = ProviderContainer(
+      // No automatic retry: a retry would re-listen to the single-subscription
+      // test streams.
+      retry: (_, _) => null,
+      overrides: [siteRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+    // Screens watch it for the life of the app; hold it open the same way.
+    container.listen(sitesProvider, (_, _) {});
+  });
+
+  SiteStatus? shown() =>
+      container.read(sitesProvider).value?.single.currentStatus;
+
+  test('the site list never waits on the reports listener', () async {
+    expect(container.read(sitesProvider).isLoading, isTrue);
+
+    repo.sites.add([marulan]);
+    await pumpEventQueue();
+
+    // Reports have said nothing yet: Firestore holds back an empty first
+    // snapshot until the server answers, which in a coverage hole is ~10 s —
+    // the cached site list (and the approach prompt it feeds) must not stall.
+    expect(container.read(recentReportsProvider).isLoading, isTrue);
+    expect(shown(), SiteStatus.closed);
+  });
+
+  test('a Camera Only report lights the fourth status once it arrives, and a '
+      'later vote takes it back', () async {
+    repo.sites.add([marulan]);
+    repo.reports.add([cameraOnly]);
+    await pumpEventQueue();
+    expect(shown(), SiteStatus.cameraOnly);
+
+    final votedAt = DateTime.now();
+    repo.reports.add([
+      SiteReport(
+        id: 'r2',
+        siteId: 's1',
+        createdAt: votedAt,
+        status: SiteStatus.open,
+      ),
+      cameraOnly,
+    ]);
+    repo.sites.add([
+      marulan.copyWith(currentStatus: SiteStatus.open, lastReportAt: votedAt),
+    ]);
+    await pumpEventQueue();
+    expect(shown(), SiteStatus.open);
+  });
+
+  test('a failed reports listener falls back to the stored statuses', () async {
+    repo.sites.add([marulan]);
+    repo.reports.addError(StateError('index missing'));
+    await pumpEventQueue();
+
+    expect(container.read(recentReportsProvider).hasError, isTrue);
+    expect(shown(), SiteStatus.closed);
+  });
+
+  test('a failed sites listener still surfaces as an error', () async {
+    repo.sites.addError(StateError('offline'));
+    repo.reports.add([cameraOnly]);
+    await pumpEventQueue();
+
+    expect(container.read(sitesProvider).hasError, isTrue);
+  });
+}

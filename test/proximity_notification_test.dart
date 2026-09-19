@@ -160,6 +160,31 @@ void main() {
       expect(statusFromActionId(null), isNull);
       expect(statusFromActionId('something_else'), isNull);
     });
+
+    // Issue #48: Android shows at most three notification actions, so the
+    // fourth status is answered from the in-app card the notification opens
+    // — a fourth action here would silently push one of the others off.
+    test('the notification keeps exactly the three stored-status actions', () {
+      expect(proximityActionStatuses.values, SiteStatus.votable);
+      expect(
+        proximityActionStatuses.values,
+        isNot(contains(SiteStatus.cameraOnly)),
+      );
+    });
+
+    test('the status line names Camera Only / BGD like any other status', () {
+      final now = DateTime(2026, 7, 26, 9, 0);
+      expect(
+        approachStatusLine(
+          _site(
+            status: SiteStatus.cameraOnly,
+            lastReportAt: now.subtract(const Duration(minutes: 5)),
+          ),
+          now: now,
+        ),
+        'Reported Camera Only / BGD 5m ago',
+      );
+    });
   });
 
   group('background behaviour', () {

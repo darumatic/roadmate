@@ -205,6 +205,18 @@ class ProximityPromptCard extends ConsumerWidget {
                 ],
               ],
             ),
+            const SizedBox(height: 8),
+            // The fourth answer (issue #48), laid out as on the site card: a
+            // driver passing a boom-gate-down station needs a true answer
+            // here too, or the prompt pushes them to "Closed".
+            SizedBox(
+              width: double.infinity,
+              child: _AnswerButton(
+                key: cameraOnlyAnswerKey,
+                status: SiteStatus.cameraOnly,
+                onTap: () => _vote(context, ref, SiteStatus.cameraOnly),
+              ),
+            ),
           ],
         ),
       ),
@@ -250,16 +262,21 @@ String _distanceLabel(double km) => km < 1
     ? '${(km * 1000).round()} m ahead'
     : '${km.toStringAsFixed(1)} km ahead';
 
+/// Key of the Camera Only / BGD answer, for tests.
+const cameraOnlyAnswerKey = Key('answer-camera-only');
+
 class _AnswerButton extends StatelessWidget {
-  const _AnswerButton({required this.status, required this.onTap});
+  const _AnswerButton({super.key, required this.status, required this.onTap});
 
   final SiteStatus status;
   final VoidCallback onTap;
 
-  IconData get _icon => switch (status) {
+  IconData? get _icon => switch (status) {
     SiteStatus.open => Icons.check_circle_outline,
     SiteStatus.blitz => Icons.warning_amber_rounded,
     SiteStatus.closed => Icons.cancel_outlined,
+    // Text-only: the issue-#48 brief rules out a camera icon.
+    SiteStatus.cameraOnly => null,
     SiteStatus.unknown => Icons.help_outline,
   };
 
@@ -277,8 +294,10 @@ class _AnswerButton extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Icon(_icon, size: 20, color: status.color),
-            const SizedBox(height: 4),
+            if (_icon case final icon?) ...[
+              Icon(icon, size: 20, color: status.color),
+              const SizedBox(height: 4),
+            ],
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(

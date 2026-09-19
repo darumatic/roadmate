@@ -23,7 +23,7 @@ class LocalSeedSiteRepository implements SiteRepository {
   final _sites = <Site>[];
   final _reports = <String, List<SiteReport>>{};
   final _favourites = <String>{};
-  bool _loaded = false;
+  Future<void>? _loading;
   int _seq = 0;
   var _stats = const ParticipationStats();
 
@@ -32,14 +32,17 @@ class LocalSeedSiteRepository implements SiteRepository {
   final _allReportsController = StreamController<List<SiteReport>>.broadcast();
   final _statsController = StreamController<ParticipationStats?>.broadcast();
 
-  Future<void> _ensureLoaded() async {
-    if (_loaded) return;
+  /// Memoized: the site list and the recent-reports stream are subscribed
+  /// together at startup (the displayed status is derived from both), and a
+  /// second concurrent load would clear the list under the first.
+  Future<void> _ensureLoaded() => _loading ??= _load();
+
+  Future<void> _load() async {
     final raw = await rootBundle.loadString(assetPath);
     final json = jsonDecode(raw) as Map<String, dynamic>;
     _sites
       ..clear()
       ..addAll(parseNhvrNationalData(json));
-    _loaded = true;
   }
 
   @override
@@ -68,6 +71,19 @@ class LocalSeedSiteRepository implements SiteRepository {
     SiteStatus status, {
     String? reporterName,
   }) async {
+    // Same routing as FirestoreSiteRepository.vote: Camera Only / BGD has no
+    // stored form and travels as the 'Camera Only' activity report.
+    if (status == SiteStatus.cameraOnly) {
+      return _postActivity(
+        site,
+        cameraOnlyWireType,
+        reporterName: reporterName,
+        credit: ParticipationAction.vote,
+      );
+    }
+    if (!status.isStored) {
+      throw ArgumentError.value(status, 'status', 'has no stored form');
+    }
     await _ensureLoaded();
     final siteId = site.id;
     _addReport(
@@ -102,13 +118,32 @@ class LocalSeedSiteRepository implements SiteRepository {
     ActivityReportType activityType, {
     String? activityNote,
     String? reporterName,
+  }) {
+    return _postActivity(
+      site,
+      activityType,
+      activityNote: activityNote,
+      reporterName: reporterName,
+      credit: ParticipationAction.report,
+    );
+  }
+
+  /// In-memory twin of `FirestoreSiteRepository.postActivity`: the report
+  /// plus the site's `lastReportAt` touch, never its status.
+  Future<void> _postActivity(
+    Site site,
+    ActivityReportType activityType, {
+    String? activityNote,
+    String? reporterName,
+    required ParticipationAction credit,
   }) async {
     await _ensureLoaded();
+    final now = DateTime.now();
     _addReport(
       SiteReport(
         id: 'r${_seq++}',
         siteId: site.id,
-        createdAt: DateTime.now(),
+        createdAt: now,
         activityType: activityType,
         activityNote: activityNote?.trim().isEmpty ?? true
             ? null
@@ -116,10 +151,15 @@ class LocalSeedSiteRepository implements SiteRepository {
         reporterName: reporterName?.trim().isEmpty ?? true
             ? null
             : reporterName!.trim(),
-        reporterLevel: reporterLevelToStamp(_stats, ParticipationAction.report),
+        reporterLevel: reporterLevelToStamp(_stats, credit),
       ),
     );
-    _recordAction(ParticipationAction.report);
+    final i = _sites.indexWhere((s) => s.id == site.id);
+    if (i != -1) {
+      _sites[i] = _sites[i].copyWith(lastReportAt: now);
+      _sitesController.add(List.unmodifiable(_sites));
+    }
+    _recordAction(credit);
   }
 
   @override

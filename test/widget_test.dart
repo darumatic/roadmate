@@ -606,4 +606,55 @@ void main() {
     final unknownCount = tester.widget<Text>(find.text('2'));
     expect(unknownCount.style?.color, SiteStatus.unknown.color);
   });
+
+  // Issue #48: the fourth status gets its own blue tally and bar segment.
+  testWidgets('StateCard tallies Camera Only / BGD sites in blue, and all five '
+      'tallies fit a narrow grid cell', (tester) async {
+    Site site(String id, SiteStatus status) => Site(
+      id: id,
+      name: 'Site $id',
+      type: SiteType.checkingStation,
+      state: AusState.nsw,
+      suburb: 'Town',
+      address: 'Hume Hwy',
+      lat: 0,
+      lng: 0,
+      currentStatus: status,
+    );
+    // Distinct counts so each tally can be found by its number.
+    final sites = [
+      site('o1', SiteStatus.open),
+      for (var i = 0; i < 2; i++) site('b$i', SiteStatus.blitz),
+      for (var i = 0; i < 3; i++) site('c$i', SiteStatus.closed),
+      for (var i = 0; i < 4; i++) site('k$i', SiteStatus.cameraOnly),
+      for (var i = 0; i < 5; i++) site('u$i', SiteStatus.unknown),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            // The test font is roughly twice as wide as Roboto, so 180 px
+            // here is tighter than the 134 px cell a two-column grid gets on
+            // a 320 px phone: the five tallies alone want 102 px of the 44
+            // left beside "15 sites", and only fit because they scale down.
+            child: SizedBox(
+              width: 180,
+              child: StateCard(state: AusState.nsw, sites: sites),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull); // no RenderFlex overflow
+    expect(find.text('15 sites'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('4')).style?.color,
+      SiteStatus.cameraOnly.color,
+    );
+    expect(
+      tester.widget<Text>(find.text('3')).style?.color,
+      SiteStatus.closed.color,
+    );
+  });
 }

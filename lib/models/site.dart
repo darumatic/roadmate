@@ -162,7 +162,13 @@ class Site {
       'lng': lng,
       'direction': direction,
       'note': note,
-      'currentStatus': currentStatus.name,
+      // Sites reaching the UI carry an *effective* status, which may be a
+      // display-only one (Unknown, Camera Only / BGD). Those have no stored
+      // form — every shipped build would read them back as OPEN — so a site
+      // written from the UI's copy says `open`, the same default a new site
+      // gets, rather than leaking one onto the wire.
+      'currentStatus':
+          (currentStatus.isStored ? currentStatus : SiteStatus.open).name,
       'openVotes': openVotes,
       'blitzVotes': blitzVotes,
       'closedVotes': closedVotes,

@@ -10,6 +10,7 @@ class StatusCounts {
     this.open = 0,
     this.blitz = 0,
     this.closed = 0,
+    this.cameraOnly = 0,
     this.unknown = 0,
   });
 
@@ -17,17 +18,20 @@ class StatusCounts {
   final int blitz;
   final int closed;
 
+  /// Sites whose latest word is Camera Only / BGD (issue #48).
+  final int cameraOnly;
+
   /// Sites with no fresh report (issue #21).
   final int unknown;
 
-  int get total => open + blitz + closed + unknown;
+  int get total => open + blitz + closed + cameraOnly + unknown;
 }
 
 /// States shown in the app, preserving the enum order used by the UI.
 const visibleStates = AusState.values;
 
 StatusCounts countByStatus(Iterable<Site> sites) {
-  var open = 0, blitz = 0, closed = 0, unknown = 0;
+  var open = 0, blitz = 0, closed = 0, cameraOnly = 0, unknown = 0;
   for (final s in sites) {
     switch (s.currentStatus) {
       case SiteStatus.open:
@@ -36,6 +40,8 @@ StatusCounts countByStatus(Iterable<Site> sites) {
         blitz++;
       case SiteStatus.closed:
         closed++;
+      case SiteStatus.cameraOnly:
+        cameraOnly++;
       case SiteStatus.unknown:
         unknown++;
     }
@@ -44,6 +50,7 @@ StatusCounts countByStatus(Iterable<Site> sites) {
     open: open,
     blitz: blitz,
     closed: closed,
+    cameraOnly: cameraOnly,
     unknown: unknown,
   );
 }

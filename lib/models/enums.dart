@@ -2,20 +2,36 @@ import 'package:flutter/material.dart';
 
 /// Live, community-reported status of a site.
 ///
-/// [unknown] is display-only (issue #21): it is derived when a site has no
-/// report within the freshness window and is never stored or voted, so it is
-/// not part of [votable].
+/// Only [votable] values are ever **stored** (`currentStatus` on a site,
+/// `status` on a report). The other two are display-only and must never reach
+/// the wire: every shipped build parses an unknown status string as [open]
+/// (see [fromName]), so a new stored value would read as OPEN on phones that
+/// cannot be hot-updated.
+///
+/// * [cameraOnly] — "Camera Only / BGD" (boom gate down, issue #48). A driver
+///   can cast it, but it travels as the legacy 'Camera Only' activity report
+///   old builds already show, and is derived back into a status client-side
+///   (see `status_logic.dart`).
+/// * [unknown] — derived when a site has no report within the freshness window
+///   (issue #21); never cast.
 enum SiteStatus {
   open,
   blitz,
   closed,
+  cameraOnly,
   unknown;
 
-  /// Statuses a driver can vote for — [unknown] is derived, never cast.
+  /// The row of three: the statuses with a stored form, cast as real votes.
   static const List<SiteStatus> votable = [open, blitz, closed];
 
+  /// Whether this value may be written to Firestore.
+  bool get isStored => votable.contains(this);
+
+  /// Parses a stored status. Only [votable] names are recognised — a
+  /// display-only name that somehow landed in a document falls back to [open],
+  /// exactly as it does on every shipped build, so all versions agree.
   static SiteStatus fromName(String? value) {
-    return SiteStatus.values.firstWhere(
+    return votable.firstWhere(
       (s) => s.name == value,
       orElse: () => SiteStatus.open,
     );
@@ -25,6 +41,7 @@ enum SiteStatus {
     SiteStatus.open => 'Open',
     SiteStatus.blitz => 'Blitz',
     SiteStatus.closed => 'Closed',
+    SiteStatus.cameraOnly => 'Camera Only / BGD',
     SiteStatus.unknown => 'Unknown',
   };
 
@@ -32,6 +49,7 @@ enum SiteStatus {
     SiteStatus.open => const Color(0xFF22C55E), // green
     SiteStatus.blitz => const Color(0xFFF59E0B), // amber
     SiteStatus.closed => const Color(0xFFEF4444), // red
+    SiteStatus.cameraOnly => const Color(0xFF3B82F6), // blue
     SiteStatus.unknown => const Color(0xFF9A9AA2), // grey
   };
 }

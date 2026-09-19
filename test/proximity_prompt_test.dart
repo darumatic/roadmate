@@ -76,8 +76,9 @@ class FakeStore implements TripHistoryStore {
 }
 
 class FakeSiteRepository implements SiteRepository {
-  FakeSiteRepository(this.sites);
+  FakeSiteRepository(this.sites, {this.recentReports = const []});
   final List<Site> sites;
+  final List<SiteReport> recentReports;
   final votes = <(String, SiteStatus)>[];
   Object? voteError;
 
@@ -112,7 +113,8 @@ class FakeSiteRepository implements SiteRepository {
   @override
   Stream<ParticipationStats?> watchMyStats() => Stream.value(null);
   @override
-  Stream<List<SiteReport>> watchAllRecentReports() => Stream.value(const []);
+  Stream<List<SiteReport>> watchAllRecentReports() =>
+      Stream.value(recentReports);
   @override
   Stream<List<Site>> watchSites() => Stream.value(sites);
 }
@@ -257,6 +259,69 @@ void main() {
     expect(repo.votes, [('marulan', SiteStatus.open)]);
     expect(find.textContaining('APPROACHING'), findsNothing);
     expect(find.textContaining('Reported Open/Working'), findsOneWidget);
+  });
+
+  // Issue #48: the fourth answer, laid out as on the site card — a driver
+  // passing a boom-gate-down station needs a true answer here too.
+  testWidgets('the Camera Only / BGD answer sits under the row of three, '
+      'text-only, and casts that status', (tester) async {
+    final loc = FakeLocationSource();
+    final repo = FakeSiteRepository([_site('marulan')]);
+    await _pump(tester, location: loc, repo: repo);
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+
+    final answer = find.byKey(cameraOnlyAnswerKey);
+    expect(answer, findsOneWidget);
+    expect(
+      find.descendant(of: answer, matching: find.text('Camera Only / BGD')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: answer, matching: find.byType(Icon)),
+      findsNothing,
+    );
+    expect(
+      tester.getRect(answer).top,
+      greaterThan(tester.getBottomLeft(find.text('Blitz')).dy),
+    );
+
+    await tester.tap(answer);
+    await tester.pumpAndSettle();
+
+    expect(repo.votes, [('marulan', SiteStatus.cameraOnly)]);
+    expect(find.textContaining('APPROACHING'), findsNothing);
+    expect(find.text('Reported Camera Only / BGD — thanks!'), findsOneWidget);
+  });
+
+  testWidgets('a site whose latest word is a Camera Only report says so, not '
+      'its stored status', (tester) async {
+    final loc = FakeLocationSource();
+    final reportedAt = DateTime.now().subtract(const Duration(minutes: 5));
+    final repo = FakeSiteRepository(
+      // What old builds see: the last stored vote, kept fresh by the touch.
+      [_site('marulan', status: SiteStatus.closed, lastReportAt: reportedAt)],
+      recentReports: [
+        SiteReport(
+          id: 'r1',
+          siteId: 'marulan',
+          createdAt: reportedAt,
+          activityType: ActivityReportType.noActivity,
+        ),
+      ],
+    );
+    await _pump(tester, location: loc, repo: repo);
+
+    loc.emit(_pos(-33.025, since: Duration.zero));
+    await tester.pump();
+    loc.emit(_pos(-33.02, since: const Duration(seconds: 20)));
+    await tester.pump();
+
+    expect(find.textContaining('Reported Camera Only / BGD'), findsOneWidget);
+    expect(find.textContaining('Reported Closed'), findsNothing);
   });
 
   testWidgets('a site with no recent report says so', (tester) async {

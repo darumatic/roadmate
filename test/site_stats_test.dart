@@ -37,8 +37,32 @@ void main() {
     expect(c.open, 2);
     expect(c.blitz, 1);
     expect(c.closed, 1);
+    expect(c.cameraOnly, 0);
     expect(c.unknown, 1);
     expect(c.total, 5);
+  });
+
+  // Issue #48: a Camera Only / BGD site is its own bucket — never counted as
+  // Closed (the point of the fourth status) and never as a blitz.
+  test('Camera Only / BGD sites are tallied on their own', () {
+    final withCamera = [
+      ...sites,
+      _site(id: '6', state: AusState.nsw, status: SiteStatus.cameraOnly),
+      _site(id: '7', state: AusState.sa, status: SiteStatus.cameraOnly),
+    ];
+    final c = countByStatus(withCamera);
+    expect(c.cameraOnly, 2);
+    expect(c.closed, 1);
+    expect(c.total, 7);
+    expect(blitzSites(withCamera).map((s) => s.id), ['2']);
+  });
+
+  test('every status has a bucket, so the total never loses a site', () {
+    final one = [
+      for (final status in SiteStatus.values)
+        _site(id: status.name, state: AusState.nsw, status: status),
+    ];
+    expect(countByStatus(one).total, SiteStatus.values.length);
   });
 
   test('groupByState includes visible states, including zero-site states', () {

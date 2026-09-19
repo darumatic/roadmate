@@ -155,6 +155,133 @@ void main() {
     });
   });
 
+  // Issue #48. Shipped phones can't be hot-updated and read an unknown status
+  // string as OPEN, so Camera Only / BGD must never reach the wire as a
+  // status: these pin the three places it could leak, and the exact document
+  // a press is stored as instead.
+  group('display-only statuses never reach the wire (issue #48)', () {
+    test('only the row of three is stored', () {
+      expect(SiteStatus.votable, [
+        SiteStatus.open,
+        SiteStatus.blitz,
+        SiteStatus.closed,
+      ]);
+      expect(SiteStatus.values.where((s) => s.isStored), SiteStatus.votable);
+      expect(SiteStatus.cameraOnly.isStored, isFalse);
+      expect(SiteStatus.unknown.isStored, isFalse);
+    });
+
+    test('Camera Only / BGD is labelled and coloured as the blue status', () {
+      expect(SiteStatus.cameraOnly.label, 'Camera Only / BGD');
+      expect(SiteStatus.cameraOnly.color.toARGB32(), 0xFF3B82F6);
+    });
+
+    test('a display-only name in a document parses as open, exactly as it '
+        'does on every shipped build', () {
+      expect(SiteStatus.fromName('cameraOnly'), SiteStatus.open);
+      expect(SiteStatus.fromName('unknown'), SiteStatus.open);
+      for (final stored in SiteStatus.votable) {
+        expect(SiteStatus.fromName(stored.name), stored);
+      }
+    });
+
+    test('Site.toMap never emits a display-only status', () {
+      const site = Site(
+        id: 's1',
+        name: 'Marulan',
+        type: SiteType.checkingStation,
+        state: AusState.nsw,
+        suburb: 'Marulan',
+        address: 'Hume Hwy',
+      );
+      for (final status in SiteStatus.values) {
+        final written = site.copyWith(currentStatus: status).toMap();
+        expect(
+          written['currentStatus'],
+          status.isStored ? status.name : 'open',
+          reason: '$status',
+        );
+      }
+    });
+
+    test('BGD and Camera Only left the Report dialog but still parse', () {
+      expect(ActivityReportType.reportable, [
+        ActivityReportType.longQueue,
+        ActivityReportType.delays,
+        ActivityReportType.policePresent,
+        ActivityReportType.other,
+      ]);
+      expect(ActivityReportType.values.where((t) => t.meansCameraOnly), [
+        ActivityReportType.defectChecks,
+        ActivityReportType.noActivity,
+      ]);
+      expect(
+        ActivityReportType.fromName('Camera Only'),
+        ActivityReportType.noActivity,
+      );
+      expect(
+        ActivityReportType.fromName('BGD'),
+        ActivityReportType.defectChecks,
+      );
+    });
+
+    test('a Camera Only / BGD press is byte-for-byte the legacy Camera Only '
+        'activity report', () {
+      const serverTime = 'SERVER_TIME';
+      final payload = activityReportPayload(
+        siteId: 'nsw-1',
+        uid: 'u1',
+        type: ActivityReportType.noActivity,
+        reporterName: '  Dusty Nomad ',
+        reporterLevel: 2,
+        serverTime: serverTime,
+      );
+      expect(payload, {
+        'siteId': 'nsw-1',
+        'activityType': 'Camera Only',
+        'uid': 'u1',
+        'createdAt': serverTime,
+        'reporterName': 'Dusty Nomad',
+        'reporterLevel': 2,
+      });
+      // The rules make a report EITHER a vote OR an activity report: a
+      // `status` key here would be refused, and read as OPEN if it weren't.
+      expect(payload.containsKey('status'), isFalse);
+    });
+
+    test('an activity payload stays inside the key set the rules accept, and '
+        'leaves absent values out rather than writing nulls', () {
+      const allowed = {
+        'siteId', 'activityType', 'activityNote', 'reporterName', //
+        'reporterLevel', 'uid', 'createdAt',
+      };
+      final full = activityReportPayload(
+        siteId: 's',
+        uid: 'u',
+        type: ActivityReportType.other,
+        note: ' queue past the ramp ',
+        reporterName: 'Dusty',
+        reporterLevel: 1,
+        serverTime: 0,
+      );
+      expect(full.keys.toSet(), allowed);
+      expect(full['activityNote'], 'queue past the ramp');
+
+      final bare = activityReportPayload(
+        siteId: 's',
+        uid: 'u',
+        type: ActivityReportType.other,
+        note: '   ',
+        reporterName: '',
+        reporterLevel: 1,
+        serverTime: 0,
+      );
+      expect(bare.keys, isNot(contains('activityNote')));
+      expect(bare.keys, isNot(contains('reporterName')));
+      expect(bare.values, everyElement(isNotNull));
+    });
+  });
+
   group('parseNhvrNationalData', () {
     final sample = {
       'states': {

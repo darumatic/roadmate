@@ -173,8 +173,18 @@ class SiteCard extends ConsumerWidget {
           Row(
             children: [
               _TypeChip(site.type),
-              const Spacer(),
-              StatusBadge(site.currentStatus),
+              const SizedBox(width: 8),
+              // Shrinks to fit rather than overflowing: "Camera Only / BGD"
+              // beside "Checking Station" is wider than a small phone.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: StatusBadge(site.currentStatus),
+                  ),
+                ),
+              ),
             ],
           ),
           if (site.note != null) ...[
@@ -189,7 +199,7 @@ class SiteCard extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 12),
-          _VoteRow(
+          _VoteButtons(
             current: site.currentStatus,
             onVote: (status) => _vote(context, ref, repo, status),
           ),
@@ -385,7 +395,7 @@ class _ReportDialogState extends State<_ReportDialog> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final type in ActivityReportType.values)
+                for (final type in ActivityReportType.reportable)
                   ChoiceChip(
                     label: Text(type.label),
                     selected: _activityType == type,
@@ -547,28 +557,53 @@ class _ActivityReportTile extends StatelessWidget {
   }
 }
 
-class _VoteRow extends StatelessWidget {
-  const _VoteRow({required this.current, required this.onVote});
+/// Key of the Camera Only / BGD button — its label also appears on the status
+/// badge while that status is current, so tests can't find it by text alone.
+const cameraOnlyVoteKey = Key('vote-camera-only');
+
+class _VoteButtons extends StatelessWidget {
+  const _VoteButtons({required this.current, required this.onVote});
 
   final SiteStatus current;
   final ValueChanged<SiteStatus> onVote;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final cameraOnly = current == SiteStatus.cameraOnly;
+    return Column(
       children: [
-        // Only real statuses are votable — Unknown (issue #21) is derived, so
-        // when it's current no button matches and all three render greyed.
-        for (final status in SiteStatus.votable) ...[
-          if (status != SiteStatus.votable.first) const SizedBox(width: 8),
-          Expanded(
-            child: _VoteButton(
-              status: status,
-              selected: current == status,
-              onTap: () => onVote(status),
-            ),
+        Row(
+          children: [
+            // The stored statuses — Unknown (issue #21) is derived, so when
+            // it's current no button matches and all three render greyed.
+            for (final status in SiteStatus.votable) ...[
+              if (status != SiteStatus.votable.first) const SizedBox(width: 8),
+              Expanded(
+                child: _VoteButton(
+                  status: status,
+                  selected: current == status,
+                  // Issue #48: with Camera Only / BGD current, Closed must
+                  // show no red at all — not even the faint border tint an
+                  // unselected button keeps — so it can't read as half-lit.
+                  neutral: cameraOnly && status == SiteStatus.closed,
+                  onTap: () => onVote(status),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        // The fourth status (issue #48): one large blue button under the row,
+        // directly above Report activity.
+        SizedBox(
+          width: double.infinity,
+          child: _VoteButton(
+            key: cameraOnlyVoteKey,
+            status: SiteStatus.cameraOnly,
+            selected: cameraOnly,
+            onTap: () => onVote(SiteStatus.cameraOnly),
           ),
-        ],
+        ),
       ],
     );
   }
@@ -576,56 +611,74 @@ class _VoteRow extends StatelessWidget {
 
 class _VoteButton extends StatelessWidget {
   const _VoteButton({
+    super.key,
     required this.status,
     required this.selected,
     required this.onTap,
+    this.neutral = false,
   });
 
   final SiteStatus status;
   final bool selected;
   final VoidCallback onTap;
 
-  IconData get _icon => switch (status) {
+  /// Renders the unselected border plain grey instead of status-tinted.
+  final bool neutral;
+
+  /// Camera Only / BGD is text-only (the brief rules out a camera icon) and
+  /// reads blue even when unselected — it is "the blue button".
+  bool get _isCameraOnly => status == SiteStatus.cameraOnly;
+
+  IconData? get _icon => switch (status) {
     SiteStatus.open => Icons.check_circle_outline,
     SiteStatus.blitz => Icons.warning_amber_rounded,
     SiteStatus.closed => Icons.cancel_outlined,
+    SiteStatus.cameraOnly => null,
     // Not votable — present only to keep the switch exhaustive.
     SiteStatus.unknown => Icons.help_outline,
   };
 
   @override
   Widget build(BuildContext context) {
+    final icon = _icon;
+    final foreground = selected || _isCameraOnly
+        ? status.color
+        : AppTheme.textSecondary;
+    final borderColor = neutral
+        ? AppTheme.border
+        : status.color.withValues(
+            alpha: selected
+                ? 1
+                : _isCameraOnly
+                ? 0.45
+                : 0.3,
+          );
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: EdgeInsets.symmetric(vertical: _isCameraOnly ? 14 : 12),
         decoration: BoxDecoration(
           color: selected
               ? status.color.withValues(alpha: 0.18)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: status.color.withValues(alpha: selected ? 1 : 0.3),
-            width: selected ? 1.5 : 1,
-          ),
+          border: Border.all(color: borderColor, width: selected ? 1.5 : 1),
         ),
         child: Column(
           children: [
-            Icon(
-              _icon,
-              size: 18,
-              color: selected ? status.color : AppTheme.textSecondary,
-            ),
-            const SizedBox(height: 4),
+            if (icon != null) ...[
+              Icon(icon, size: 18, color: foreground),
+              const SizedBox(height: 4),
+            ],
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 statusDisplayLabel(status),
                 maxLines: 1,
                 style: TextStyle(
-                  color: selected ? status.color : AppTheme.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  color: foreground,
+                  fontSize: _isCameraOnly ? 15 : 12,
+                  fontWeight: _isCameraOnly ? FontWeight.w800 : FontWeight.w700,
                 ),
               ),
             ),

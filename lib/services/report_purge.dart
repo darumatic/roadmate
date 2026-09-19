@@ -65,7 +65,12 @@ SiteTallies talliesFrom(
       lastReportAt = report.createdAt;
     }
     final status = report.status;
-    if (status == null) continue;
+    // Only stored statuses are tallied: the result is written straight onto
+    // the site doc, where a display-only status (Unknown, Camera Only / BGD)
+    // must never land. Camera Only / BGD travels as an activity report, so it
+    // is already skipped by the null check; the second guard is for a
+    // hand-built report.
+    if (status == null || !status.isStored) continue;
     counts[status] = counts[status]! + 1;
     if (report.createdAt.isAfter(cutoff) &&
         (currentStatusAt == null ||

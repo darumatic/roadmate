@@ -1434,5 +1434,122 @@ await check(
   })(),
 );
 
+// ---------------------------------------------------------------------------
+// Camera Only / BGD, the fourth status (issue #48) — NO rules change.
+// Every shipped build reads an unknown status string as OPEN, and shipped
+// phones can't be hot-updated, so the status is never stored: a press is
+// written as the legacy 'Camera Only' activity report old builds already
+// list, and new builds derive the status from it. That makes two allow-list
+// entries load-bearing — drop 'Camera Only' or 'BGD' from isValidActivityReport
+// and the blue button dies on every build — and makes the status lists in
+// isValidVote / isValidStatusReport a safety net that must stay closed.
+// A fresh uid and site keep the exact-state checks above undisturbed.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'sites/site-cam'), site('Camera Site'));
+});
+
+const erin = env
+  .authenticatedContext('erin', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+
+// The activity-report batch with a chosen activityType: report + site touch,
+// optionally with the new-client extras (reporterLevel, ledger, stats).
+async function activityBatch(db, uid, activityType, extras) {
+  const b = writeBatch(db);
+  b.set(doc(collection(db, 'sites/site-cam/reports')), {
+    siteId: 'site-cam',
+    activityType,
+    uid,
+    createdAt: serverTimestamp(),
+    ...(extras ? { reporterName: 'Dusty Nomad', reporterLevel: 1 } : {}),
+  });
+  b.update(doc(db, 'sites/site-cam'), { lastReportAt: serverTimestamp() });
+  if (extras) {
+    extras.stamp(b, db, uid);
+    stampStats(b, db, uid, extras.credit);
+  }
+  return b.commit();
+}
+
+await check(
+  "old builds' Camera Only and BGD activity reports (unstamped) keep passing",
+  (async () => {
+    await assertSucceeds(activityBatch(erin, 'erin', 'Camera Only'));
+    await assertSucceeds(activityBatch(erin, 'erin', 'BGD'));
+  })(),
+);
+
+await check(
+  'a Camera Only / BGD press — the Camera Only report, credited as a vote — '
+    + 'passes, and leaves the stored status untouched',
+  (async () => {
+    await assertSucceeds(
+      activityBatch(erin, 'erin', 'Camera Only', {
+        stamp: stampReset,
+        credit: 'vote',
+      }),
+    );
+    await assertSucceeds(
+      activityBatch(erin, 'erin', 'Camera Only', {
+        stamp: stampIncrement,
+        credit: 'vote',
+      }),
+    );
+    const stats = (await getDoc(statsDoc(erin, 'erin'))).data();
+    if (stats.votes !== 2 || stats.reports !== 0) {
+      throw new Error(`press credited wrongly: ${JSON.stringify(stats)}`);
+    }
+    const stored = (await getDoc(doc(erin, 'sites/site-cam'))).data();
+    if (stored.currentStatus !== 'open' || stored.closedVotes !== 0) {
+      throw new Error(`press reached the stored status: ${stored.currentStatus}`);
+    }
+  })(),
+);
+
+await check(
+  'a display-only status can never be stored — as a vote, a report or a site '
+    + 'field',
+  (async () => {
+    for (const status of ['cameraOnly', 'unknown', 'Camera Only / BGD']) {
+      // (The label can't even name a `<status>Votes` counter — '/' is not a
+      // legal field path — so the full vote batch is tried for the enum
+      // names only.)
+      if (!status.includes('/')) {
+        await assertFails(voteBatch(erin, 'site-cam', status, 'erin'));
+      }
+      await assertFails(
+        setDoc(doc(collection(erin, 'sites/site-cam/reports')), {
+          siteId: 'site-cam',
+          status,
+          uid: 'erin',
+          createdAt: serverTimestamp(),
+        }),
+      );
+      await assertFails(
+        updateDoc(doc(erin, 'sites/site-cam'), { currentStatus: status }),
+      );
+    }
+  })(),
+);
+
+await check(
+  'the button label is not a wire value, and a report is never both kinds',
+  (async () => {
+    await assertFails(activityBatch(erin, 'erin', 'Camera Only / BGD'));
+    await assertFails(activityBatch(erin, 'erin', 'cameraOnly'));
+    // A vote and an activity report in one doc: refused, so the fourth status
+    // can't be smuggled in beside a stored one either.
+    await assertFails(
+      setDoc(doc(collection(erin, 'sites/site-cam/reports')), {
+        siteId: 'site-cam',
+        status: 'closed',
+        activityType: 'Camera Only',
+        uid: 'erin',
+        createdAt: serverTimestamp(),
+      }),
+    );
+  })(),
+);
+
 console.log(`\nALL ${checks.length} RULES CHECKS PASSED`);
 await env.cleanup();

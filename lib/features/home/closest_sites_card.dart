@@ -128,9 +128,17 @@ class _SiteRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _StatusPill(
-                color: site.currentStatus.color,
-                label: site.currentStatus.label,
+              // Capped, shrinking to fit: "CAMERA ONLY / BGD" at full size
+              // would squeeze the site name to a few letters on a small phone.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 132),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _StatusPill(
+                    color: site.currentStatus.color,
+                    label: site.currentStatus.label,
+                  ),
+                ),
               ),
             ],
           ),

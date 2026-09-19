@@ -100,47 +100,34 @@ class StateCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      '${counts.open}',
-                      style: TextStyle(
-                        color: SiteStatus.open.color,
-                        fontWeight: FontWeight.w700,
-                      ),
+                // Shrinks to fit: five non-zero tallies beside "N sites" are
+                // wider than a grid cell on a small phone.
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final (count, status) in _tallies(counts))
+                          // Open always shows (a bare "0" still says "none
+                          // open"); the rest only when there is something.
+                          if (status == SiteStatus.open || count > 0) ...[
+                            if (status != SiteStatus.open)
+                              const SizedBox(width: 8),
+                            Text(
+                              '$count',
+                              style: TextStyle(
+                                color: status.color,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                      ],
                     ),
-                    if (counts.blitz > 0) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '${counts.blitz}',
-                        style: TextStyle(
-                          color: SiteStatus.blitz.color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                    if (counts.closed > 0) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '${counts.closed}',
-                        style: TextStyle(
-                          color: SiteStatus.closed.color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                    if (counts.unknown > 0) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '${counts.unknown}',
-                        style: TextStyle(
-                          color: SiteStatus.unknown.color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   '${sites.length} sites',
                   style: const TextStyle(
@@ -155,6 +142,16 @@ class StateCard extends StatelessWidget {
       ),
     );
   }
+
+  /// The per-status tallies in display order — one list drives both the
+  /// numbers and the bar, so a status can't appear in one and not the other.
+  static List<(int, SiteStatus)> _tallies(StatusCounts counts) => [
+    (counts.open, SiteStatus.open),
+    (counts.blitz, SiteStatus.blitz),
+    (counts.closed, SiteStatus.closed),
+    (counts.cameraOnly, SiteStatus.cameraOnly),
+    (counts.unknown, SiteStatus.unknown),
+  ];
 
   Widget _statusBar(StatusCounts counts) {
     final total = counts.total;
@@ -171,26 +168,12 @@ class StateCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(2),
       child: Row(
         children: [
-          if (counts.open > 0)
-            Expanded(
-              flex: counts.open,
-              child: Container(height: 4, color: SiteStatus.open.color),
-            ),
-          if (counts.blitz > 0)
-            Expanded(
-              flex: counts.blitz,
-              child: Container(height: 4, color: SiteStatus.blitz.color),
-            ),
-          if (counts.closed > 0)
-            Expanded(
-              flex: counts.closed,
-              child: Container(height: 4, color: SiteStatus.closed.color),
-            ),
-          if (counts.unknown > 0)
-            Expanded(
-              flex: counts.unknown,
-              child: Container(height: 4, color: SiteStatus.unknown.color),
-            ),
+          for (final (count, status) in _tallies(counts))
+            if (count > 0)
+              Expanded(
+                flex: count,
+                child: Container(height: 4, color: status.color),
+              ),
         ],
       ),
     );

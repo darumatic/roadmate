@@ -219,9 +219,14 @@ class HomeScreen extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
+                            // 3:2 with the time beside it, so the longest
+                            // label (Camera Only / BGD) isn't shrunk to fit
+                            // an even split of a 200 px tile.
                             Flexible(
+                              flex: 3,
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
                                 child: Text(
                                   statusDisplayLabel(s.currentStatus),
                                   maxLines: 1,
@@ -234,6 +239,7 @@ class HomeScreen extends ConsumerWidget {
                               ),
                             ),
                             Expanded(
+                              flex: 2,
                               child: Text(
                                 _relativeTime(s.lastReportAt!),
                                 textAlign: TextAlign.end,

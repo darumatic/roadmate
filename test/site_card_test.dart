@@ -14,6 +14,7 @@ import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/username_logic.dart';
 import 'package:roadmate/services/username_store.dart';
+import 'package:roadmate/theme/app_theme.dart';
 import 'package:roadmate/widgets/level_badge.dart';
 import 'package:roadmate/widgets/site_card.dart';
 
@@ -762,6 +763,207 @@ void main() {
       expect(repo.reports, isEmpty);
       expect(find.text(kLocationRequiredMessage), findsOneWidget);
       expect(find.textContaining('Could not submit'), findsNothing);
+    });
+  });
+
+  // Issue #48: the fourth status. One large blue text-only button under the
+  // row of three, directly above Report activity; when it is current, Closed
+  // must show no red at all.
+  group('Camera Only / BGD button (issue #48)', () {
+    const blue = Color(0xFF3B82F6);
+    const red = Color(0xFFEF4444);
+
+    BoxDecoration decorationOf(WidgetTester tester, Finder within) {
+      final container = tester.widget<Container>(
+        find.descendant(of: within, matching: find.byType(Container)).first,
+      );
+      return container.decoration! as BoxDecoration;
+    }
+
+    /// The vote button whose label is [label] — its nearest Container.
+    BoxDecoration buttonDecoration(WidgetTester tester, String label) {
+      final container = tester.widget<Container>(
+        find
+            .ancestor(of: find.text(label), matching: find.byType(Container))
+            .first,
+      );
+      return container.decoration! as BoxDecoration;
+    }
+
+    Color borderOf(BoxDecoration d) => (d.border! as Border).top.color;
+
+    testWidgets('sits under the row of three and directly above Report '
+        'activity, full width, with no icon', (tester) async {
+      await _pump(tester, FakeSiteRepository());
+      await tester.pumpAndSettle();
+
+      final button = find.byKey(cameraOnlyVoteKey);
+      expect(button, findsOneWidget);
+      expect(
+        find.descendant(of: button, matching: find.text('Camera Only / BGD')),
+        findsOneWidget,
+      );
+      // Text only — the brief rules out a camera icon (or any other).
+      expect(
+        find.descendant(of: button, matching: find.byType(Icon)),
+        findsNothing,
+      );
+
+      final rowBottom = tester.getBottomLeft(find.text('Blitz')).dy;
+      final reportTop = tester.getTopLeft(find.text('Report activity')).dy;
+      final rect = tester.getRect(button);
+      expect(rect.top, greaterThan(rowBottom));
+      expect(rect.bottom, lessThan(reportTop));
+      // As wide as the row of three above it: flush with Open/Working on the
+      // left and with Closed on the right.
+      Rect buttonRect(IconData icon) => tester.getRect(
+        find
+            .ancestor(of: find.byIcon(icon), matching: find.byType(Container))
+            .first,
+      );
+      expect(rect.left, buttonRect(Icons.check_circle_outline).left);
+      expect(rect.right, buttonRect(Icons.cancel_outlined).right);
+    });
+
+    testWidgets('a tap casts the Camera Only / BGD status, signed', (
+      tester,
+    ) async {
+      final repo = FakeSiteRepository();
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(cameraOnlyVoteKey));
+      await tester.pumpAndSettle();
+
+      expect(repo.votes, [('nsw-1', SiteStatus.cameraOnly, 'Test Driver')]);
+      expect(repo.reports, isEmpty);
+      expect(find.text('Reported Camera Only / BGD — thanks!'), findsOneWidget);
+    });
+
+    testWidgets('reads blue even when it is not the current status', (
+      tester,
+    ) async {
+      await _pump(tester, FakeSiteRepository()); // status: closed
+      await tester.pumpAndSettle();
+
+      final label = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(cameraOnlyVoteKey),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(label.style?.color, blue);
+      final decoration = decorationOf(tester, find.byKey(cameraOnlyVoteKey));
+      expect(decoration.color, Colors.transparent); // not lit
+      expect(borderOf(decoration).a, closeTo(0.45, 0.01));
+    });
+
+    testWidgets('when current it is lit, and Closed shows no red at all while '
+        'Open and Blitz keep their faint tint', (tester) async {
+      await _pump(
+        tester,
+        FakeSiteRepository(),
+        site: _site.copyWith(
+          currentStatus: SiteStatus.cameraOnly,
+          lastReportAt: DateTime.now(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Lit: filled and fully bordered in blue; the badge says so too.
+      final lit = decorationOf(tester, find.byKey(cameraOnlyVoteKey));
+      expect(lit.color, blue.withValues(alpha: 0.18));
+      expect(borderOf(lit), blue);
+      expect(
+        find.text('Camera Only / BGD'),
+        findsNWidgets(2),
+      ); // badge + button
+
+      // Closed: neutral grey border, no fill, grey icon and label.
+      final closed = buttonDecoration(tester, 'Closed');
+      expect(closed.color, Colors.transparent);
+      expect(borderOf(closed), AppTheme.border);
+      expect(
+        tester.widget<Text>(find.text('Closed')).style?.color,
+        AppTheme.textSecondary,
+      );
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.cancel_outlined)).color,
+        AppTheme.textSecondary,
+      );
+      // Nothing on the card is red.
+      final reds = tester
+          .widgetList<Container>(
+            find.descendant(
+              of: find.byType(SiteCard),
+              matching: find.byType(Container),
+            ),
+          )
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .where(
+            (d) =>
+                d.color?.toARGB32() == red.toARGB32() ||
+                (d.border is Border &&
+                    ((d.border! as Border).top.color.toARGB32() & 0xFFFFFF) ==
+                        (red.toARGB32() & 0xFFFFFF)),
+          );
+      expect(reds, isEmpty);
+
+      // Open and Blitz keep the faint status tint unselected buttons have.
+      expect(
+        borderOf(buttonDecoration(tester, 'Open/Working')).a,
+        closeTo(0.3, 0.01),
+      );
+      expect(borderOf(buttonDecoration(tester, 'Blitz')).a, closeTo(0.3, 0.01));
+    });
+
+    testWidgets('Closed keeps its faint red tint whenever Camera Only / BGD '
+        'is NOT the current status', (tester) async {
+      await _pump(
+        tester,
+        FakeSiteRepository(),
+        site: _site.copyWith(currentStatus: SiteStatus.open),
+      );
+      await tester.pumpAndSettle();
+
+      final closed = borderOf(buttonDecoration(tester, 'Closed'));
+      expect(closed.toARGB32() & 0xFFFFFF, red.toARGB32() & 0xFFFFFF);
+      expect(closed.a, closeTo(0.3, 0.01));
+    });
+
+    testWidgets('the Report activity dialog no longer offers BGD or Camera '
+        'Only — they are the status button now', (tester) async {
+      await _pump(tester, FakeSiteRepository());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Report activity'));
+      await tester.pumpAndSettle();
+
+      final chips = tester
+          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+          .map((c) => (c.label as Text).data);
+      expect(chips, ['Long queue', 'Delays', 'Police present', 'Other']);
+    });
+
+    testWidgets('fits a 320 px phone with the longest badge and chip', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await _pump(
+        tester,
+        FakeSiteRepository(),
+        site: _site.copyWith(
+          currentStatus: SiteStatus.cameraOnly,
+          lastReportAt: DateTime.now(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull); // no RenderFlex overflow
     });
   });
 }

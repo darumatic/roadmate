@@ -135,13 +135,35 @@ final adminRepositoryProvider = Provider<AdminRepository>((ref) {
   );
 });
 
-final sitesProvider = StreamProvider<List<Site>>((ref) {
-  // Statuses go grey/Unknown once the last report is >10h old (issue #21);
-  // applied here so every consumer of the site list gets the same rule.
-  return ref
-      .watch(siteRepositoryProvider)
-      .watchSites()
-      .map(withEffectiveStatus);
+/// The site documents exactly as stored. Only [sitesProvider] and
+/// [refreshSiteData] should read this — screens want the display statuses.
+final storedSitesProvider = StreamProvider<List<Site>>((ref) {
+  return ref.watch(siteRepositoryProvider).watchSites();
+});
+
+/// The site list every screen consumes, with each status resolved to the one
+/// to display (`withEffectiveStatus`): stale statuses go grey/Unknown once the
+/// last report is >10h old (issue #21), and a site whose latest word is a
+/// Camera Only / BGD report shows that fourth status (issue #48), which exists
+/// only in the reports stream. Applied here so every consumer gets one rule.
+///
+/// A plain provider over the two listeners rather than a combined stream, so
+/// each Firestore listener stays single and shared — rebuilding a stream
+/// provider on every report would re-subscribe (and re-bill) the whole site
+/// list.
+///
+/// It deliberately **never waits on the reports**: their query is new every
+/// session, and Firestore holds back an empty first snapshot until the server
+/// answers (up to ~10 s in a coverage hole), which would stall the cached site
+/// list and the approach prompt it feeds. While they load — or if they fail —
+/// the stored statuses show, exactly what old builds display anyway.
+final sitesProvider = Provider<AsyncValue<List<Site>>>((ref) {
+  final stored = ref.watch(storedSitesProvider);
+  final reports =
+      ref.watch(recentReportsProvider).value ?? const <SiteReport>[];
+  return stored.whenData(
+    (sites) => withEffectiveStatus(sites, recentReports: reports),
+  );
 });
 
 final favouriteSiteIdsProvider = StreamProvider<Set<String>>((ref) {
@@ -179,8 +201,10 @@ final siteReportsProvider =
 /// snapshot listener is already live, so it is only restarted after an error
 /// (retry); restarting a working one would re-bill its whole result set.
 Future<void> refreshSiteData(WidgetRef ref) async {
+  // The listeners themselves — [sitesProvider] is derived from the first two
+  // and follows them; invalidating it would restart nothing.
   for (final provider in [
-    sitesProvider,
+    storedSitesProvider,
     recentReportsProvider,
     favouriteSiteIdsProvider,
   ]) {
@@ -188,7 +212,7 @@ Future<void> refreshSiteData(WidgetRef ref) async {
       ref.invalidate(provider);
     }
   }
-  await ref.read(sitesProvider.future);
+  await ref.read(storedSitesProvider.future);
 }
 
 final pendingSitesProvider = StreamProvider<List<Site>>((ref) {

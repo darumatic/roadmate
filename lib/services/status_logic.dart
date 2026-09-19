@@ -24,20 +24,85 @@ SiteStatus effectiveStatus(
   return reported;
 }
 
-/// Maps every site's [Site.currentStatus] through [effectiveStatus], so stale
-/// statuses render as Unknown everywhere the site list is consumed.
-List<Site> withEffectiveStatus(List<Site> sites, {DateTime? now}) {
+/// What a Camera Only / BGD press (issue #48) is stored as: the legacy
+/// 'Camera Only' activity report. The status has no stored form — every
+/// shipped build parses an unknown status string as OPEN, and shipped phones
+/// can't be hot-updated — so it rides on a document old builds already list
+/// as a report, and [reportedStatusOf] turns it back into a status here.
+const ActivityReportType cameraOnlyWireType = ActivityReportType.noActivity;
+
+/// The status a report asserts, or null when it asserts none: a vote's own
+/// status, or Camera Only / BGD for the two activity types that mean it. Both
+/// count — whoever posted them, from whatever build — so an old build's
+/// 'Camera Only' or 'BGD' report lights the fourth status for everyone who
+/// can see it.
+SiteStatus? reportedStatusOf(SiteReport report) {
+  final voted = report.status;
+  if (voted != null) return voted;
+  return (report.activityType?.meansCameraOnly ?? false)
+      ? SiteStatus.cameraOnly
+      : null;
+}
+
+/// Each site's newest status-bearing report inside [window], keyed by site id.
+/// Compares `createdAt` explicitly rather than trusting the stream's order.
+Map<String, SiteReport> latestStatusReports(
+  Iterable<SiteReport> reports, {
+  required DateTime now,
+  Duration window = statusFreshWindow,
+}) {
+  final cutoff = now.subtract(window);
+  final latest = <String, SiteReport>{};
+  for (final r in reports) {
+    if (reportedStatusOf(r) == null || !r.createdAt.isAfter(cutoff)) continue;
+    final seen = latest[r.siteId];
+    if (seen == null || r.createdAt.isAfter(seen.createdAt)) {
+      latest[r.siteId] = r;
+    }
+  }
+  return latest;
+}
+
+/// The site list every screen consumes: each [Site.currentStatus] becomes the
+/// status to *display*.
+///
+/// Stored statuses go through [effectiveStatus], so stale ones render as
+/// Unknown. On top of that, a site whose newest status-bearing report in
+/// [recentReports] says Camera Only / BGD displays that — so a later
+/// Open/Blitz/Closed vote (even from an old build) supersedes it, and an admin
+/// removing or re-typing the report reverts it with no counter to fix. The
+/// report proves its own freshness, so the override doesn't consult the site's
+/// `lastReportAt`; it only lifts it, for the "reported Xm ago" lines.
+///
+/// With no [recentReports] (the stream still loading, or failed) this is
+/// exactly the stored-status rule old builds apply — it fails soft.
+List<Site> withEffectiveStatus(
+  List<Site> sites, {
+  Iterable<SiteReport> recentReports = const [],
+  DateTime? now,
+}) {
   final at = now ?? DateTime.now();
-  return [
-    for (final s in sites)
-      s.copyWith(
-        currentStatus: effectiveStatus(
-          s.currentStatus,
-          s.lastReportAt,
-          now: at,
-        ),
-      ),
-  ];
+  final latest = latestStatusReports(recentReports, now: at);
+  return [for (final s in sites) _withDisplayStatus(s, latest[s.id], at)];
+}
+
+Site _withDisplayStatus(Site site, SiteReport? latest, DateTime now) {
+  if (latest != null && reportedStatusOf(latest) == SiteStatus.cameraOnly) {
+    final touched = site.lastReportAt;
+    return site.copyWith(
+      currentStatus: SiteStatus.cameraOnly,
+      lastReportAt: touched != null && touched.isAfter(latest.createdAt)
+          ? touched
+          : latest.createdAt,
+    );
+  }
+  return site.copyWith(
+    currentStatus: effectiveStatus(
+      site.currentStatus,
+      site.lastReportAt,
+      now: now,
+    ),
+  );
 }
 
 /// Activity reports (BGD, Delays, …) still fresh enough to show to drivers —
