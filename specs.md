@@ -134,10 +134,15 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   commit without a green Web Release: mobile follows a positive web release.
   CodeQL stays on GitHub's **default setup** (the org's security configuration
   keeps it on, and an advanced-setup workflow's SARIF uploads conflict with
-  it), so the pipeline binds it in by polling for the commit's
-  `dynamic/github-code-scanning/*` workflow run rather than `needs:` (NOT by
-  check-run app: default setup's check runs report under plain
-  `github-actions`, which is indistinguishable from our own jobs).
+  it), so the pipeline binds it in by polling for the commit's dynamic
+  workflow run rather than `needs:` (NOT by check-run app: default setup's
+  check runs report under plain `github-actions`, which is indistinguishable
+  from our own jobs). The run is matched by **path family**
+  (`dynamic/github-code-(scanning|quality)/`), not one spelling: GitHub moved
+  it from `…code-scanning/codeql` to `…code-quality/codeql` with the run
+  otherwise unchanged, and a single-spelling matcher then timed out and
+  skipped the deploy of a fully green v1.0.22. It still fails closed on
+  anything else, and a timeout now lists the dynamic runs that did exist.
   A dispatch button was chosen over an auto-queued environment approval so
   ordinary pushes leave no pending-deployment nag — releases stay web-only by
   default. Details under **Deployment & domain → Release pipeline**.
@@ -520,16 +525,20 @@ They are approximate — verify exact site positions before production.
 
 Pushing `master` triggers **Web Release** (`.github/workflows/web-release.yml`):
 three parallel gates — the **CodeQL gate** (waits for GitHub's default-setup
-scan: the `dynamic/github-code-scanning/*` workflow run for the commit — it
-has no workflow file in this repo and its run names vary, e.g. "Code Quality:
-Push on master"), **Flutter CI**
+scan: the `dynamic/github-code-(scanning|quality)/*` workflow run for the
+commit — it has no workflow file in this repo, its run names vary, e.g. "Code
+Quality: Push on master", and GitHub has moved its path once already), **Flutter CI**
 (`flutter-ci.yml`, reusable: analyze + tests + Firestore-rules suite; still
 runs standalone on PRs) and **Visual Verification** (`visual-verification.yml`,
 reusable: `scripts/verify_web.sh` in headless Chrome) — then a deploy job
 (`needs:` all three) builds via `scripts/build_web.sh` (the media copy-back and
 registrant guard preserved from the old release.sh) and runs `firebase deploy
 --only hosting,firestore:rules,firestore:indexes` as the service account. A
-green push is live in ~15–20 min; `scripts/check_ci.sh [sha]` blocks on it.
+green push is live in ~15–20 min; `scripts/check_ci.sh [sha]` blocks on it
+(signed with `GH_TOKEN`/`GITHUB_TOKEN` or `gh`'s token when one exists and
+polling every 15 s, else anonymous and once a minute — an anonymous IP gets
+only 60 API requests an hour; an API error is printed as such, never folded
+into "queued").
 `scripts/release.sh` is now only the local half: tests → patch bump →
 commit+push.
 

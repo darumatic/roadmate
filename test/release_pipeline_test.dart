@@ -29,6 +29,36 @@ void main() {
       expect(wf, contains('./scripts/build_web.sh'));
     });
 
+    // v1.0.22: every gate was green, yet the release never deployed. GitHub
+    // had moved the default-setup scan's dynamic workflow from
+    // dynamic/github-code-scanning/codeql to dynamic/github-code-quality/codeql
+    // (same run name, same Analyze jobs); the gate matched only the first
+    // spelling, found nothing for 15 minutes, and failed closed.
+    test('the CodeQL gate finds the scan under either path GitHub has used, '
+        'and nothing else', () {
+      final wf = _read('.github/workflows/web-release.yml');
+      final pattern = RegExp(
+        r'select\(\.path \| test\("([^"]+)"\)\)',
+      ).firstMatch(wf);
+      expect(pattern, isNotNull, reason: 'the gate must match runs by path');
+      final path = RegExp(pattern!.group(1)!);
+
+      expect(path.hasMatch('dynamic/github-code-scanning/codeql'), isTrue);
+      expect(path.hasMatch('dynamic/github-code-quality/codeql'), isTrue);
+      // Fails closed on anything outside the family — our own workflows,
+      // other dynamic workflows, or a look-alike prefix.
+      expect(path.hasMatch('.github/workflows/web-release.yml'), isFalse);
+      expect(path.hasMatch('dynamic/pages/pages-build-deployment'), isFalse);
+      expect(path.hasMatch('x/dynamic/github-code-quality/codeql'), isFalse);
+
+      // Found is not enough: the run must have finished, and finished well.
+      expect(wf, contains('select(.status != "completed")'));
+      expect(wf, contains('.conclusion != "success"'));
+      // A timeout names the dynamic runs that DID exist, so the next path
+      // move is diagnosed from the log instead of by archaeology.
+      expect(wf, contains('select(.path | startswith("dynamic/"))'));
+    });
+
     test('flutter-ci.yml is callable and no longer double-runs on push', () {
       final wf = _read('.github/workflows/flutter-ci.yml');
       expect(wf, contains('workflow_call:'));
