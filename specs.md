@@ -132,17 +132,32 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   green chain deploys hosting + rules + indexes. Store builds moved to a
   **manual `workflow_dispatch`** (Mobile Release) whose preflight refuses any
   commit without a green Web Release: mobile follows a positive web release.
-  CodeQL stays on GitHub's **default setup** (the org's security configuration
-  keeps it on, and an advanced-setup workflow's SARIF uploads conflict with
-  it), so the pipeline binds it in by polling for the commit's dynamic
-  workflow run rather than `needs:` (NOT by check-run app: default setup's
-  check runs report under plain `github-actions`, which is indistinguishable
-  from our own jobs). The run is matched by **path family**
-  (`dynamic/github-code-(scanning|quality)/`), not one spelling: GitHub moved
-  it from `…code-scanning/codeql` to `…code-quality/codeql` with the run
-  otherwise unchanged, and a single-spelling matcher then timed out and
-  skipped the deploy of a fully green v1.0.22. It still fails closed on
-  anything else, and a timeout now lists the dynamic runs that did exist.
+  CodeQL runs on GitHub's **default setup**, configured on the repo itself
+  (Settings → Code security; **no org security configuration is attached**,
+  so nothing re-enables it if it is switched off — the API had it
+  `not-configured`, with no analysis ever uploaded, until it was turned on).
+  It analyses **`actions`, `javascript-typescript` and `python`** — the
+  workflows that hold the deploy/store secrets and the release, backup and
+  auto-fixer scripts. **Dart is not a CodeQL language**, so the app itself is
+  never scanned. **Kotlin and Swift stay deselected on purpose:** CodeQL has
+  to *build* them, its autobuild cannot build a Flutter project's `android/`
+  and `ios/` folders (no Flutter SDK, no generated config), and they are four
+  files of Flutter boilerplate — a failing scan would block every release at
+  the gate below, the unattended auto-fixer's included. Default setup over an
+  advanced-setup workflow because the two conflict on SARIF uploads. A second
+  scan, GitHub **Code Quality**, runs beside it on the same engine.
+  The pipeline binds both in by polling for the commit's dynamic workflow
+  runs rather than `needs:` (NOT by check-run app: their check runs report
+  under plain `github-actions`, indistinguishable from our own jobs), and
+  every run found must finish green. Runs are matched by **path family**
+  (`dynamic/github-code-(scanning|quality)/`), not one spelling: GitHub once
+  moved the Code Quality run from `…code-scanning/codeql` to
+  `…code-quality/codeql`, otherwise unchanged, and a single-spelling matcher
+  then timed out and skipped the deploy of a fully green v1.0.22. It still
+  fails closed on anything else, and a timeout lists the dynamic runs that
+  did exist. Every workflow declares a read-only top-level `permissions:`
+  block (guarded by `test/release_pipeline_test.dart`) — the first scan's
+  only findings were `flutter-ci.yml` lacking one.
   A dispatch button was chosen over an auto-queued environment approval so
   ordinary pushes leave no pending-deployment nag — releases stay web-only by
   default. Details under **Deployment & domain → Release pipeline**.
@@ -524,10 +539,10 @@ They are approximate — verify exact site positions before production.
 ### Release pipeline (GitHub Actions, 2026-08-24)
 
 Pushing `master` triggers **Web Release** (`.github/workflows/web-release.yml`):
-three parallel gates — the **CodeQL gate** (waits for GitHub's default-setup
-scan: the `dynamic/github-code-(scanning|quality)/*` workflow run for the
-commit — it has no workflow file in this repo, its run names vary, e.g. "Code
-Quality: Push on master", and GitHub has moved its path once already), **Flutter CI**
+three parallel gates — the **CodeQL gate** (waits for GitHub's scans of the
+commit: the `dynamic/github-code-(scanning|quality)/*` workflow runs — "CodeQL"
+security code scanning and "Code Quality: …" — which have no workflow file in
+this repo; every one found must finish green), **Flutter CI**
 (`flutter-ci.yml`, reusable: analyze + tests + Firestore-rules suite; still
 runs standalone on PRs) and **Visual Verification** (`visual-verification.yml`,
 reusable: `scripts/verify_web.sh` in headless Chrome) — then a deploy job

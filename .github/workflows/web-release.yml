@@ -42,17 +42,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Default setup runs as a "dynamic" workflow with no file in this
-          # repo (run names vary — "CodeQL", "Code Quality: ...") whose check
-          # runs report under the ordinary github-actions app, so the reliable
-          # signal is the dynamic workflow run for this commit, matched by its
-          # path. GitHub has MOVED that path under us before:
-          # dynamic/github-code-scanning/codeql became
-          # dynamic/github-code-quality/codeql — same run name, same Analyze
-          # jobs — and a matcher that knew only the first spelling found
-          # nothing, timed out, and skipped the deploy of a fully green
-          # release. So match the family, not one spelling; anything outside
-          # it still finds nothing and fails closed.
+          # GitHub's CodeQL scans run as "dynamic" workflows with no file in
+          # this repo, and their check runs report under the ordinary
+          # github-actions app, so the reliable signal is the dynamic workflow
+          # run for this commit, matched by its path. Two of them exist:
+          #   dynamic/github-code-scanning/codeql  "CodeQL" — security code
+          #     scanning (default setup: actions, javascript-typescript, python)
+          #   dynamic/github-code-quality/codeql   "Code Quality: ..."
+          # and every one found must finish green. Match the FAMILY, not one
+          # spelling: GitHub once moved the Code Quality run from the first
+          # path to the second — same name, same Analyze jobs — and a matcher
+          # that knew only the first found nothing, timed out, and skipped
+          # the deploy of a fully green release. Anything outside the family
+          # still finds nothing and fails closed.
           # 45 polls x 20s = 15 min ceiling (the scan itself takes ~2-6 min).
           for i in $(seq 1 45); do
             runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100" \

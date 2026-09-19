@@ -8,6 +8,14 @@ on:
   pull_request:
   workflow_call:
 
+# Least privilege, like every other workflow here: both jobs only read the
+# repo. Without this block a standalone pull-request run gets the repository's
+# DEFAULT token permissions, whatever they happen to be (CodeQL:
+# actions/missing-workflow-permissions). Called from web-release.yml it must
+# not ask for more than that caller grants — `contents: read` is exactly that.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

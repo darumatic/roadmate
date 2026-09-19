@@ -59,6 +59,43 @@ void main() {
       expect(wf, contains('select(.path | startswith("dynamic/"))'));
     });
 
+    // CodeQL code scanning (actions/missing-workflow-permissions) flagged
+    // flutter-ci.yml the day it was enabled: with no `permissions:` block a
+    // workflow's GITHUB_TOKEN gets the repository's DEFAULT permissions,
+    // whatever they are. These workflows hold the deploy and store secrets,
+    // so every one states least privilege up front and a job that needs more
+    // (the CodeQL gate's `actions: read`) asks for it itself.
+    test('every workflow declares a read-only top-level token', () {
+      final workflows =
+          Directory('.github/workflows')
+              .listSync()
+              .whereType<File>()
+              .where((f) => f.path.endsWith('.yml') || f.path.endsWith('.yaml'))
+              .toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
+      expect(workflows, isNotEmpty);
+
+      final topLevelPermissions = RegExp(
+        r'^permissions:\n((?:  .+\n)+)',
+        multiLine: true,
+      );
+      for (final file in workflows) {
+        final wf = file.readAsStringSync();
+        final block = topLevelPermissions.firstMatch(wf);
+        expect(
+          block,
+          isNotNull,
+          reason: '${file.path} has no top-level permissions block',
+        );
+        expect(
+          block!.group(1),
+          isNot(contains('write')),
+          reason: '${file.path} grants write to every job — scope it to one',
+        );
+        expect(wf, isNot(contains('write-all')), reason: file.path);
+      }
+    });
+
     test('flutter-ci.yml is callable and no longer double-runs on push', () {
       final wf = _read('.github/workflows/flutter-ci.yml');
       expect(wf, contains('workflow_call:'));
