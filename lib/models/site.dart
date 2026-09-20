@@ -21,6 +21,7 @@ class Site {
     this.blitzVotes = 0,
     this.closedVotes = 0,
     this.lastReportAt,
+    this.statusReportedAt,
     this.approved = true,
     this.createdBy,
   });
@@ -49,7 +50,19 @@ class Site {
   final int openVotes;
   final int blitzVotes;
   final int closedVotes;
+
+  /// When the latest report of ANY kind came in (a vote, Camera Only / BGD, or
+  /// an activity report such as "Long queue"): the card's "reported Xm ago" and
+  /// Home's Recently Active. It says the site is being talked about — not that
+  /// its status is current; that is [statusReportedAt]'s job.
   final DateTime? lastReportAt;
+
+  /// When the report behind [currentStatus] was made — what "Reported Closed
+  /// 3h ago" must quote, since a later "Long queue" report moves
+  /// [lastReportAt] without saying anything about the status. Display-only:
+  /// derived by `withEffectiveStatus`, never stored and never parsed.
+  final DateTime? statusReportedAt;
+
   final bool approved;
   final String? createdBy;
 
@@ -184,6 +197,7 @@ class Site {
     int? blitzVotes,
     int? closedVotes,
     DateTime? lastReportAt,
+    DateTime? statusReportedAt,
   }) {
     return Site(
       id: id,
@@ -201,6 +215,7 @@ class Site {
       blitzVotes: blitzVotes ?? this.blitzVotes,
       closedVotes: closedVotes ?? this.closedVotes,
       lastReportAt: lastReportAt ?? this.lastReportAt,
+      statusReportedAt: statusReportedAt ?? this.statusReportedAt,
       approved: approved,
       createdBy: createdBy,
     );

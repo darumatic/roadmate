@@ -9,9 +9,11 @@ import '../models/site_report.dart';
 /// the site falls back to [SiteStatus.unknown].
 const Duration statusFreshWindow = Duration(hours: 10);
 
-/// The status a site should display, given its stored (denormalised) status
-/// and when it was last reported (issue #21): a site with no report, or whose
-/// latest report is older than [window], shows [SiteStatus.unknown].
+/// The **stored rule** — all a build can do with the site doc alone, and what
+/// every shipped build does: the stored (denormalised) status counts while
+/// [lastReportAt] is inside [window] (issue #21), else [SiteStatus.unknown].
+/// `lastReportAt` moves on ANY report, so this can't tell a fresh vote from a
+/// fresh "Long queue"; [withEffectiveStatus] uses it only as the fallback.
 SiteStatus effectiveStatus(
   SiteStatus reported,
   DateTime? lastReportAt, {
@@ -63,45 +65,81 @@ Map<String, SiteReport> latestStatusReports(
   return latest;
 }
 
+/// Runaway-cost guard on the shared recent-reports query. At the enforced
+/// rate limit (5 actions/5min/user) it only bites under coordinated spam, and
+/// the query is newest-first, so the freshest reports win. A list this long
+/// may be missing the older end of the window — see [withEffectiveStatus].
+const int recentReportsQueryCap = 500;
+
 /// The site list every screen consumes: each [Site.currentStatus] becomes the
-/// status to *display*.
+/// status to *display*, and [Site.statusReportedAt] when it was reported.
 ///
-/// Stored statuses go through [effectiveStatus], so stale ones render as
-/// Unknown. On top of that, a site whose newest status-bearing report in
-/// [recentReports] says Camera Only / BGD displays that — so a later
-/// Open/Blitz/Closed vote (even from an old build) supersedes it, and an admin
-/// removing or re-typing the report reverts it with no counter to fix. The
-/// report proves its own freshness, so the override doesn't consult the site's
-/// `lastReportAt`; it only lifts it, for the "reported Xm ago" lines.
+/// **A status is current only while a status report stands behind it**
+/// (issue #49): the newest Open / Blitz / Closed vote or Camera Only / BGD
+/// report inside the 10h window is the site's status; with none, the site is
+/// Unknown. The reports decide, not the site doc — so a later vote (even from
+/// an old build) supersedes Camera Only / BGD, an admin removing or re-typing
+/// a report reverts it with no counter to fix, and a "Long queue" no longer
+/// brings a weeks-old Blitz back to life. That last one is what the stored
+/// rule gets wrong: every activity report touches the site's `lastReportAt`,
+/// the only thing [effectiveStatus] can look at, so ANY report makes the last
+/// stored vote read as fresh — however old it is.
 ///
-/// With no [recentReports] (the stream still loading, or failed) this is
-/// exactly the stored-status rule old builds apply — it fails soft.
+/// [Site.lastReportAt] keeps meaning "a report of any kind": the card's
+/// "reported Xm ago" and Home's Recently Active follow every report, exactly
+/// as old builds show them. It is only lifted to the status report's time
+/// when the site doc lags behind it.
+///
+/// The stored rule remains the fallback, per site, whenever the reports can't
+/// vouch for "no status report": [recentReports] is null (the stream is still
+/// loading, or failed — the site list never waits on it), or it has hit
+/// [recentReportsQueryCap] and may be cut short. That fallback is exactly what
+/// old builds display, so it fails soft.
 List<Site> withEffectiveStatus(
   List<Site> sites, {
-  Iterable<SiteReport> recentReports = const [],
+  Iterable<SiteReport>? recentReports,
   DateTime? now,
 }) {
   final at = now ?? DateTime.now();
-  final latest = latestStatusReports(recentReports, now: at);
-  return [for (final s in sites) _withDisplayStatus(s, latest[s.id], at)];
+  final reports = recentReports?.toList(growable: false);
+  final latest = latestStatusReports(reports ?? const [], now: at);
+  final complete = reports != null && reports.length < recentReportsQueryCap;
+  return [
+    for (final s in sites)
+      _withDisplayStatus(s, latest[s.id], at, reportsComplete: complete),
+  ];
 }
 
-Site _withDisplayStatus(Site site, SiteReport? latest, DateTime now) {
-  if (latest != null && reportedStatusOf(latest) == SiteStatus.cameraOnly) {
+Site _withDisplayStatus(
+  Site site,
+  SiteReport? latest,
+  DateTime now, {
+  required bool reportsComplete,
+}) {
+  if (latest != null) {
     final touched = site.lastReportAt;
     return site.copyWith(
-      currentStatus: SiteStatus.cameraOnly,
+      currentStatus: reportedStatusOf(latest),
+      statusReportedAt: latest.createdAt,
       lastReportAt: touched != null && touched.isAfter(latest.createdAt)
           ? touched
           : latest.createdAt,
     );
   }
+  if (reportsComplete) {
+    // Every report in the window is here, and none of them asserts a status:
+    // whatever keeps `lastReportAt` fresh, it isn't a status report.
+    return site.copyWith(currentStatus: SiteStatus.unknown);
+  }
+  final stored = effectiveStatus(
+    site.currentStatus,
+    site.lastReportAt,
+    now: now,
+  );
   return site.copyWith(
-    currentStatus: effectiveStatus(
-      site.currentStatus,
-      site.lastReportAt,
-      now: now,
-    ),
+    currentStatus: stored,
+    // The stored rule can't tell a vote from a touch; the touch is all it has.
+    statusReportedAt: stored == SiteStatus.unknown ? null : site.lastReportAt,
   );
 }
 

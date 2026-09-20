@@ -34,7 +34,7 @@ void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('web smoke: home, info hub, share store buttons, state detail, '
-      'Camera Only / BGD press', (tester) async {
+      'Camera Only / BGD press, activity is not a status', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -92,7 +92,16 @@ void main() {
       find.byTooltip('Open in Maps'),
       findsNWidgets(find.byType(SiteCard).evaluate().length),
     );
-    final firstCard = find.byType(SiteCard).first;
+    // Cards are addressed by site id from here on: the list is lazy, so a
+    // positional finder quietly starts meaning another card once scrolling
+    // disposes the ones above it.
+    Finder cardOf(String id) =>
+        find.byWidgetPredicate((w) => w is SiteCard && w.site.id == id);
+    String idAt(int index) =>
+        tester.widget<SiteCard>(find.byType(SiteCard).at(index)).site.id;
+    final firstId = idAt(0);
+    final queueId = idAt(1);
+    final firstCard = cardOf(firstId);
     final mapsIcon = find
         .descendant(
           of: firstCard,
@@ -138,13 +147,57 @@ void main() {
     await tester.tap(cameraButton);
     await tester.pumpAndSettle();
 
-    final pressedCard = find.byType(SiteCard).first;
-    expect(badgeOf(pressedCard).status, SiteStatus.cameraOnly);
+    expect(badgeOf(firstCard).status, SiteStatus.cameraOnly);
     expect(
-      find.descendant(of: pressedCard, matching: find.text('Camera Only')),
+      find.descendant(of: firstCard, matching: find.text('Camera Only')),
       findsOneWidget, // the activity row every build lists
     );
     expect(find.text('Reported Camera Only / BGD — thanks!'), findsOneWidget);
     await binding.takeScreenshot('05-camera-only');
+
+    // Issue #49: an activity report is not a status report. Filing "Long
+    // queue" on a site nobody has voted on touches its lastReportAt — which
+    // under the stored rule made it display its stored status, Open/Working,
+    // as if someone had just said so. It must stay Unknown, while "reported
+    // just now" and the Recent reports row still show the report.
+    final queueCard = cardOf(queueId);
+    expect(badgeOf(queueCard).status, SiteStatus.unknown);
+    final reportButton = find.descendant(
+      of: queueCard,
+      matching: find.text('Report activity'),
+    );
+    await tester.ensureVisible(reportButton);
+    await tester.pumpAndSettle();
+    await tester.tap(reportButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Submit')); // "Long queue" is preselected
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: queueCard, matching: find.text('Long queue')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: queueCard,
+        matching: find.textContaining('reported '),
+      ),
+      findsOneWidget,
+    );
+    expect(badgeOf(queueCard).status, SiteStatus.unknown);
+
+    // The same, from the list every screen consumes — the first card may have
+    // scrolled out of the lazy list by now, its site has not.
+    final shown = {
+      for (final site in ProviderScope.containerOf(
+        tester.element(queueCard),
+      ).read(sitesProvider).value!)
+        site.id: site,
+    };
+    expect(shown[queueId]!.currentStatus, SiteStatus.unknown);
+    expect(shown[queueId]!.lastReportAt, isNotNull);
+    // ...while Camera Only / BGD, which IS a status, still stands.
+    expect(shown[firstId]!.currentStatus, SiteStatus.cameraOnly);
+    await binding.takeScreenshot('06-queue-is-not-a-status');
   });
 }

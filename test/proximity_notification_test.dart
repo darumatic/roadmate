@@ -172,6 +172,21 @@ void main() {
       );
     });
 
+    // Issue #49: lastReportAt moves on ANY report. Quoting it here would say
+    // "Reported Closed 5m ago" about a Closed vote from three hours back.
+    test("the status line quotes the status report's own time, not the "
+        "site's latest report of any kind", () {
+      final now = DateTime(2026, 7, 26, 9, 0);
+      final site = _site(
+        status: SiteStatus.closed,
+        lastReportAt: now.subtract(
+          const Duration(minutes: 5),
+        ), // a queue report
+      ).copyWith(statusReportedAt: now.subtract(const Duration(hours: 3)));
+
+      expect(approachStatusLine(site, now: now), 'Reported Closed 3h ago');
+    });
+
     test('the status line names Camera Only / BGD like any other status', () {
       final now = DateTime(2026, 7, 26, 9, 0);
       expect(

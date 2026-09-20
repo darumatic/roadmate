@@ -38,12 +38,26 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
 - **`SiteRepository` abstraction** — one interface, a Firestore impl and a bundled-
   seed impl. Lets the app run offline/in-dev and keeps unit tests Firebase-free; the
   Firestore swap is a single line in `providers.dart`.
-- **Status model** — a site displays its stored `currentStatus` (the last
-  Open/Blitz/Closed vote) while `lastReportAt` is inside the **10 h** freshness
-  window, else **Unknown**; and a site whose newest status-bearing report is a
-  Camera Only / BGD report displays that fourth status instead (next entry).
-  Pure and unit-tested (`withEffectiveStatus` in `status_logic.dart`), applied
-  once, in `sitesProvider`, so every screen gets one rule.
+- **Status model: a status is current only while a status report stands
+  behind it (issue #49)** — a site's status is its **newest status report
+  inside the 10 h window**: an Open / Blitz / Closed vote, or a Camera Only /
+  BGD report (next entry); with none it is **Unknown**. The shared
+  recent-reports stream decides, not the site doc. The reason is what the
+  *stored rule* — all a shipped build can do, `currentStatus` while
+  `lastReportAt` is <10 h old — gets wrong: **every** activity report touches
+  `lastReportAt`, so any "Long queue" made the site's last vote read as fresh
+  however old it was (a three-week-old Blitz came back, BLITZ DETECTED banner
+  included). Old builds can't be changed and keep doing that.
+  `lastReportAt` still means *a report of any kind* — the card's "reported Xm
+  ago" and Home's Recently Active follow every report, as on old builds;
+  `Site.statusReportedAt` (display-only, never stored) is the status report's
+  own time, which is what "Reported Closed 3h ago" quotes. The stored rule
+  stays the per-site fallback whenever the reports can't vouch for "no status
+  report": still loading, failed, or at the 500-doc query cap
+  (`recentReportsQueryCap`) where the list may be cut short — i.e. it fails
+  soft to exactly what old builds show. Pure and unit-tested
+  (`withEffectiveStatus` in `status_logic.dart`), applied once, in
+  `sitesProvider`, so every screen gets one rule.
 - **Camera Only / BGD is a status with no stored form (issue #48)** — every
   build ever shipped parses an unknown status string as **Open**
   (`SiteStatus.fromName`'s fallback, there since the first commit), shipped
@@ -77,19 +91,18 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
     derivation is kept anyway — two sources of truth.
   - **Accepted limits:** (a) old builds keep showing the site's last stored
     vote beside the "Camera Only" row, and show it as fresh for 10 h because
-    the touch is kept — what every activity report has always done (#49);
-    (b) the site list **never waits on the reports listener** — its query is
-    new every session and Firestore holds back an empty first snapshot until
-    the server answers, ~10 s in a coverage hole, which would stall the cached
-    list and the approach prompt — so on a cold start a camera site can paint
-    its stored status for a moment; (c) the blue status lights at server
-    acknowledgement, not at tap: a pending server timestamp never matches the
-    listener's `createdAt >=` range filter, so the doc only appears at ack
-    (#50); (d) a camera report that ages past 10 h while later non-status
-    activity keeps `lastReportAt` fresh falls back to the older stored vote
-    (#49 cures this too). The listener now opens at startup rather than with
-    the first site list — still ONE shared listener, ≤ ~20 docs a session at
-    current volume (#51).
+    the touch is kept. That is intended: Camera Only / BGD is a site status,
+    and a status report updates the site's last report on every build (the
+    owner's call on #49); (b) the site list **never waits on the reports
+    listener** — its query is new every session and Firestore holds back an
+    empty first snapshot until the server answers, ~10 s in a coverage hole,
+    which would stall the cached list and the approach prompt — so on a cold
+    start a site can paint its stored status for the moment before the
+    reports land; (c) a status lights at server acknowledgement, not at tap:
+    a pending server timestamp never matches the listener's `createdAt >=`
+    range filter, so the doc only appears at ack (#50). The listener now opens
+    at startup rather than with the first site list — still ONE shared
+    listener, ≤ ~20 docs a session at current volume (#51).
 - **Security posture** — **validated** writes (a vote must bump exactly
   one counter by +1, fields locked); community **Add Site → pending** (moderated);
   posting reports/votes needs a real account (see above).
@@ -511,6 +524,7 @@ They are approximate — verify exact site positions before production.
 | Beep fires the moment the driver hits limit+1 km/h (issue #19) | ✅ Done — `shouldAlert`/`isOverLimit` use `>=` (was strict `>`, leaving a dead zone at exactly +1) |
 | "Unknown" status when the last report is >10h old (issue #21) | ✅ Done — `SiteStatus.unknown` (grey); `effectiveStatus`/`withEffectiveStatus` in `status_logic.dart` applied in `sitesProvider`; vote buttons come from `SiteStatus.votable` so Unknown is display-only and all three buttons render greyed |
 | "Camera Only / BGD" fourth status (issue #48) | ✅ Done (**web-first** — phones get the button with their next store release; old builds keep working and see each press as the "Camera Only" activity report they always listed) — one large blue text-only button under the row of three on the site card and the approach prompt (the Android notification keeps its three actions — the platform shows at most three); when it is current, Closed renders with no red at all. `SiteStatus.cameraOnly` is display-only: stored as the legacy activity report, derived back in `withEffectiveStatus` (see Key decisions). BGD / Camera Only left the Report activity dialog (`ActivityReportType.reportable`); the admin edit dialog keeps every type. State cards tally it in blue (`StatusCounts.cameraOnly`). Covered by `test/status_logic_test.dart`, `test/models_test.dart` (the wire literal), `test/providers_sites_test.dart`, `test/site_repository_routing_test.dart`, `test/site_card_test.dart`, `test/proximity_prompt_test.dart`, four checks in `test/rules/rules_test.mjs`, and a real press → derive → render pass in `integration_test/app_test.dart` |
+| An activity report no longer revives an old status (issue #49) | ✅ Done (**web-first**; old builds can't be changed) — a status is current only while a status report (Open / Blitz / Closed vote or Camera Only / BGD) is inside the 10 h window; "Long queue", "Delays", "Police present" and "Other" still list under Recent reports and still move "reported Xm ago" / Recently Active, but no longer make a weeks-old vote — or the BLITZ DETECTED banner — reappear. `withEffectiveStatus` derives it from the shared reports stream with the stored rule as the fail-soft fallback (loading / failed / at the 500 cap); `Site.statusReportedAt` gives the approach prompt the status report's own time. Covered by `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/proximity_notification_test.dart` and a real "Long queue stays Unknown" pass in `integration_test/app_test.dart`; test fakes serve the vote behind each stored status via `test/support/status_reports.dart` |
 | Speaker toggle mutes the over-limit alarm (issue #22) | ✅ Done — icon top-right of Home; `soundEnabledProvider`, persisted via `TripHistoryStore.saveSoundEnabled`; muting doesn't consume the rising edge, so unmuting mid-breach beeps on the next reading |
 | Back-to-top arrow on long lists (issue #25) | ✅ Done — `widgets/back_to_top.dart` overlays a small FAB after 400px of scroll on Home and state detail |
 | Bottom-nav oversized padding on iOS (issue #26) | ✅ Done — the shell's `MediaQuery.removePadding` (context outside the Scaffold) re-introduced the notch top inset into the nav bar's internal SafeArea; now strips top+bottom (`ShellBottomBar`), bar lays out at the bare 80pt M3 height |
@@ -963,12 +977,10 @@ to renew it.
    in `~/backups/backup.log`, which nobody reads. Remaining nice-to-have: a
    positive freshness check (alert when no recent snapshot exists, catching
    e.g. cron itself being dead).
-8. **Status freshness & posting feedback (from issue #48)** — #49: activity
-   reports revive a stale stored vote as "fresh" on every build (derive
-   Open/Blitz/Closed from status-bearing reports too); #50: no on-screen
-   feedback until the server acknowledges a post (optimistic overlay); #51:
-   the recent-reports listener is app-lifetime with a cutoff fixed at
-   subscription (re-subscribe on a long timer once volume grows).
+8. **Posting feedback & the reports listener (from issue #48)** — #50: no
+   on-screen feedback until the server acknowledges a post (optimistic
+   overlay); #51: the recent-reports listener is app-lifetime with a cutoff
+   fixed at subscription (re-subscribe on a long timer once volume grows).
 7. **Issue auto-fixer follow-ups** — a progress comment while `claude-working`;
    multi-issue batching. Also: a post-give-up cooldown so one outage cannot
    stall each queued issue for 6h in turn; per-kind backoff schedules;

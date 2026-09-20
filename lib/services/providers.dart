@@ -142,10 +142,11 @@ final storedSitesProvider = StreamProvider<List<Site>>((ref) {
 });
 
 /// The site list every screen consumes, with each status resolved to the one
-/// to display (`withEffectiveStatus`): stale statuses go grey/Unknown once the
-/// last report is >10h old (issue #21), and a site whose latest word is a
-/// Camera Only / BGD report shows that fourth status (issue #48), which exists
-/// only in the reports stream. Applied here so every consumer gets one rule.
+/// to display (`withEffectiveStatus`): a site's status is its newest *status
+/// report* inside the 10h window — an Open/Blitz/Closed vote or a Camera Only
+/// / BGD report (issue #48), which exists only in the reports stream — and
+/// Unknown when there is none (issues #21, #49). Applied here so every
+/// consumer gets one rule.
 ///
 /// A plain provider over the two listeners rather than a combined stream, so
 /// each Firestore listener stays single and shared — rebuilding a stream
@@ -159,10 +160,15 @@ final storedSitesProvider = StreamProvider<List<Site>>((ref) {
 /// the stored statuses show, exactly what old builds display anyway.
 final sitesProvider = Provider<AsyncValue<List<Site>>>((ref) {
   final stored = ref.watch(storedSitesProvider);
-  final reports =
-      ref.watch(recentReportsProvider).value ?? const <SiteReport>[];
+  final reports = ref.watch(recentReportsProvider);
   return stored.whenData(
-    (sites) => withEffectiveStatus(sites, recentReports: reports),
+    (sites) => withEffectiveStatus(
+      sites,
+      // null = "the reports can't vouch for anything yet": still loading, or
+      // failed (a dead listener's last list only goes stale, and would turn
+      // every newer vote Unknown). Both fall back to the stored statuses.
+      recentReports: reports.hasError ? null : reports.value,
+    ),
   );
 });
 

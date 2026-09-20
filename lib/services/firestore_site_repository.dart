@@ -61,11 +61,6 @@ class FirestoreSiteRepository implements SiteRepository {
         );
   }
 
-  /// Runaway-cost guard on the shared recent-reports query. At the enforced
-  /// rate limit (5 actions/5min/user) this only bites under coordinated spam;
-  /// ordering is newest-first, so if it ever does, the freshest reports win.
-  static const int recentReportsQueryCap = 500;
-
   @override
   Stream<List<SiteReport>> watchAllRecentReports() {
     // The cutoff is fixed when the listener starts, so a long-lived session

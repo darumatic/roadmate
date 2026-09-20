@@ -110,6 +110,43 @@ void main() {
     expect(shown(), SiteStatus.closed);
   });
 
+  // Issue #49: once the reports have loaded they decide. Marulan's site doc
+  // says "closed, reported an hour ago" — but if the only report in the
+  // window is a "Long queue", that hour-old touch is not a Closed vote.
+  test('once the reports have loaded, a stored status with no status report '
+      'behind it is Unknown', () async {
+    repo.sites.add([marulan]);
+    repo.reports.add([
+      SiteReport(
+        id: 'q1',
+        siteId: 's1',
+        createdAt: reportedAt,
+        activityType: ActivityReportType.longQueue,
+      ),
+    ]);
+    await pumpEventQueue();
+
+    final shownSite = container.read(sitesProvider).value!.single;
+    expect(shownSite.currentStatus, SiteStatus.unknown);
+    // "reported 1h ago" still follows every report.
+    expect(shownSite.lastReportAt, reportedAt);
+  });
+
+  test(
+    'a reports listener that dies AFTER loading falls back too — its last '
+    'list only goes stale, and would turn every newer vote Unknown',
+    () async {
+      repo.sites.add([marulan]);
+      repo.reports.add(const []);
+      await pumpEventQueue();
+      expect(shown(), SiteStatus.unknown);
+
+      repo.reports.addError(StateError('listener lost'));
+      await pumpEventQueue();
+      expect(shown(), SiteStatus.closed);
+    },
+  );
+
   test('a failed sites listener still surfaces as an error', () async {
     repo.sites.addError(StateError('offline'));
     repo.reports.add([cameraOnly]);

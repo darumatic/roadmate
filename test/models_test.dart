@@ -204,6 +204,26 @@ void main() {
       }
     });
 
+    test('statusReportedAt is display-only: never written, never parsed', () {
+      final site = Site(
+        id: 's1',
+        name: 'Marulan',
+        type: SiteType.checkingStation,
+        state: AusState.nsw,
+        suburb: 'Marulan',
+        address: 'Hume Hwy',
+        statusReportedAt: DateTime(2026, 9, 20, 8),
+      );
+      expect(site.toMap().keys, isNot(contains('statusReportedAt')));
+      expect(
+        Site.fromMap('s1', {
+          ...site.toMap(),
+          'statusReportedAt': '2026-09-20T08:00:00.000',
+        }).statusReportedAt,
+        isNull,
+      );
+    });
+
     test('BGD and Camera Only left the Report dialog but still parse', () {
       expect(ActivityReportType.reportable, [
         ActivityReportType.longQueue,

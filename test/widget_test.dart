@@ -27,6 +27,8 @@ import 'package:roadmate/widgets/load_error.dart';
 import 'package:roadmate/widgets/state_card.dart';
 import 'package:roadmate/widgets/status_badge.dart';
 
+import 'support/status_reports.dart';
+
 class FakeSiteRepository implements SiteRepository {
   FakeSiteRepository(this.sites);
 
@@ -36,7 +38,10 @@ class FakeSiteRepository implements SiteRepository {
   Stream<List<Site>> watchSites() => Stream.value(sites);
 
   @override
-  Stream<List<SiteReport>> watchAllRecentReports() => Stream.value(const []);
+  // The vote behind each site's stored status — a real vote always leaves it
+  // in the stream, and since #49 a status is only current while it is there.
+  Stream<List<SiteReport>> watchAllRecentReports() =>
+      Stream.value(votesBehind(sites));
 
   @override
   Future<void> vote(

@@ -200,7 +200,13 @@ void main() {
 
     test("another site's Camera Only report changes nothing here", () {
       final s = site(lastReportAt: ago(1));
-      expect(display(s, [camera(ago(1), siteId: 'other')]), SiteStatus.closed);
+      expect(
+        display(s, [
+          camera(ago(1), siteId: 'other'),
+          _report(SiteStatus.closed, ago(1)),
+        ]),
+        SiteStatus.closed,
+      );
     });
 
     test('the report proves its own freshness: it lights even when the site '
@@ -248,6 +254,136 @@ void main() {
       ], now: now);
       expect(latest.keys, unorderedEquals(['s1', 's2']));
       expect(latest['s1']!.createdAt, ago(1));
+    });
+  });
+
+  // Issue #49. Every activity report touches the site's `lastReportAt`, the
+  // only thing the stored rule can look at — so ANY report used to make the
+  // site's last vote read as fresh, however old: a "Long queue" brought a
+  // three-week-old Blitz (and the BLITZ DETECTED banner) back to life. On
+  // builds that have the reports stream, the status reports decide instead.
+  group('a status is current only while a status report stands behind it '
+      '(issue #49)', () {
+    Site site({SiteStatus stored = SiteStatus.blitz, DateTime? lastReportAt}) =>
+        Site(
+          id: 's1',
+          name: 'Marulan',
+          type: SiteType.checkingStation,
+          state: AusState.nsw,
+          suburb: 'Marulan',
+          address: 'Hume Hwy',
+          currentStatus: stored,
+          lastReportAt: lastReportAt,
+        );
+
+    DateTime ago({int hours = 0, int minutes = 0}) =>
+        now.subtract(Duration(hours: hours, minutes: minutes));
+
+    Site shown(Site s, List<SiteReport>? reports) =>
+        withEffectiveStatus([s], recentReports: reports, now: now).single;
+
+    test('a "Long queue" no longer brings an old vote back to life', () {
+      final s = shown(
+        // Voted Blitz weeks ago; the fresh lastReportAt is the queue report's.
+        site(lastReportAt: ago(minutes: 5)),
+        [_activity('queue', ago(minutes: 5))],
+      );
+
+      expect(s.currentStatus, SiteStatus.unknown);
+      expect(s.statusReportedAt, isNull);
+      // "reported 5m ago" and Recently Active still follow every report.
+      expect(s.lastReportAt, ago(minutes: 5));
+    });
+
+    test('a vote that has left the window does not count, whatever keeps '
+        'lastReportAt fresh', () {
+      final s = shown(site(lastReportAt: ago(hours: 1)), [
+        _activity('queue', ago(hours: 1)),
+        _report(SiteStatus.blitz, ago(hours: 10, minutes: 1)),
+      ]);
+      expect(s.currentStatus, SiteStatus.unknown);
+    });
+
+    test('a vote inside the window is the status, and statusReportedAt is '
+        "ITS time — not the later activity report's", () {
+      final s = shown(site(lastReportAt: ago(minutes: 5)), [
+        _activity('queue', ago(minutes: 5)),
+        _report(SiteStatus.blitz, ago(hours: 3)),
+      ]);
+
+      expect(s.currentStatus, SiteStatus.blitz);
+      expect(s.statusReportedAt, ago(hours: 3));
+      expect(s.lastReportAt, ago(minutes: 5));
+    });
+
+    test('Camera Only / BGD is a status report like the other three: it '
+        'keeps the site current and updates the last report', () {
+      // The site doc has not caught up with the press yet.
+      final s = shown(site(lastReportAt: ago(hours: 12)), [
+        SiteReport(
+          id: 'c',
+          siteId: 's1',
+          createdAt: ago(minutes: 2),
+          activityType: ActivityReportType.noActivity,
+        ),
+      ]);
+
+      expect(s.currentStatus, SiteStatus.cameraOnly);
+      expect(s.statusReportedAt, ago(minutes: 2));
+      expect(s.lastReportAt, ago(minutes: 2));
+    });
+
+    test('the reports decide, not the site doc', () {
+      // e.g. an admin removed the newest vote and the recount fell back.
+      final s = shown(
+        site(stored: SiteStatus.open, lastReportAt: ago(hours: 1)),
+        [_report(SiteStatus.closed, ago(hours: 1))],
+      );
+      expect(s.currentStatus, SiteStatus.closed);
+    });
+
+    test('loaded-and-empty means nobody reported a status; null means the '
+        'reports cannot vouch for anything, so the stored rule stands', () {
+      final s = site(stored: SiteStatus.closed, lastReportAt: ago(hours: 1));
+
+      expect(shown(s, const []).currentStatus, SiteStatus.unknown);
+
+      // Still loading, or failed: exactly what old builds display.
+      final fallback = shown(s, null);
+      expect(fallback.currentStatus, SiteStatus.closed);
+      expect(fallback.statusReportedAt, ago(hours: 1));
+    });
+
+    test('a list at the query cap may be cut short, so a site with no status '
+        'report IN it falls back to the stored rule instead of going '
+        'Unknown', () {
+      final flood = [
+        for (var i = 0; i < recentReportsQueryCap; i++)
+          SiteReport(
+            id: 'spam$i',
+            siteId: 'elsewhere',
+            createdAt: ago(minutes: 1),
+            activityType: ActivityReportType.other,
+          ),
+      ];
+      final s = site(stored: SiteStatus.closed, lastReportAt: ago(hours: 2));
+
+      expect(shown(s, flood).currentStatus, SiteStatus.closed);
+      // One short of the cap the list is complete, and it says: no status.
+      expect(shown(s, flood.sublist(1)).currentStatus, SiteStatus.unknown);
+      // A status report that IS in a capped list still wins — the newest
+      // reports are the ones a capped list keeps.
+      expect(
+        shown(s, [
+          _report(SiteStatus.open, ago(minutes: 1)),
+          ...flood,
+        ]).currentStatus,
+        SiteStatus.open,
+      );
+    });
+
+    test('the cap is the one the Firestore query is limited by', () {
+      expect(recentReportsQueryCap, 500);
     });
   });
 

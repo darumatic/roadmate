@@ -22,6 +22,8 @@ import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/services/trip_history_store.dart';
 
+import 'support/status_reports.dart';
+
 class FakeLocationSource implements LocationSource {
   final controller = StreamController<Position>.broadcast();
 
@@ -76,7 +78,10 @@ class FakeStore implements TripHistoryStore {
 }
 
 class FakeSiteRepository implements SiteRepository {
-  FakeSiteRepository(this.sites, {this.recentReports = const []});
+  /// [recentReports] defaults to the vote behind each site's stored status —
+  /// what a real vote always leaves in the stream (see `votesBehind`).
+  FakeSiteRepository(this.sites, {List<SiteReport>? recentReports})
+    : recentReports = recentReports ?? votesBehind(sites);
   final List<Site> sites;
   final List<SiteReport> recentReports;
   final votes = <(String, SiteStatus)>[];

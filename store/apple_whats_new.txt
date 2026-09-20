@@ -3,6 +3,7 @@ Welcome to RoadMate AU — know before you roll.
 New in this version:
 
 • New status: Camera Only / BGD (boom gate down). One big blue button under Open/Working, Blitz and Closed — on every site card and on the alert you get as you approach a site
+• Fixed: a site's status now stays current only while someone has actually reported a status. Reporting a queue, delays or police still shows up on the site, but no longer brings an old Open, Blitz or Closed back as if it were new
 • Fixed: speed alerts no longer turn your music down — the alarm now sounds over it
 • Each state's sites are now listed in alphabetical order, so they're quicker to find
 • Choosing your road name: the box now sits above the keyboard, so you can see what you type
