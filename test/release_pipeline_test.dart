@@ -166,6 +166,28 @@ void main() {
       expect(sh, contains('git push'));
     });
 
+    // The unattended issue auto-fixer runs `release.sh "<message>"`. It must
+    // only ever cut patch releases: a minor or major bump is the owner's call,
+    // made with an explicit flag — and an unknown flag must stop the release
+    // rather than become the commit message.
+    test('release.sh bumps the patch unless --minor/--major is asked for', () {
+      final sh = _read('scripts/release.sh');
+      expect(sh, contains('bump="patch"'));
+      expect(sh, contains('--minor) bump="minor"; shift ;;'));
+      expect(sh, contains('--major) bump="major"; shift ;;'));
+      expect(sh, contains('--*) echo "usage:'));
+      expect(sh, contains(r'dart run tool/bump_version.dart "$bump"'));
+      // The flag is consumed BEFORE the message is read.
+      expect(
+        sh.indexOf('--minor) bump="minor"'),
+        lessThan(sh.indexOf(r'msg="${1:-}"')),
+      );
+
+      final tool = _read('tool/bump_version.dart');
+      expect(tool, contains('bumpVersion(current, part: part)'));
+      expect(tool, contains('[patch|minor|major]'));
+    });
+
     test('release.sh rebases on origin/master before testing and bumping', () {
       // The issue auto-fixer pushes to master unattended, so this workspace
       // goes stale on its own. Bumping on a stale base mints a version the

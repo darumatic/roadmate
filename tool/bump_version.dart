@@ -1,7 +1,8 @@
-// Bumps the patch component of the app version and keeps lib/version.dart in
-// sync with pubspec.yaml.
+// Bumps the app version and keeps lib/version.dart in sync with pubspec.yaml.
 //
-//   dart run tool/bump_version.dart
+//   dart run tool/bump_version.dart          # patch: 1.0.27+103 -> 1.0.28+104
+//   dart run tool/bump_version.dart minor    # minor: 1.0.27+103 -> 1.1.0+104
+//   dart run tool/bump_version.dart major    # major: 1.0.27+103 -> 2.0.0+104
 //
 // pubspec.yaml is the source of truth (marketing version + build number for the
 // app stores). lib/version.dart holds the display-only marketing version that is
@@ -12,7 +13,20 @@ import 'package:roadmate/services/version_logic.dart';
 
 final _pubspecVersion = RegExp(r'^version:\s*(\S+)\s*$', multiLine: true);
 
-void main() {
+void main(List<String> args) {
+  final part = switch (args) {
+    [] => VersionPart.patch,
+    [final name] when VersionPart.values.any((p) => p.name == name) =>
+      VersionPart.values.byName(name),
+    _ => null,
+  };
+  if (part == null) {
+    stderr.writeln(
+      'usage: dart run tool/bump_version.dart [patch|minor|major]',
+    );
+    exit(64);
+  }
+
   final pubspecFile = File('pubspec.yaml');
   if (!pubspecFile.existsSync()) {
     stderr.writeln('pubspec.yaml not found — run from the project root.');
@@ -27,7 +41,7 @@ void main() {
   }
 
   final current = match.group(1)!;
-  final next = bumpPatchVersion(current);
+  final next = bumpVersion(current, part: part);
 
   pubspecFile.writeAsStringSync(
     pubspec.replaceRange(match.start, match.end, 'version: $next'),

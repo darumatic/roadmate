@@ -137,7 +137,7 @@ void main() {
     // Pressing it is the whole pipeline in one go, safely in memory: the
     // press is stored as a plain 'Camera Only' activity report (no status is
     // ever written), the site list re-derives the status from the reports
-    // stream, and the card turns — badge blue, a Recent reports row below.
+    // stream, and the card turns — badge blue, button lit.
     StatusBadge badgeOf(Finder card) => tester.widget<StatusBadge>(
       find.descendant(of: card, matching: find.byType(StatusBadge)),
     );
@@ -148,9 +148,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(badgeOf(firstCard).status, SiteStatus.cameraOnly);
+    // It is a status, so — like Open, Blitz and Closed — it lights the button
+    // and adds NO row under Recent reports (issue #52); "reported just now"
+    // is what says when.
+    expect(
+      find.descendant(of: firstCard, matching: find.text('Recent reports')),
+      findsNothing,
+    );
     expect(
       find.descendant(of: firstCard, matching: find.text('Camera Only')),
-      findsOneWidget, // the activity row every build lists
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: firstCard,
+        matching: find.textContaining('reported '),
+      ),
+      findsOneWidget,
     );
     expect(find.text('Reported Camera Only / BGD — thanks!'), findsOneWidget);
     await binding.takeScreenshot('05-camera-only');

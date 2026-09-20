@@ -5,23 +5,41 @@ library;
 
 final _versionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?$');
 
-/// Bumps the patch (third) component and the build number by one.
+/// Which component of `x.y.z` a release bumps.
+enum VersionPart { major, minor, patch }
+
+/// Bumps [part] of [current] and the build number by one; the components
+/// below [part] reset to zero.
 ///
-/// `'1.0.0+1'` -> `'1.0.1+2'`. When the build number is absent it defaults to
-/// `1` (`'0.0.1'` -> `'0.0.2+1'`... but callers that omit builds get the build
-/// appended). Throws [FormatException] on malformed input.
-String bumpPatchVersion(String current) {
+/// `patch`: `'1.0.0+1'` -> `'1.0.1+2'` · `minor`: `'1.0.27+103'` ->
+/// `'1.1.0+104'` · `major`: `'1.4.2+9'` -> `'2.0.0+10'`.
+///
+/// The build number only ever climbs, whatever happens to the marketing
+/// version: Google Play and App Store Connect both refuse an upload whose
+/// build number is not higher than the last one, so a minor bump that reset it
+/// would be unshippable. When it is absent it counts as 0 (`'0.0.1'` ->
+/// `'0.0.2+1'`). Throws [FormatException] on malformed input.
+String bumpVersion(String current, {VersionPart part = VersionPart.patch}) {
   final match = _versionPattern.firstMatch(current.trim());
   if (match == null) {
     throw FormatException('Invalid version string: "$current"');
   }
   final major = int.parse(match.group(1)!);
   final minor = int.parse(match.group(2)!);
-  final patch = int.parse(match.group(3)!) + 1;
+  final patch = int.parse(match.group(3)!);
   final buildGroup = match.group(4);
   final build = (buildGroup == null ? 0 : int.parse(buildGroup)) + 1;
-  return '$major.$minor.$patch+$build';
+  final next = switch (part) {
+    VersionPart.major => '${major + 1}.0.0',
+    VersionPart.minor => '$major.${minor + 1}.0',
+    VersionPart.patch => '$major.$minor.${patch + 1}',
+  };
+  return '$next+$build';
 }
+
+/// Bumps the patch (third) component and the build number by one — what every
+/// ordinary release does. See [bumpVersion].
+String bumpPatchVersion(String current) => bumpVersion(current);
 
 /// Numeric compare of two `x.y.z` versions (any `+build` suffix is ignored):
 /// negative when [a] < [b], zero when equal, positive when [a] > [b].

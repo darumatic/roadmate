@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Release cycle for RoadMate. Runs the local steps in order:
-#   local tests -> bump patch version -> commit & push
+#   local tests -> bump the version (patch by default) -> commit & push
 #
 #   ./scripts/release.sh                       # cuts a release of the committed tree
 #   ./scripts/release.sh "Fix blitz banner"    # bundles staged/working changes under that message
+#   ./scripts/release.sh --minor "..."         # 1.0.27 -> 1.1.0 (--major: -> 2.0.0); default is a patch
 #
 # The push IS the release: the Web Release pipeline on GitHub Actions
 # (.github/workflows/web-release.yml) runs CodeQL + Flutter CI + Visual
@@ -20,6 +21,16 @@ set -euo pipefail
 export PATH="/opt/flutter/bin:$HOME/.pub-cache/bin:$PATH"
 
 cd "$(dirname "$0")/.."
+
+# Which part of x.y.z this release bumps. Patch unless asked: the unattended
+# issue auto-fixer calls this script with a message only, and must never be
+# able to move the minor or major version by accident.
+bump="patch"
+case "${1:-}" in
+  --minor) bump="minor"; shift ;;
+  --major) bump="major"; shift ;;
+  --*) echo "usage: $0 [--minor|--major] [message]" >&2; exit 64 ;;
+esac
 
 msg="${1:-}"
 
@@ -45,8 +56,8 @@ echo "==> Local checks (analyze + test)"
 flutter analyze
 flutter test
 
-echo "==> Bump patch version"
-dart run tool/bump_version.dart
+echo "==> Bump ${bump} version"
+dart run tool/bump_version.dart "$bump"
 new_version="$(grep -oE "[0-9]+\.[0-9]+\.[0-9]+" lib/version.dart | head -1)"
 if [ -z "$msg" ]; then
   msg="Release v${new_version}"

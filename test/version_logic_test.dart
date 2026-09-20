@@ -5,6 +5,48 @@ import 'package:roadmate/version.dart';
 import 'package:roadmate/widgets/app_version_label.dart';
 
 void main() {
+  // A release normally bumps the patch; `release.sh --minor|--major` is how a
+  // version like 1.1.0 is cut without hand-editing pubspec.yaml and the
+  // generated lib/version.dart.
+  group('bumpVersion', () {
+    test('a minor bump resets the patch: 1.0.27 -> 1.1.0', () {
+      expect(bumpVersion('1.0.27+103', part: VersionPart.minor), '1.1.0+104');
+    });
+
+    test('a major bump resets minor and patch', () {
+      expect(bumpVersion('1.4.2+9', part: VersionPart.major), '2.0.0+10');
+    });
+
+    test('the build number only ever climbs — both stores refuse an upload '
+        'whose build number is not higher than the last', () {
+      for (final part in VersionPart.values) {
+        expect(bumpVersion('3.2.1+250', part: part), endsWith('+251'));
+      }
+      expect(bumpVersion('0.9.9', part: VersionPart.minor), '0.10.0+1');
+    });
+
+    test('patch is the default, and what bumpPatchVersion does', () {
+      expect(bumpVersion('1.0.0+1'), '1.0.1+2');
+      expect(bumpVersion('1.0.0+1'), bumpPatchVersion('1.0.0+1'));
+    });
+
+    test(
+      'a bumped version always compares higher than the one it came from',
+      () {
+        for (final part in VersionPart.values) {
+          final next = bumpVersion('1.9.27+103', part: part);
+          expect(compareVersions(next, '1.9.27+103'), greaterThan(0));
+        }
+      },
+    );
+
+    test('rejects malformed input whatever the part', () {
+      for (final part in VersionPart.values) {
+        expect(() => bumpVersion('1.0', part: part), throwsFormatException);
+      }
+    });
+  });
+
   group('bumpPatchVersion', () {
     test('increments patch and build number', () {
       expect(bumpPatchVersion('1.0.0+1'), '1.0.1+2');

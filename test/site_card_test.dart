@@ -441,17 +441,21 @@ void main() {
           createdAt: DateTime.now().subtract(const Duration(minutes: 15)),
           activityNote: 'Old report shape',
         ),
+        // A Camera Only / BGD press: a status on this build, not a row
+        // (issue #52) — so it doesn't use up one of the five slots either.
         SiteReport(
           id: '3',
           siteId: 'nsw-1',
           createdAt: DateTime.now().subtract(const Duration(minutes: 20)),
           activityType: ActivityReportType.noActivity,
         ),
+        // ...unless it carries a note, which only an old build can write.
         SiteReport(
           id: '4',
           siteId: 'nsw-1',
           createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
           activityType: ActivityReportType.defectChecks,
+          activityNote: 'Gate down, officers still waving trucks in',
         ),
         SiteReport(
           id: '5',
@@ -464,6 +468,14 @@ void main() {
           siteId: 'nsw-1',
           createdAt: DateTime.now().subtract(const Duration(minutes: 50)),
           activityType: ActivityReportType.other,
+        ),
+        // The sixth listable report: cut by the latest-five cap.
+        SiteReport(
+          id: '7',
+          siteId: 'nsw-1',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 55)),
+          activityType: ActivityReportType.longQueue,
+          reporterName: 'Dusty',
         ),
         // The repository stream is now shared across all sites — another
         // site's report must never leak onto this card.
@@ -481,10 +493,15 @@ void main() {
     expect(find.text('Recent reports'), findsOneWidget);
     expect(find.text('Long queue'), findsOneWidget);
     expect(find.text('Police present'), findsOneWidget);
-    expect(find.text('Camera Only'), findsOneWidget);
+    expect(find.text('Camera Only'), findsNothing);
     expect(find.text('BGD'), findsOneWidget);
+    expect(
+      find.text('Gate down, officers still waving trucks in'),
+      findsOneWidget,
+    );
     expect(find.text('Delays'), findsOneWidget);
-    expect(find.text('Other'), findsNothing);
+    expect(find.text('Other'), findsOneWidget);
+    expect(find.text('Dusty'), findsNothing); // the sixth: over the cap
     expect(find.text('Old report shape'), findsNothing);
     expect(find.text('Alex'), findsOneWidget);
     expect(find.text('Anonymous'), findsNWidgets(4));
@@ -930,6 +947,41 @@ void main() {
       final closed = borderOf(buttonDecoration(tester, 'Closed'));
       expect(closed.toARGB32() & 0xFFFFFF, red.toARGB32() & 0xFFFFFF);
       expect(closed.a, closeTo(0.3, 0.01));
+    });
+
+    // Issue #52, as reported: five taps on the blue button, five "Camera
+    // Only" rows under Recent reports. Open, Blitz and Closed never add a row.
+    testWidgets('pressing it only lights the status — no row under Recent '
+        'reports, however many times it was pressed', (tester) async {
+      final pressedAt = DateTime.now().subtract(const Duration(minutes: 1));
+      final repo = FakeSiteRepository()
+        ..watchedReports = [
+          for (var i = 0; i < 5; i++)
+            SiteReport(
+              id: 'press-$i',
+              siteId: 'nsw-1',
+              createdAt: pressedAt,
+              activityType: ActivityReportType.noActivity,
+              reporterName: 'Tropical Llama',
+              reporterLevel: 1,
+            ),
+        ];
+      await _pump(
+        tester,
+        repo,
+        site: _site.copyWith(
+          currentStatus: SiteStatus.cameraOnly,
+          lastReportAt: pressedAt,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recent reports'), findsNothing);
+      expect(find.text('Camera Only'), findsNothing);
+      expect(find.text('Tropical Llama'), findsNothing);
+      // The status itself says it: badge + lit button, and when.
+      expect(find.text('Camera Only / BGD'), findsNWidgets(2));
+      expect(find.textContaining('reported '), findsOneWidget);
     });
 
     testWidgets('the Report activity dialog no longer offers BGD or Camera '

@@ -430,6 +430,61 @@ void main() {
 
   // The shared recent-reports stream: exact client-side 10h filter over the
   // server query, plus the per-site slicing every card relies on.
+  // Issue #52. Leandro tapped the blue button five times and got five
+  // "Camera Only" rows under Recent reports, while Open, Blitz and Closed only
+  // ever light their button. On builds that know the fourth status a Camera
+  // Only / BGD report IS that status (issue #48), not an activity to list.
+  group('Camera Only / BGD is a status, not a Recent-reports row '
+      '(issue #52)', () {
+    SiteReport camera(
+      String id, {
+      ActivityReportType type = ActivityReportType.noActivity,
+      String? note,
+    }) => SiteReport(
+      id: id,
+      siteId: 's1',
+      createdAt: now.subtract(const Duration(minutes: 1)),
+      activityType: type,
+      activityNote: note,
+      reporterName: 'Tropical Llama',
+    );
+
+    test('five presses of the button list nothing', () {
+      final presses = [for (var i = 0; i < 5; i++) camera('p$i')];
+      expect(recentActivityReports(presses, now: now), isEmpty);
+      // ...and they still ARE the status.
+      expect(presses.map(reportedStatusOf).toSet(), {SiteStatus.cameraOnly});
+    });
+
+    test("an old build's BGD report is a status too", () {
+      expect(
+        recentActivityReports([
+          camera('b', type: ActivityReportType.defectChecks),
+        ], now: now),
+        isEmpty,
+      );
+    });
+
+    test('other activity is listed exactly as before', () {
+      final listed = recentActivityReports([
+        camera('press'),
+        _activity('queue', now.subtract(const Duration(minutes: 2))),
+      ], now: now);
+      expect(listed.map((r) => r.id), ['queue']);
+    });
+
+    test("one that carries a driver's note stays listed — only an old "
+        "build's dialog can write it, and the status alone doesn't hold those "
+        'words', () {
+      final listed = recentActivityReports([
+        camera('press'),
+        camera('noted', note: 'Gate down, officers still waving trucks in'),
+        camera('blank', note: '   '),
+      ], now: now);
+      expect(listed.map((r) => r.id), ['noted']);
+    });
+  });
+
   group('reportsWithinWindow', () {
     final now = DateTime(2026, 6, 29, 12);
 

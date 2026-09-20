@@ -151,10 +151,19 @@ Site _withDisplayStatus(
   );
 }
 
-/// Activity reports (BGD, Delays, …) still fresh enough to show to drivers —
-/// the same 10-hour window statuses live by. Older reports are hidden, never
-/// deleted: the full history stays in Firestore as the audit log (the admin
-/// feed is deliberately unfiltered).
+/// Activity reports (Long queue, Delays, …) still fresh enough to show to
+/// drivers — the same 10-hour window statuses live by. Older reports are
+/// hidden, never deleted: the full history stays in Firestore as the audit log
+/// (the admin feed is deliberately unfiltered).
+///
+/// A Camera Only / BGD report is **not** listed (issue #52). On builds that
+/// know the fourth status it is how that status travels (issue #48), so
+/// listing it gave every press of the blue button a row of its own — five
+/// taps, five "Camera Only" rows — while Open, Blitz and Closed only ever
+/// light their button. The button, the badge and "reported Xm ago" already say
+/// it. The exception is one that carries a note: only an old build's Report
+/// dialog can write that, and a driver's own words ("gate down, officers still
+/// waving trucks in") are information the status alone doesn't hold.
 List<SiteReport> recentActivityReports(
   Iterable<SiteReport> reports, {
   DateTime? now,
@@ -162,8 +171,15 @@ List<SiteReport> recentActivityReports(
 }) {
   final cutoff = (now ?? DateTime.now()).subtract(window);
   return reports
-      .where((r) => r.activityType != null && r.createdAt.isAfter(cutoff))
+      .where((r) => _isListedActivity(r) && r.createdAt.isAfter(cutoff))
       .toList();
+}
+
+bool _isListedActivity(SiteReport report) {
+  final type = report.activityType;
+  if (type == null) return false;
+  if (!type.meansCameraOnly) return true;
+  return report.activityNote?.trim().isNotEmpty ?? false;
 }
 
 /// Every report (status votes and activity alike) still inside [window] —
