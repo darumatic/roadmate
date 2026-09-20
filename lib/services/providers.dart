@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/site.dart';
@@ -13,6 +16,7 @@ import 'announcement.dart';
 import 'announcement_dismiss_store.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
+import 'fresh_window_stream.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
 import 'participation_logic.dart';
@@ -37,6 +41,7 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
   return FirestoreSiteRepository(
     firestore: FirebaseFirestore.instance,
     auth: ref.watch(firebaseAuthProvider),
+    listenerChecks: ref.watch(listenerChecksProvider),
     // The proximity gate's position source — adapted here so the repository
     // stays geolocator-free (see `report_proximity.dart`).
     locate: () async {
@@ -45,6 +50,25 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
       return (lat: position.latitude, lng: position.longitude);
     },
   );
+});
+
+/// "Has a time-windowed listener gone stale?" — what `freshWindowStream` is
+/// asked, on a steady one-minute tick and the moment the app comes back to the
+/// foreground (a returning browser tab counts). The tick is how a freeze is
+/// noticed at all — a suspended process ticks nothing, so the first tick after
+/// waking sees the whole gap; the resume event makes that check immediate,
+/// before the SDK has reconnected and re-sent the stale query. Broadcast,
+/// because every `watchAllRecentReports()` call subscribes.
+final listenerChecksProvider = Provider<Stream<void>>((ref) {
+  final checks = StreamController<void>.broadcast();
+  final tick = Timer.periodic(listenerCheckInterval, (_) => checks.add(null));
+  final lifecycle = AppLifecycleListener(onResume: () => checks.add(null));
+  ref.onDispose(() {
+    tick.cancel();
+    lifecycle.dispose();
+    checks.close();
+  });
+  return checks.stream;
 });
 
 /// Road-name storage (see `username_store.dart`). Firestore in production;

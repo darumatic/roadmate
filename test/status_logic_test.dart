@@ -383,7 +383,8 @@ void main() {
     });
 
     test('the cap is the one the Firestore query is limited by', () {
-      expect(recentReportsQueryCap, 500);
+      // Raised 500 -> 1,000 with issue #51: ~12x the busiest 10 h window ever.
+      expect(recentReportsQueryCap, 1000);
     });
   });
 

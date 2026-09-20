@@ -85,6 +85,21 @@ WALK_WORKERS = 16
 INCREMENTAL_COLLECTION = 'reports'
 INCREMENTAL_TIMESTAMP_FIELD = 'createdAt'
 
+# Early warning on report volume. Every app start reads the whole live window
+# of reports — the last 10 hours, capped at recentReportsQueryCap (1,000) in
+# lib/services/status_logic.dart. Past the cap the oldest reports in the window
+# are cut (Camera Only / BGD statuses and report rows are lost), and long
+# before that the window's size is what each cold start costs in reads — on a
+# project with no billing account, where exceeding the daily read quota stops
+# the app rather than raising a bill. So the owner hears about it early: at
+# half the cap, over 24 h (if 24 h holds fewer than the cap, no 10 h window
+# can exceed it). The busiest day so far held 125. Counted from the snapshot
+# this run has just written: zero extra reads.
+REPORT_VOLUME_WINDOW = dt.timedelta(hours=24)
+LIVE_WINDOW = dt.timedelta(hours=10)
+LIVE_WINDOW_CAP = 1000
+REPORT_VOLUME_ALERT = LIVE_WINDOW_CAP // 2
+
 
 # --------------------------------------------------------------------------
 # Pure helpers (covered by --self-test; no network, no credentials)
@@ -199,6 +214,46 @@ def merge_documents(carried, fresh):
 def carried_reports(documents):
     return [d for d in documents
             if d['path'].split('/')[-2] == INCREMENTAL_COLLECTION]
+
+
+def report_times(documents):
+    """``createdAt`` of every backed-up report, as aware datetimes, sorted."""
+    times = []
+    for d in carried_reports(documents):
+        stamp = d.get('fields', {}).get(
+            INCREMENTAL_TIMESTAMP_FIELD, {}).get('timestampValue')
+        if stamp:
+            times.append(dt.datetime.fromisoformat(
+                stamp.replace('Z', '+00:00')))
+    return sorted(times)
+
+
+def report_volume(documents, now):
+    """``(reports in the last 24 h, the busiest 10 h window among them)``.
+
+    The first is what the alert judges; the second is the number that actually
+    meets the app's cap, so the message can say how close it really came.
+    """
+    recent = [t for t in report_times(documents)
+              if now - REPORT_VOLUME_WINDOW <= t <= now]
+    busiest, start = 0, 0
+    for end, t in enumerate(recent):
+        while recent[start] < t - LIVE_WINDOW:
+            start += 1
+        busiest = max(busiest, end - start + 1)
+    return len(recent), busiest
+
+
+def report_volume_warning(documents, now):
+    """The ntfy message when the last 24 h reached the alert line, else None."""
+    last_day, busiest = report_volume(documents, now)
+    if last_day < REPORT_VOLUME_ALERT:
+        return None
+    return (f'{last_day} reports in the last 24 h (busiest 10 h window: '
+            f'{busiest}). The app reads its whole 10 h window on every start '
+            f'and caps it at {LIVE_WINDOW_CAP}: past that the oldest reports '
+            f'are cut, and well before it the daily read quota is at risk. '
+            f'See specs.md -> Read-cost design.')
 
 
 def collection_ids(paths):
@@ -563,7 +618,29 @@ def do_backup(args) -> int:
         os.remove(os.path.join(args.out_dir, name))
     if stale:
         print(f'Pruned {len(stale)} snapshot(s) beyond --keep {args.keep}')
+
+    warn_on_report_volume(documents, dt.datetime.now(dt.timezone.utc))
     return 0
+
+
+def warn_on_report_volume(documents, now, send=None):
+    """Pushes the report-volume warning, if there is one. Never fails the
+    backup: the snapshot is already safely on disk, and an alert that cannot
+    be sent is logged (the cron line mails nothing, so stderr is the record)
+    rather than turned into a false "backup FAILED"."""
+    warning = report_volume_warning(documents, now)
+    if warning is None:
+        return False
+    print(f'  WARNING: {warning}', file=sys.stderr)
+    try:
+        if send is None:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from notify import send  # noqa: PLC0415 - stdlib-only sibling
+        send('RoadMate report volume is high', warning)
+    except Exception as exc:  # noqa: BLE001 - an alert must never sink a backup
+        print(f'  WARNING: could not send the report-volume alert: {exc}',
+              file=sys.stderr)
+    return True
 
 
 # --------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import '../models/user_ban.dart';
 import 'auth_service.dart';
 import 'auth_switched_stream.dart';
 import 'ban_logic.dart';
+import 'fresh_window_stream.dart';
 import 'participation_logic.dart';
 import 'rate_limit.dart';
 import 'report_proximity.dart';
@@ -26,10 +27,17 @@ class FirestoreSiteRepository implements SiteRepository {
     required this.firestore,
     required this.auth,
     required this.locate,
+    this.listenerChecks = const Stream.empty(),
   });
 
   final FirebaseFirestore firestore;
   final FirebaseAuth auth;
+
+  /// "Has the recent-reports listener gone stale?" — a steady tick plus
+  /// app-resume events (`listenerChecksProvider`). Must be a broadcast stream:
+  /// every [watchAllRecentReports] call subscribes. With none, the listener
+  /// simply keeps the cutoff it started with.
+  final Stream<void> listenerChecks;
 
   /// Resolves the device position for the report proximity gate, asking for
   /// permission if needed — see `report_proximity.dart`.
@@ -63,21 +71,38 @@ class FirestoreSiteRepository implements SiteRepository {
 
   @override
   Stream<List<SiteReport>> watchAllRecentReports() {
-    // The cutoff is fixed when the listener starts, so a long-lived session
-    // only ever over-fetches (window grows past 10h, never shrinks below);
-    // the exact 10h filter stays client-side in status_logic, as always.
-    final cutoff = DateTime.now().subtract(statusFreshWindow);
-    return firestore
-        .collectionGroup('reports')
-        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
-        .orderBy('createdAt', descending: true)
-        .limit(recentReportsQueryCap)
-        .snapshots()
-        .map(
-          (snap) => snap.docs
-              .map((d) => SiteReport.fromMap(d.id, _normalise(d.data())))
-              .toList(),
-        );
+    // The query has to bake its cutoff in, and a connected listener never
+    // pays for that: only NEW reports are billed. A full re-run does — after
+    // >30 min disconnected Firestore bills the whole result again, with the
+    // cutoff the listener started with, so a long-lived session re-read far
+    // more than 10 hours. `freshWindowStream` swaps in a fresh cutoff at
+    // exactly those moments and never otherwise (issue #51). The exact 10h
+    // filter stays client-side in status_logic, as always.
+    return freshWindowStream<List<SiteReport>>(
+      window: statusFreshWindow,
+      checks: listenerChecks,
+      open: (cutoff) => firestore
+          .collectionGroup('reports')
+          .where(
+            'createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff),
+          )
+          .orderBy('createdAt', descending: true)
+          .limit(recentReportsQueryCap)
+          // Metadata changes are how the listener says it went offline (and
+          // came back) — not billed, and not re-emitted downstream.
+          .snapshots(includeMetadataChanges: true)
+          .map(
+            (snap) => WindowSnapshot(
+              [
+                for (final d in snap.docs)
+                  SiteReport.fromMap(d.id, _normalise(d.data())),
+              ],
+              isFromCache: snap.metadata.isFromCache,
+              dataChanged: snap.docChanges.isNotEmpty,
+            ),
+          ),
+    );
   }
 
   DocumentReference<Map<String, dynamic>> _ledgerRef(String uid) => firestore

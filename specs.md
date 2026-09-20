@@ -53,7 +53,7 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   `Site.statusReportedAt` (display-only, never stored) is the status report's
   own time, which is what "Reported Closed 3h ago" quotes. The stored rule
   stays the per-site fallback whenever the reports can't vouch for "no status
-  report": still loading, failed, or at the 500-doc query cap
+  report": still loading, failed, or at the 1,000-doc query cap
   (`recentReportsQueryCap`) where the list may be cut short — i.e. it fails
   soft to exactly what old builds show. Pure and unit-tested
   (`withEffectiveStatus` in `status_logic.dart`), applied once, in
@@ -119,13 +119,62 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   live listeners (full re-read for zero new data), and the admin feed did one site
   `get()` per report. As built now: **one shared `collectionGroup('reports')`
   listener** with `createdAt ≥ now − 10h` feeds every card (time-bounded — a busy
-  day can never push a site's reports out of view — with a `limit(500)` guard
+  day can never push a site's reports out of view — with a `limit(1000)` guard
   against runaway spam only; newest win); the exact 10h filter stays client-side
   (`reportsWithinWindow`); pull-to-refresh restarts a stream **only after an
   error** (`shouldRestartOnRefresh` — a healthy snapshot listener is never stale);
   the admin feed resolves site names from one cached sites fetch. Rules: the
   collection-group `reports` read was widened from admin-only to public — per-doc
   reads were already public, so nothing new is exposed.
+- **The quota is a cliff, not a bill** — the Firebase project has **no billing
+  account** (Google's metrics API refuses it: "requires billing to be
+  enabled"), so past **50,000 reads a day** Firestore does not charge — it
+  **refuses reads until the daily reset** (~midnight Pacific ≈ 5–6 pm AEST).
+  An overrun is an outage. It also means actual usage cannot be read
+  programmatically (console → Firestore → Usage only); an unofficial
+  client-side meter is tracked as its own issue. What a cold start costs:
+  the approved site list (89 docs, ~80 % of it) + the whole 10 h window of
+  reports (~14 on average, 79 at the busiest ever) + a handful of single docs
+  ≈ 110 reads → roughly 450 cold starts a day. On web there is no offline
+  persistence, so every page load pays it in full.
+- **A re-run of the reports listener never reaches back further than 10 h
+  (issue #51)** — the query has to bake its cutoff in when the listener starts,
+  and while it stays connected that wastes nothing: Firestore bills one read
+  per *new* report. But after **> 30 min disconnected** (phone suspended,
+  coverage hole, laptop lid) Firestore re-bills the whole result "as if you
+  had issued a brand-new query" — with the *original* cutoff, so a tab open
+  three days re-read 3.4 days of reports on every wake-up. `freshWindowStream`
+  (`lib/services/fresh_window_stream.dart`, pure and unit-tested) re-opens the
+  listener with a fresh cutoff **at exactly the moments a full re-run is
+  unavoidable anyway** — the gap between checks shows the process was frozen
+  ≥ 31 min (`listenerChecksProvider`: a one-minute tick, which a frozen process
+  skips, plus app-resume events so the check beats the SDK's reconnect), or
+  the listener has been serving from cache ≥ 30 min (swapped *while offline*,
+  which is free: on reconnect the SDK re-sends only the listeners that still
+  exist). **Never on a timer while connected** — each re-subscribe is itself a
+  brand-new query that re-bills the window, so an hourly refresh would cost
+  ~10× the problem. Users lose nothing: only reports older than 10 h are
+  dropped, which every consumer already filters out; a listener delivers the
+  full current result when it starts, so no update can be missed; nothing is
+  emitted during a swap, so screens keep the last list; and the approach
+  prompt fires from GPS + site coordinates, which come from the *sites*
+  listener. Known limits: if the SDK reconnects before the app notices it was
+  frozen (mostly a laptop waking), that wake-up pays the stale re-run plus a
+  fresh window; and a re-run can reach back 10 h 30 min.
+- **The live window is capped at 1,000 reports** (`recentReportsQueryCap`) —
+  a cost guard, not a product limit: every client reads the whole window when
+  its listener starts, so an uncapped flood would cost every app start as many
+  reads as there are spam reports. Past the cap the newest 1,000 win:
+  Open/Blitz/Closed survive (`withEffectiveStatus` falls back to the stored
+  status for sites with no status report in a possibly-truncated list), but a
+  Camera Only / BGD status or a Recent-reports row older than the 1,000th is
+  lost. Busiest 10 h window so far: 79; busiest 24 h: 125. The read quota bites
+  long before the cap does (at 500 reports a start would already cost ~590
+  reads). **Early warning:** the nightly backup counts the last 24 h of
+  reports *from the snapshot it has just written* (zero extra reads) and
+  pushes an ntfy warning at ≥ 500 — half the cap; under it no 10 h window can
+  reach the cap (`report_volume_warning` in `scripts/backup_firestore.py`; a
+  test ties `LIVE_WINDOW_CAP` to the Dart constant). It never fails the backup.
 - **Trip time is wall-clock time (2026-07, from a 0.1.47 iOS report)** — the Trip
   Logger's ELAPSED readout was derived from GPS *sample* time (last fix − first
   fix) and only repainted when a fix arrived. Recorded indoors, where no fix ever
@@ -524,7 +573,7 @@ They are approximate — verify exact site positions before production.
 | Beep fires the moment the driver hits limit+1 km/h (issue #19) | ✅ Done — `shouldAlert`/`isOverLimit` use `>=` (was strict `>`, leaving a dead zone at exactly +1) |
 | "Unknown" status when the last report is >10h old (issue #21) | ✅ Done — `SiteStatus.unknown` (grey); `effectiveStatus`/`withEffectiveStatus` in `status_logic.dart` applied in `sitesProvider`; vote buttons come from `SiteStatus.votable` so Unknown is display-only and all three buttons render greyed |
 | "Camera Only / BGD" fourth status (issue #48) | ✅ Done (**web-first** — phones get the button with their next store release; old builds keep working and see each press as the "Camera Only" activity report they always listed) — one large blue text-only button under the row of three on the site card and the approach prompt (the Android notification keeps its three actions — the platform shows at most three); when it is current, Closed renders with no red at all. `SiteStatus.cameraOnly` is display-only: stored as the legacy activity report, derived back in `withEffectiveStatus` (see Key decisions). BGD / Camera Only left the Report activity dialog (`ActivityReportType.reportable`); the admin edit dialog keeps every type. State cards tally it in blue (`StatusCounts.cameraOnly`). Covered by `test/status_logic_test.dart`, `test/models_test.dart` (the wire literal), `test/providers_sites_test.dart`, `test/site_repository_routing_test.dart`, `test/site_card_test.dart`, `test/proximity_prompt_test.dart`, four checks in `test/rules/rules_test.mjs`, and a real press → derive → render pass in `integration_test/app_test.dart` |
-| An activity report no longer revives an old status (issue #49) | ✅ Done (**web-first**; old builds can't be changed) — a status is current only while a status report (Open / Blitz / Closed vote or Camera Only / BGD) is inside the 10 h window; "Long queue", "Delays", "Police present" and "Other" still list under Recent reports and still move "reported Xm ago" / Recently Active, but no longer make a weeks-old vote — or the BLITZ DETECTED banner — reappear. `withEffectiveStatus` derives it from the shared reports stream with the stored rule as the fail-soft fallback (loading / failed / at the 500 cap); `Site.statusReportedAt` gives the approach prompt the status report's own time. Covered by `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/proximity_notification_test.dart` and a real "Long queue stays Unknown" pass in `integration_test/app_test.dart`; test fakes serve the vote behind each stored status via `test/support/status_reports.dart` |
+| An activity report no longer revives an old status (issue #49) | ✅ Done (**web-first**; old builds can't be changed) — a status is current only while a status report (Open / Blitz / Closed vote or Camera Only / BGD) is inside the 10 h window; "Long queue", "Delays", "Police present" and "Other" still list under Recent reports and still move "reported Xm ago" / Recently Active, but no longer make a weeks-old vote — or the BLITZ DETECTED banner — reappear. `withEffectiveStatus` derives it from the shared reports stream with the stored rule as the fail-soft fallback (loading / failed / at the query cap); `Site.statusReportedAt` gives the approach prompt the status report's own time. Covered by `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/proximity_notification_test.dart` and a real "Long queue stays Unknown" pass in `integration_test/app_test.dart`; test fakes serve the vote behind each stored status via `test/support/status_reports.dart` |
 | Speaker toggle mutes the over-limit alarm (issue #22) | ✅ Done — icon top-right of Home; `soundEnabledProvider`, persisted via `TripHistoryStore.saveSoundEnabled`; muting doesn't consume the rising edge, so unmuting mid-breach beeps on the next reading |
 | Back-to-top arrow on long lists (issue #25) | ✅ Done — `widgets/back_to_top.dart` overlays a small FAB after 400px of scroll on Home and state detail |
 | Bottom-nav oversized padding on iOS (issue #26) | ✅ Done — the shell's `MediaQuery.removePadding` (context outside the Scaffold) re-introduced the notch top inset into the nav bar's internal SafeArea; now strips top+bottom (`ShellBottomBar`), bar lays out at the bare 80pt M3 height |
@@ -977,10 +1026,8 @@ to renew it.
    in `~/backups/backup.log`, which nobody reads. Remaining nice-to-have: a
    positive freshness check (alert when no recent snapshot exists, catching
    e.g. cron itself being dead).
-8. **Posting feedback & the reports listener (from issue #48)** — #50: no
-   on-screen feedback until the server acknowledges a post (optimistic
-   overlay); #51: the recent-reports listener is app-lifetime with a cutoff
-   fixed at subscription (re-subscribe on a long timer once volume grows).
+8. **Posting feedback (from issue #48)** — #50: no on-screen feedback until
+   the server acknowledges a post (optimistic overlay).
 7. **Issue auto-fixer follow-ups** — a progress comment while `claude-working`;
    multi-issue batching. Also: a post-give-up cooldown so one outage cannot
    stall each queued issue for 6h in turn; per-kind backoff schedules;

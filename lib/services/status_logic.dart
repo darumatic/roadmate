@@ -65,11 +65,19 @@ Map<String, SiteReport> latestStatusReports(
   return latest;
 }
 
-/// Runaway-cost guard on the shared recent-reports query. At the enforced
-/// rate limit (5 actions/5min/user) it only bites under coordinated spam, and
-/// the query is newest-first, so the freshest reports win. A list this long
-/// may be missing the older end of the window — see [withEffectiveStatus].
-const int recentReportsQueryCap = 500;
+/// Runaway-cost guard on the shared recent-reports query: every client reads
+/// the whole window when its listener starts, so without a cap a flood of
+/// spam would cost every app start as many reads as there are spam reports —
+/// and the project has no billing account, so past the daily quota Firestore
+/// stops serving reads altogether. The query is newest-first, so the freshest
+/// reports win; a list this long may be missing the older end of the window —
+/// see [withEffectiveStatus] for what that costs and what still works.
+///
+/// 1,000 is ~12x the busiest 10-hour window the app has seen (79 reports).
+/// The nightly backup warns via ntfy long before it is reached
+/// (`REPORT_VOLUME_ALERT` in scripts/backup_firestore.py — half this value;
+/// test/backup_firestore_test.dart keeps the two in step).
+const int recentReportsQueryCap = 1000;
 
 /// The site list every screen consumes: each [Site.currentStatus] becomes the
 /// status to *display*, and [Site.statusReportedAt] when it was reported.

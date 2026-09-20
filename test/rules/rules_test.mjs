@@ -187,7 +187,7 @@ await check(
           Timestamp.fromDate(new Date(Date.now() - 10 * 3_600_000)),
         ),
         orderBy('createdAt', 'desc'),
-        limit(500),
+        limit(1000),
       ),
     ),
   ),

@@ -467,6 +467,87 @@ class DisasterRecoveryTest(unittest.TestCase):
         self.assertEqual(wiped.docs, live.docs)
 
 
+class ReportVolumeTest(unittest.TestCase):
+    """The nightly early warning on report volume (issue #51).
+
+    Every app start reads the whole live window of reports, capped at 1,000 in
+    the app; the owner wants to hear at half that, over 24 h, counted from the
+    snapshot the run has just written - zero extra reads.
+    """
+
+    NOW = dt.datetime(2026, 9, 20, 3, 0, tzinfo=dt.timezone.utc)
+
+    def _report(self, n, hours_ago):
+        stamp = (self.NOW - dt.timedelta(hours=hours_ago)).isoformat(
+            timespec='seconds').replace('+00:00', 'Z')
+        return {'path': f'sites/s1/reports/r{n}',
+                'fields': {'createdAt': {'timestampValue': stamp}}}
+
+    def _day(self, count, hours_ago=1.0):
+        return [self._report(i, hours_ago) for i in range(count)]
+
+    def test_counts_the_last_24h_and_the_busiest_10h_window_inside_it(self):
+        docs = (
+            [self._report(f'a{i}', 23) for i in range(3)]      # early
+            + [self._report(f'b{i}', 8) for i in range(5)]     # one busy patch
+            + [self._report(f'c{i}', 2) for i in range(4)]     # ...and another
+            + [self._report('old', 25)]                        # outside 24 h
+        )
+        self.assertEqual(bf.report_volume(docs, self.NOW), (12, 9))
+
+    def test_only_reports_with_a_timestamp_count(self):
+        docs = self._day(2) + [
+            {'path': 'sites/s1', 'fields': {}},
+            {'path': 'users/u1/favourites/s1', 'fields': {}},
+            {'path': 'sites/s1/reports/no-time', 'fields': {}},
+            {'path': 'sites/s1/reports/parent-only', 'missing': True},
+        ]
+        self.assertEqual(bf.report_volume(docs, self.NOW), (2, 2))
+
+    def test_a_report_dated_in_the_future_is_not_counted(self):
+        docs = self._day(1) + [self._report('skewed', -3)]
+        self.assertEqual(bf.report_volume(docs, self.NOW)[0], 1)
+
+    def test_silent_below_the_line_and_one_warning_at_it(self):
+        self.assertIsNone(bf.report_volume_warning(
+            self._day(bf.REPORT_VOLUME_ALERT - 1), self.NOW))
+        warning = bf.report_volume_warning(
+            self._day(bf.REPORT_VOLUME_ALERT), self.NOW)
+        self.assertIn('500 reports in the last 24 h', warning)
+        self.assertIn('busiest 10 h window: 500', warning)
+        self.assertIn('1000', warning)
+
+    def test_the_line_is_half_the_apps_cap(self):
+        # test/backup_firestore_test.dart ties LIVE_WINDOW_CAP to the app's
+        # recentReportsQueryCap, so the two can't drift apart.
+        self.assertEqual(bf.LIVE_WINDOW_CAP, 1000)
+        self.assertEqual(bf.REPORT_VOLUME_ALERT, bf.LIVE_WINDOW_CAP // 2)
+        self.assertEqual(bf.LIVE_WINDOW, dt.timedelta(hours=10))
+
+    def test_a_quiet_day_sends_nothing(self):
+        sent = []
+        self.assertFalse(bf.warn_on_report_volume(
+            self._day(10), self.NOW, send=lambda *a: sent.append(a)))
+        self.assertEqual(sent, [])
+
+    def test_a_busy_day_sends_exactly_one_alert(self):
+        sent = []
+        self.assertTrue(bf.warn_on_report_volume(
+            self._day(600), self.NOW, send=lambda *a: sent.append(a)))
+        self.assertEqual(len(sent), 1)
+        title, message = sent[0]
+        self.assertEqual(title, 'RoadMate report volume is high')
+        self.assertIn('600 reports in the last 24 h', message)
+
+    def test_an_alert_that_cannot_be_sent_never_fails_the_backup(self):
+        def broken(*_):
+            raise OSError('ntfy unreachable')
+        # The snapshot is already on disk: this must not raise, or cron would
+        # report a good backup as "backup FAILED".
+        self.assertTrue(bf.warn_on_report_volume(
+            self._day(600), self.NOW, send=broken))
+
+
 class CliTest(unittest.TestCase):
     def test_restore_defaults_to_dry_run(self):
         args = bf.build_parser().parse_args(['--restore', 'snap.json.gz'])
