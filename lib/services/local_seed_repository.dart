@@ -92,9 +92,7 @@ class LocalSeedSiteRepository implements SiteRepository {
         siteId: siteId,
         createdAt: DateTime.now(),
         status: status,
-        reporterName: reporterName?.trim().isEmpty ?? true
-            ? null
-            : reporterName!.trim(),
+        reporterName: storedText(reporterName),
       ),
     );
     final i = _sites.indexWhere((s) => s.id == siteId);
@@ -145,12 +143,8 @@ class LocalSeedSiteRepository implements SiteRepository {
         siteId: site.id,
         createdAt: now,
         activityType: activityType,
-        activityNote: activityNote?.trim().isEmpty ?? true
-            ? null
-            : activityNote!.trim(),
-        reporterName: reporterName?.trim().isEmpty ?? true
-            ? null
-            : reporterName!.trim(),
+        activityNote: storedText(activityNote),
+        reporterName: storedText(reporterName),
         reporterLevel: reporterLevelToStamp(_stats, credit),
       ),
     );

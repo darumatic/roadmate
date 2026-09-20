@@ -108,11 +108,87 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
     empty first snapshot until the server answers, ~10 s in a coverage hole,
     which would stall the cached list and the approach prompt — so on a cold
     start a site can paint its stored status for the moment before the
-    reports land; (c) a status lights at server acknowledgement, not at tap:
-    a pending server timestamp never matches the listener's `createdAt >=`
-    range filter, so the doc only appears at ack (#50). The listener now opens
-    at startup rather than with the first site list — still ONE shared
-    listener, ≤ ~20 docs a session at current volume (#51).
+    reports land; (c) the *listener* only has a post at server
+    acknowledgement, never at the tap: a pending server timestamp never
+    matches its `createdAt >=` range filter — which is why the app shows the
+    driver's own posts from an overlay meanwhile (#50, next entry). The
+    listener now opens at startup rather than with the first site list —
+    still ONE shared listener, ≤ ~20 docs a session at current volume (#51).
+- **A post shows at the tap, not at the acknowledgement (issue #50)** — every
+  vote and report is written with `FieldValue.serverTimestamp()`, and until
+  the server acknowledges it neither listener has anything to show: the
+  pending report is **not in the recent-reports listener at all** (the SDK
+  only compares same-typed values, and a pending server timestamp is not a
+  Timestamp, so `createdAt >= cutoff` excludes it; it first appears at the
+  ack, already carrying its real time), and the site doc's pending
+  `lastReportAt` reads as **null** (`Query.snapshots()` has no
+  `serverTimestampBehavior` to ask for an estimate). So a tap changed nothing
+  until the ack — seconds on a weak connection, indefinitely offline — which
+  invites repeat taps that all queue up and post later (#52's five rows).
+  As built:
+  - **`InFlightPosts`** (`lib/services/in_flight_posts.dart`, pure Dart)
+    holds each post as the `SiteReport` it will read back as, from the tap.
+    `FirestoreSiteRepository.vote/postActivity` wrap the **whole** write in
+    `inFlight.track(...)` — sign-in and the proximity gate included, so the
+    feedback is not behind a GPS fix. The repository is the one place that
+    sees a post's whole life (the tap, the gate, both ledger attempts, the ack
+    or the refusal), so call sites and the `SiteRepository` interface are
+    untouched; the in-memory seed repository is instant and needs none.
+    `inFlight` is a **required** constructor argument on purpose: with a
+    default, a repository holding posts in an instance nobody watches would
+    compile, pass every test (none can initialise Firebase to build the real
+    provider) and show nothing.
+  - **Shown** by `withEffectiveStatus(..., inFlight:)` and
+    `withInFlightPosts` (`status_logic.dart`, pure), fed from
+    `inFlightReportsProvider` in `sitesProvider` / `siteReportsProvider`. A
+    post stands in for what its write will leave behind: it touches
+    `lastReportAt` ("reported just now", Recently Active, and the stored
+    fallback no longer flashes Unknown on the null touch), one that asserts a
+    status **is** the site's status, and an activity report is listed on the
+    card. It **outranks every delivered report whatever the device clock
+    says** — the server stamps a post when it commits, and this one has not
+    committed yet. It is passed **beside** the delivered reports, never
+    merged into them: merged, one in-flight post would make a still-loading
+    list look complete and turn every other site Unknown.
+  - **Rolled back on failure:** `track` drops the post and rethrows, so the
+    existing error snack (`postErrorMessage`) still says why — rate limit,
+    too far, banned, offline-and-failed alike.
+  - **The hand-over is by document id.** The held copy carries the id of the
+    document it becomes, and a delivered document shadows it — so nothing is
+    listed twice and nothing flickers, whichever of the write's future and
+    the listener's snapshot arrives first. Measured on the JS SDK: the future
+    resolves ~2 ms **before** the snapshot, so dropping the post at the ack
+    would flash the previous status in between. Hence `landingGrace` (10 s):
+    an acknowledged post is held a little longer, invisibly once delivered.
+    It must stay short — a held post whose document an admin has since
+    removed would come back on its author's screen. Only the *status* is
+    handed over at delivery; the `lastReportAt` touch counts for as long as
+    the post is held, because the two listeners answer an ack in separate
+    snapshots and the site doc's touch still reads null for the moment the
+    report is in and the site is not.
+  - **The report id is allocated once per post, outside the ledger retry**
+    (`_newReportRef`): `_commitWithLedgerStamp` re-sends the batch with the
+    other ledger shape on the first post of every rate-limit window, and an
+    activity report used to get a **new** id on that retry. Both attempts now
+    write the same document (votes always did) — pinned in
+    `test/site_repository_in_flight_test.dart`, which runs the real
+    repository against a hand-rolled Firestore fake. **Nothing on the wire
+    changed:** that file also pins, key for key, the batch each kind of post
+    writes (report, site update, stats credit, ledger stamp, and the reset
+    shape on retry) — the only Dart-level guard on those literals, since the
+    emulator suite can't run under `flutter test` and `rules_test.mjs` mirrors
+    the shapes rather than executing the Dart code. The same assertions pass
+    against the pre-#50 repository.
+  - **Accepted limits:** the overlay is memory-only, so a post still queued
+    when the app is killed lands later with no overlay (mobile's offline queue
+    survives a restart; the web has no persistence, so a closed tab loses the
+    write itself — unchanged). A post older than the 10 h window stops
+    counting like any other report. Repeat taps are still each posted: the
+    overlay removes the *reason* to tap again, it does not de-duplicate. The
+    overlay goes by tap order, the server by commit order, and two posts made
+    within a preamble's latency (sign-in, GPS fix, the first stats read) can
+    commit the other way round — the card then flips at hand-over to what
+    everyone else sees. That race predates the overlay: #57.
 - **Security posture** — **validated** writes (a vote must bump exactly
   one counter by +1, fields locked); community **Add Site → pending** (moderated);
   posting reports/votes needs a real account (see above).
@@ -584,6 +660,7 @@ They are approximate — verify exact site positions before production.
 | "Unknown" status when the last report is >10h old (issue #21) | ✅ Done — `SiteStatus.unknown` (grey); `effectiveStatus`/`withEffectiveStatus` in `status_logic.dart` applied in `sitesProvider`; vote buttons come from `SiteStatus.votable` so Unknown is display-only and all three buttons render greyed |
 | "Camera Only / BGD" fourth status (issue #48) | ✅ Done (**web-first** — phones get the button with their next store release; old builds keep working and see each press as the "Camera Only" activity report they always listed) — one large blue text-only button under the row of three on the site card and the approach prompt (the Android notification keeps its three actions — the platform shows at most three); when it is current, Closed renders with no red at all. `SiteStatus.cameraOnly` is display-only: stored as the legacy activity report, derived back in `withEffectiveStatus` (see Key decisions). BGD / Camera Only left the Report activity dialog (`ActivityReportType.reportable`); the admin edit dialog keeps every type. A press adds no row under Recent reports on new builds — it only lights the status, like the other three (issue #52). State cards tally it in blue (`StatusCounts.cameraOnly`). Covered by `test/status_logic_test.dart`, `test/models_test.dart` (the wire literal), `test/providers_sites_test.dart`, `test/site_repository_routing_test.dart`, `test/site_card_test.dart`, `test/proximity_prompt_test.dart`, four checks in `test/rules/rules_test.mjs`, and a real press → derive → render pass in `integration_test/app_test.dart` |
 | An activity report no longer revives an old status (issue #49) | ✅ Done (**web-first**; old builds can't be changed) — a status is current only while a status report (Open / Blitz / Closed vote or Camera Only / BGD) is inside the 10 h window; "Long queue", "Delays", "Police present" and "Other" still list under Recent reports and still move "reported Xm ago" / Recently Active, but no longer make a weeks-old vote — or the BLITZ DETECTED banner — reappear. `withEffectiveStatus` derives it from the shared reports stream with the stored rule as the fail-soft fallback (loading / failed / at the query cap); `Site.statusReportedAt` gives the approach prompt the status report's own time. Covered by `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/proximity_notification_test.dart` and a real "Long queue stays Unknown" pass in `integration_test/app_test.dart`; test fakes serve the vote behind each stored status via `test/support/status_reports.dart` |
+| Votes and reports show at the tap (issue #50) | ✅ Done (**web-first**) — the status, "reported just now" and the report row used to change only when the server acknowledged the write (seconds on a weak connection, never while offline), inviting repeat taps. Each post is now held in `InFlightPosts` from the tap and laid over the listeners by `withEffectiveStatus` / `withInFlightPosts`; a refused write rolls it back under the existing error snack; the hand-over to the delivered document is by id, with a 10 s landing grace (see Key decisions). Covered by `test/in_flight_posts_test.dart`, `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/site_repository_in_flight_test.dart` (the real repository: lifecycle, the ledger retry reusing one report id, and the exact batch each post writes) and a card-level pass in `test/feature_screens_test.dart` |
 | Speaker toggle mutes the over-limit alarm (issue #22) | ✅ Done — icon top-right of Home; `soundEnabledProvider`, persisted via `TripHistoryStore.saveSoundEnabled`; muting doesn't consume the rising edge, so unmuting mid-breach beeps on the next reading |
 | Back-to-top arrow on long lists (issue #25) | ✅ Done — `widgets/back_to_top.dart` overlays a small FAB after 400px of scroll on Home and state detail |
 | Bottom-nav oversized padding on iOS (issue #26) | ✅ Done — the shell's `MediaQuery.removePadding` (context outside the Scaffold) re-introduced the notch top inset into the nav bar's internal SafeArea; now strips top+bottom (`ShellBottomBar`), bar lays out at the bare 80pt M3 height |
@@ -1036,8 +1113,11 @@ to renew it.
    in `~/backups/backup.log`, which nobody reads. Remaining nice-to-have: a
    positive freshness check (alert when no recent snapshot exists, catching
    e.g. cron itself being dead).
-8. **Posting feedback (from issue #48)** — #50: no on-screen feedback until
-   the server acknowledges a post (optimistic overlay).
+8. ~~Posting feedback (from issue #48)~~ — **done (#50)**: posts show at the
+   tap from an in-flight overlay (see Key decisions). Possible refinements,
+   not planned: a visible "sending…" marker while a post is un-acknowledged
+   (offline it is indistinguishable from a landed one), and ignoring a repeat
+   tap while an identical post is still in flight.
 7. **Issue auto-fixer follow-ups** — a progress comment while `claude-working`;
    multi-issue batching. Also: a post-give-up cooldown so one outage cannot
    stall each queued issue for 6h in turn; per-kind backoff schedules;

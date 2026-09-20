@@ -17,6 +17,7 @@ import 'announcement_dismiss_store.dart';
 import 'auth_service.dart';
 import 'firestore_site_repository.dart';
 import 'fresh_window_stream.dart';
+import 'in_flight_posts.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
 import 'participation_logic.dart';
@@ -42,6 +43,7 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
     firestore: FirebaseFirestore.instance,
     auth: ref.watch(firebaseAuthProvider),
     listenerChecks: ref.watch(listenerChecksProvider),
+    inFlight: ref.watch(inFlightPostsProvider),
     // The proximity gate's position source — adapted here so the repository
     // stays geolocator-free (see `report_proximity.dart`).
     locate: () async {
@@ -70,6 +72,32 @@ final listenerChecksProvider = Provider<Stream<void>>((ref) {
   });
   return checks.stream;
 });
+
+/// Where the repository holds this device's votes and reports from the tap
+/// until the listeners have them (issue #50 — see `in_flight_posts.dart`).
+final inFlightPostsProvider = Provider<InFlightPosts>((ref) {
+  final posts = InFlightPosts();
+  ref.onDispose(posts.dispose);
+  return posts;
+});
+
+/// Those posts, as [sitesProvider] and [siteReportsProvider] lay them over
+/// what the listeners deliver. A plain list, never loading: it is local state,
+/// and the feedback it exists for must not wait on anything.
+final inFlightReportsProvider =
+    NotifierProvider<InFlightReportsNotifier, List<SiteReport>>(
+      InFlightReportsNotifier.new,
+    );
+
+class InFlightReportsNotifier extends Notifier<List<SiteReport>> {
+  @override
+  List<SiteReport> build() {
+    final posts = ref.watch(inFlightPostsProvider);
+    final changes = posts.changes.listen((held) => state = held);
+    ref.onDispose(changes.cancel);
+    return posts.current;
+  }
+}
 
 /// Road-name storage (see `username_store.dart`). Firestore in production;
 /// the in-memory store keeps tests and Firebase-less runs prompt-free.
@@ -182,9 +210,13 @@ final storedSitesProvider = StreamProvider<List<Site>>((ref) {
 /// answers (up to ~10 s in a coverage hole), which would stall the cached site
 /// list and the approach prompt it feeds. While they load — or if they fail —
 /// the stored statuses show, exactly what old builds display anyway.
+///
+/// The driver's own posts in flight are laid over both (issue #50), so a tap
+/// shows at the tap instead of at the server's acknowledgement.
 final sitesProvider = Provider<AsyncValue<List<Site>>>((ref) {
   final stored = ref.watch(storedSitesProvider);
   final reports = ref.watch(recentReportsProvider);
+  final inFlight = ref.watch(inFlightReportsProvider);
   return stored.whenData(
     (sites) => withEffectiveStatus(
       sites,
@@ -192,6 +224,7 @@ final sitesProvider = Provider<AsyncValue<List<Site>>>((ref) {
       // failed (a dead listener's last list only goes stale, and would turn
       // every newer vote Unknown). Both fall back to the stored statuses.
       recentReports: reports.hasError ? null : reports.value,
+      inFlight: inFlight,
     ),
   );
 });
@@ -219,12 +252,22 @@ final recentReportsProvider = StreamProvider<List<SiteReport>>((ref) {
 
 /// A single site's slice of [recentReportsProvider] — the same AsyncValue
 /// shape SiteCard has always consumed, now derived client-side instead of
-/// opening one Firestore query per site.
+/// opening one Firestore query per site. The driver's own posts in flight are
+/// listed on top (issue #50), whatever state the listener is in: a "Long
+/// queue" is on the card at the tap, not at the acknowledgement.
 final siteReportsProvider =
     Provider.family<AsyncValue<List<SiteReport>>, String>((ref, siteId) {
-      return ref
-          .watch(recentReportsProvider)
-          .whenData((reports) => reportsForSite(reports, siteId));
+      final inFlight = ref.watch(inFlightReportsProvider);
+      List<SiteReport> forSite(List<SiteReport> delivered) =>
+          reportsForSite(withInFlightPosts(delivered, inFlight), siteId);
+      final listed = ref.watch(recentReportsProvider).whenData(forSite);
+      // Loading, or failed (`whenData` keeps no value through an error, even
+      // one that had loaded): the listener has nothing to list, the driver
+      // still does.
+      if (!listed.hasValue && inFlight.any((post) => post.siteId == siteId)) {
+        return AsyncData(forSite(const []));
+      }
+      return listed;
     });
 
 /// Shared pull-to-refresh for the Firestore-backed streams: a healthy

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +18,7 @@ import 'package:roadmate/services/username_store.dart';
 import 'package:roadmate/services/participation_logic.dart';
 import 'package:roadmate/services/site_repository.dart';
 import 'package:roadmate/widgets/site_card.dart';
+import 'package:roadmate/widgets/status_badge.dart';
 
 class FeatureFakeSiteRepository implements SiteRepository {
   FeatureFakeSiteRepository({
@@ -255,6 +258,80 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No sites match your search.'), findsOneWidget);
+    });
+
+    // Issue #50: nothing on the card changed until the server acknowledged a
+    // post. The repository holds each post in `inFlightPostsProvider` from
+    // the tap; this is the screen's side of it.
+    testWidgets('a post in flight shows on the card at once — status, '
+        '"reported just now" and the report row — and is taken back when its '
+        'write is refused', (tester) async {
+      final repo = FeatureFakeSiteRepository(
+        sites: [_site(id: 'nsw-1', name: 'Marulan', state: AusState.nsw)],
+      );
+      await _pumpScreen(
+        tester,
+        const StateDetailScreen(state: AusState.nsw),
+        repo,
+      );
+      await tester.pumpAndSettle();
+
+      Finder badge(String label) => find.descendant(
+        of: find.byType(StatusBadge),
+        matching: find.text(label),
+      );
+      // Nobody has reported anything: Unknown, and no "reported" line.
+      expect(badge('Unknown'), findsOneWidget);
+      expect(find.text('reported just now'), findsNothing);
+
+      final posts = ProviderScope.containerOf(
+        tester.element(find.byType(StateDetailScreen)),
+      ).read(inFlightPostsProvider);
+      final vote = Completer<void>();
+      final report = Completer<void>();
+      Object? refusal;
+      unawaited(
+        posts
+            .track(
+              SiteReport(
+                id: 'vote',
+                siteId: 'nsw-1',
+                createdAt: DateTime.now(),
+                status: SiteStatus.blitz,
+              ),
+              () => vote.future,
+            )
+            .catchError((Object e) => refusal = e),
+      );
+      unawaited(
+        posts.track(
+          SiteReport(
+            id: 'queue',
+            siteId: 'nsw-1',
+            createdAt: DateTime.now(),
+            activityType: ActivityReportType.longQueue,
+            reporterName: 'Dusty',
+          ),
+          () => report.future,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The fake repository's listeners have not said a word.
+      expect(badge('Blitz'), findsOneWidget);
+      expect(find.text('reported just now'), findsOneWidget);
+      expect(find.text('Long queue'), findsOneWidget);
+      expect(find.text('Dusty'), findsOneWidget);
+
+      // The vote is refused (rate limit, too far, banned…): the status goes
+      // back, while the report — still in flight — keeps its row and touch.
+      vote.completeError(StateError('refused'));
+      await tester.pumpAndSettle();
+
+      expect(refusal, isA<StateError>());
+      expect(badge('Unknown'), findsOneWidget);
+      expect(find.text('Long queue'), findsOneWidget);
+      expect(find.text('reported just now'), findsOneWidget);
     });
 
     testWidgets('Add Site action opens the submission form for the state', (

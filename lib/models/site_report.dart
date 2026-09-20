@@ -43,6 +43,14 @@ enum ActivityReportType {
   }
 }
 
+/// A free-text field as it is stored: trimmed, and absent (null) when blank.
+/// Shared by the write payloads and by the copy of a post the app shows while
+/// its write is in flight (issue #50), so the two can't disagree.
+String? storedText(String? value) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
 /// The document an activity report is stored as — the exact shape
 /// `isValidActivityReport` in firestore.rules accepts, and the one every
 /// shipped build reads. Absent values are left out rather than written as
@@ -59,17 +67,13 @@ Map<String, Object> activityReportPayload({
   String? note,
   String? reporterName,
 }) {
-  final trimmedNote = note?.trim();
-  final trimmedName = reporterName?.trim();
   return {
     'siteId': siteId,
     'activityType': type.wire,
     'uid': uid,
     'createdAt': serverTime,
-    if (trimmedNote != null && trimmedNote.isNotEmpty)
-      'activityNote': trimmedNote,
-    if (trimmedName != null && trimmedName.isNotEmpty)
-      'reporterName': trimmedName,
+    'activityNote': ?storedText(note),
+    'reporterName': ?storedText(reporterName),
     // The author's level after this post, denormalized into the doc so
     // report rows can show it without any per-author read.
     'reporterLevel': reporterLevel,

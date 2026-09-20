@@ -147,6 +147,163 @@ void main() {
     },
   );
 
+  // Issue #50: a post showed nothing until the server acknowledged it — the
+  // pending report is not in the listener at all. The repository holds each
+  // post in `inFlightPostsProvider` from the tap; these pin what the screens
+  // are served meanwhile.
+  group("the driver's own posts in flight (issue #50)", () {
+    SiteReport blitzVote({DateTime? at}) => SiteReport(
+      id: 'mine',
+      siteId: 's1',
+      createdAt: at ?? DateTime.now(),
+      status: SiteStatus.blitz,
+    );
+    final closedVote = SiteReport(
+      id: 'theirs',
+      siteId: 's1',
+      createdAt: reportedAt,
+      status: SiteStatus.closed,
+    );
+
+    test('a vote shows at the tap, and is taken back when its write '
+        'fails', () async {
+      repo.sites.add([marulan]);
+      repo.reports.add([closedVote]);
+      await pumpEventQueue();
+      expect(shown(), SiteStatus.closed);
+
+      final write = Completer<void>();
+      final posting = container
+          .read(inFlightPostsProvider)
+          .track(blitzVote(), () => write.future);
+      await pumpEventQueue();
+      // The listeners have said nothing new — and won't until the ack.
+      expect(shown(), SiteStatus.blitz);
+
+      write.completeError(StateError('rate limited'));
+      await expectLater(posting, throwsStateError);
+      await pumpEventQueue();
+      expect(shown(), SiteStatus.closed);
+    });
+
+    test('it hands over to the delivered document without ever showing the '
+        'old status in between', () async {
+      repo.sites.add([marulan]);
+      repo.reports.add([closedVote]);
+      await pumpEventQueue();
+
+      final statuses = <SiteStatus?>[];
+      container.listen(
+        sitesProvider,
+        (_, next) => statuses.add(next.value?.single.currentStatus),
+      );
+
+      final write = Completer<void>();
+      final posting = container
+          .read(inFlightPostsProvider)
+          .track(blitzVote(), () => write.future);
+      await pumpEventQueue();
+
+      // The ack: the write's future first, the listener's snapshot after it.
+      write.complete();
+      await posting;
+      await pumpEventQueue();
+      repo.reports.add([blitzVote(), closedVote]);
+      await pumpEventQueue();
+
+      expect(shown(), SiteStatus.blitz);
+      expect(statuses, isNotEmpty);
+      expect(statuses, everyElement(SiteStatus.blitz));
+    });
+
+    test('a post never makes the site list wait, and works while the reports '
+        'are still loading', () async {
+      repo.sites.add([marulan]);
+      await pumpEventQueue();
+      expect(container.read(recentReportsProvider).isLoading, isTrue);
+
+      unawaited(
+        container
+            .read(inFlightPostsProvider)
+            .track(blitzVote(), () => Completer<void>().future),
+      );
+      await pumpEventQueue();
+      expect(shown(), SiteStatus.blitz);
+    });
+
+    test("an activity report is listed on the card at the tap — whatever "
+        'state the listener is in — and exactly once after it lands', () async {
+      SiteReport queue() => SiteReport(
+        id: 'q-mine',
+        siteId: 's1',
+        createdAt: DateTime.now(),
+        activityType: ActivityReportType.longQueue,
+      );
+      container.listen(siteReportsProvider('s1'), (_, _) {});
+      List<String>? listed() => container
+          .read(siteReportsProvider('s1'))
+          .value
+          ?.map((r) => r.id)
+          .toList();
+
+      repo.sites.add([marulan]);
+      await pumpEventQueue();
+      expect(listed(), isNull); // still loading, nothing of ours in flight
+
+      final write = Completer<void>();
+      final posting = container
+          .read(inFlightPostsProvider)
+          .track(queue(), () => write.future);
+      await pumpEventQueue();
+      expect(listed(), ['q-mine']);
+
+      repo.reports.add([cameraOnly]);
+      await pumpEventQueue();
+      expect(listed(), ['q-mine', 'r1']);
+
+      // Landed and delivered while the copy is still held: listed once.
+      write.complete();
+      await posting;
+      repo.reports.add([queue(), cameraOnly]);
+      await pumpEventQueue();
+      expect(listed(), ['q-mine', 'r1']);
+
+      // Another site's card is none the wiser.
+      expect(container.read(siteReportsProvider('s2')).value, isEmpty);
+    });
+
+    test('a reports listener that has died still lists the post in '
+        'flight', () async {
+      container.listen(siteReportsProvider('s1'), (_, _) {});
+      repo.sites.add([marulan]);
+      repo.reports.add([cameraOnly]);
+      await pumpEventQueue();
+      repo.reports.addError(StateError('listener lost'));
+      await pumpEventQueue();
+      expect(container.read(siteReportsProvider('s1')).hasError, isTrue);
+
+      unawaited(
+        container
+            .read(inFlightPostsProvider)
+            .track(
+              SiteReport(
+                id: 'q-mine',
+                siteId: 's1',
+                createdAt: DateTime.now(),
+                activityType: ActivityReportType.delays,
+              ),
+              () => Completer<void>().future,
+            ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        container.read(siteReportsProvider('s1')).value?.map((r) => r.id),
+        ['q-mine'],
+      );
+    });
+  });
+
   test('a failed sites listener still surfaces as an error', () async {
     repo.sites.addError(StateError('offline'));
     repo.reports.add([cameraOnly]);

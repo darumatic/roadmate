@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show protected, visibleForTesting;
@@ -10,6 +11,7 @@ import 'auth_service.dart';
 import 'auth_switched_stream.dart';
 import 'ban_logic.dart';
 import 'fresh_window_stream.dart';
+import 'in_flight_posts.dart';
 import 'participation_logic.dart';
 import 'rate_limit.dart';
 import 'report_proximity.dart';
@@ -27,11 +29,18 @@ class FirestoreSiteRepository implements SiteRepository {
     required this.firestore,
     required this.auth,
     required this.locate,
+    required this.inFlight,
     this.listenerChecks = const Stream.empty(),
   });
 
   final FirebaseFirestore firestore;
   final FirebaseAuth auth;
+
+  /// Every vote and report is held here from the tap until the listeners have
+  /// it (issue #50); the app shows it from here meanwhile. Required, with no
+  /// default: a repository holding posts in an instance nobody watches would
+  /// compile, pass every test, and show nothing.
+  final InFlightPosts inFlight;
 
   /// "Has the recent-reports listener gone stale?" — a steady tick plus
   /// app-resume events (`listenerChecksProvider`). Must be a broadcast stream:
@@ -148,6 +157,16 @@ class FirestoreSiteRepository implements SiteRepository {
       // level 1 (reporterLevelToStamp's null path).
     }
     return _lastKnownStats;
+  }
+
+  /// The level [action]'s stamp will carry, when that is already known — for
+  /// the copy of a post shown while its write is in flight (issue #50). The
+  /// row is feedback for the tap, so unlike [_statsForStamp] this never reads:
+  /// unknown just means the level icon arrives with the document.
+  int? _knownLevelAfter(ParticipationAction action) {
+    final stats = _lastKnownStats;
+    if (stats == null || _statsUid != auth.currentUser?.uid) return null;
+    return reporterLevelToStamp(stats, action);
   }
 
   void _bumpStats(String uid, ParticipationAction action) {
@@ -307,28 +326,48 @@ class FirestoreSiteRepository implements SiteRepository {
     if (!status.isStored) {
       throw ArgumentError.value(status, 'status', 'has no stored form');
     }
-    final uid = await ensureSignedIn(auth);
-    await _ensureNearSite(site);
     final siteId = site.id;
-    final name = reporterName?.trim();
-    final reportRef = _sites.doc(siteId).collection('reports').doc();
-    await _commitWithLedgerStamp(uid, (batch) {
-      batch.set(reportRef, {
-        'siteId': siteId,
-        'status': status.name,
-        'uid': uid,
-        'createdAt': FieldValue.serverTimestamp(),
-        if (name != null && name.isNotEmpty) 'reporterName': name,
-      });
-      batch.update(_sites.doc(siteId), {
-        '${status.name}Votes': FieldValue.increment(1),
-        'currentStatus': status.name,
-        'lastReportAt': FieldValue.serverTimestamp(),
-      });
-      _stampStats(batch, uid, ParticipationAction.vote);
-    });
-    _bumpStats(uid, ParticipationAction.vote);
+    final name = storedText(reporterName);
+    final reportRef = _newReportRef(siteId);
+    await inFlight.track(
+      SiteReport(
+        id: reportRef.id,
+        siteId: siteId,
+        createdAt: clock.now(),
+        status: status,
+        reporterName: name,
+      ),
+      () async {
+        final uid = await ensureSignedIn(auth);
+        await _ensureNearSite(site);
+        await _commitWithLedgerStamp(uid, (batch) {
+          batch.set(reportRef, {
+            'siteId': siteId,
+            'status': status.name,
+            'uid': uid,
+            'createdAt': FieldValue.serverTimestamp(),
+            'reporterName': ?name,
+          });
+          batch.update(_sites.doc(siteId), {
+            '${status.name}Votes': FieldValue.increment(1),
+            'currentStatus': status.name,
+            'lastReportAt': FieldValue.serverTimestamp(),
+          });
+          _stampStats(batch, uid, ParticipationAction.vote);
+        });
+        _bumpStats(uid, ParticipationAction.vote);
+      },
+    );
   }
+
+  /// The reference a post's report document will be written to. Allocated
+  /// once per post and **outside** [_commitWithLedgerStamp]'s retry, so both
+  /// ledger shapes write the same document: the copy held in [inFlight] hands
+  /// over to the listener's document by this id (issue #50), and the first
+  /// post of every rate-limit window is exactly the one that retries. The id
+  /// is generated on the device — no round trip.
+  DocumentReference<Map<String, dynamic>> _newReportRef(String siteId) =>
+      _sites.doc(siteId).collection('reports').doc();
 
   @override
   Future<void> report(
@@ -360,28 +399,45 @@ class FirestoreSiteRepository implements SiteRepository {
     String? reporterName,
     required ParticipationAction credit,
   }) async {
-    final uid = await ensureSignedIn(auth);
-    await _ensureNearSite(site);
     final siteId = site.id;
-    final data = activityReportPayload(
-      siteId: siteId,
-      uid: uid,
-      type: activityType,
-      note: activityNote,
-      reporterName: reporterName,
-      reporterLevel: reporterLevelToStamp(await _statsForStamp(uid), credit),
-      serverTime: FieldValue.serverTimestamp(),
-    );
+    final reportRef = _newReportRef(siteId);
+    await inFlight.track(
+      SiteReport(
+        id: reportRef.id,
+        siteId: siteId,
+        createdAt: clock.now(),
+        activityType: activityType,
+        activityNote: storedText(activityNote),
+        reporterName: storedText(reporterName),
+        reporterLevel: _knownLevelAfter(credit),
+      ),
+      () async {
+        final uid = await ensureSignedIn(auth);
+        await _ensureNearSite(site);
+        final data = activityReportPayload(
+          siteId: siteId,
+          uid: uid,
+          type: activityType,
+          note: activityNote,
+          reporterName: reporterName,
+          reporterLevel: reporterLevelToStamp(
+            await _statsForStamp(uid),
+            credit,
+          ),
+          serverTime: FieldValue.serverTimestamp(),
+        );
 
-    // One atomic batch so a report never lands without its site touch.
-    await _commitWithLedgerStamp(uid, (batch) {
-      batch.set(_sites.doc(siteId).collection('reports').doc(), data);
-      batch.update(_sites.doc(siteId), {
-        'lastReportAt': FieldValue.serverTimestamp(),
-      });
-      _stampStats(batch, uid, credit);
-    });
-    _bumpStats(uid, credit);
+        // One atomic batch so a report never lands without its site touch.
+        await _commitWithLedgerStamp(uid, (batch) {
+          batch.set(reportRef, data);
+          batch.update(_sites.doc(siteId), {
+            'lastReportAt': FieldValue.serverTimestamp(),
+          });
+          _stampStats(batch, uid, credit);
+        });
+        _bumpStats(uid, credit);
+      },
+    );
   }
 
   @override
@@ -391,7 +447,7 @@ class FirestoreSiteRepository implements SiteRepository {
     String? submitterName,
   }) async {
     final uid = await ensureSignedIn(auth);
-    final name = submitterName?.trim();
+    final name = storedText(submitterName);
     final ref = site.id.isEmpty ? _sites.doc() : _sites.doc(site.id);
     try {
       // One batch: the submission plus its sitesAdded credit (Trailblazer
@@ -405,7 +461,7 @@ class FirestoreSiteRepository implements SiteRepository {
         // the rules reject approved == true from non-admins).
         'approved': approved,
         'createdBy': uid,
-        if (name != null && name.isNotEmpty) 'createdByName': name,
+        'createdByName': ?name,
         'createdAt': FieldValue.serverTimestamp(),
         if (approved) 'approvedAt': FieldValue.serverTimestamp(),
         if (approved) 'approvedBy': uid,

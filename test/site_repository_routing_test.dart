@@ -5,6 +5,7 @@ import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/firestore_site_repository.dart';
+import 'package:roadmate/services/in_flight_posts.dart';
 import 'package:roadmate/services/local_seed_repository.dart';
 import 'package:roadmate/services/participation_logic.dart';
 
@@ -37,6 +38,7 @@ class _RecordingRepository extends FirestoreSiteRepository {
         firestore: _UntouchableFirestore(),
         auth: _UntouchableAuth(),
         locate: () async => null,
+        inFlight: InFlightPosts(),
       );
 
   final posts = <_Post>[];

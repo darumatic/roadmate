@@ -8,6 +8,7 @@ import 'package:roadmate/models/enums.dart';
 import 'package:roadmate/models/site.dart';
 import 'package:roadmate/models/site_report.dart';
 import 'package:roadmate/services/firestore_site_repository.dart';
+import 'package:roadmate/services/in_flight_posts.dart';
 import 'package:roadmate/services/rate_limit.dart';
 
 // NOTE: `Firebase.initializeApp` needs a real platform plugin, which the
@@ -55,6 +56,7 @@ void main() {
           // needs a fix; a null resolver also proves the gate skips the
           // lookup for un-geocoded sites.
           locate: () async => null,
+          inFlight: InFlightPosts(),
         );
       });
 

@@ -103,19 +103,57 @@ const int recentReportsQueryCap = 1000;
 /// loading, or failed — the site list never waits on it), or it has hit
 /// [recentReportsQueryCap] and may be cut short. That fallback is exactly what
 /// old builds display, so it fails soft.
+///
+/// [inFlight] is this device's own posts the listeners can't show yet
+/// (`InFlightPosts`, issue #50), laid over all of the above so a tap shows at
+/// the tap. Each stands in for what its write will leave behind: it touches
+/// the site's `lastReportAt` — whose pending value reads as null, which would
+/// otherwise blank "reported Xm ago" and turn the stored rule Unknown until
+/// the ack — and one that asserts a status IS the site's status. It outranks
+/// every delivered report whatever the two clocks say, because the server
+/// stamps a post when it commits, and this one has not committed yet. Kept
+/// apart from [recentReports] on purpose: merged in, a lone in-flight post
+/// would make a still-loading list look complete, and every other site
+/// Unknown.
 List<Site> withEffectiveStatus(
   List<Site> sites, {
   Iterable<SiteReport>? recentReports,
+  Iterable<SiteReport> inFlight = const [],
   DateTime? now,
 }) {
   final at = now ?? DateTime.now();
   final reports = recentReports?.toList(growable: false);
   final latest = latestStatusReports(reports ?? const [], now: at);
   final complete = reports != null && reports.length < recentReportsQueryCap;
+  // Both in posting order, so a later post replaces an earlier one for the
+  // same site. The touch counts for as long as a post is held, delivered or
+  // not: the two listeners answer an ack in separate snapshots, and for the
+  // moment the report is in and the site doc is not, the touch reads as null.
+  final touching = {
+    for (final post in reportsWithinWindow(inFlight, now: at))
+      post.siteId: post,
+  };
+  final asserting = {
+    for (final post in undeliveredPosts(inFlight, reports ?? const [], now: at))
+      if (reportedStatusOf(post) != null) post.siteId: post,
+  };
   return [
     for (final s in sites)
-      _withDisplayStatus(s, latest[s.id], at, reportsComplete: complete),
+      _withDisplayStatus(
+        _touchedBy(s, touching[s.id]),
+        asserting[s.id] ?? latest[s.id],
+        at,
+        reportsComplete: complete,
+      ),
   ];
+}
+
+/// [site] as [post]'s write will leave it: every post touches `lastReportAt`.
+Site _touchedBy(Site site, SiteReport? post) {
+  if (post == null) return site;
+  final touched = site.lastReportAt;
+  if (touched != null && touched.isAfter(post.createdAt)) return site;
+  return site.copyWith(lastReportAt: post.createdAt);
 }
 
 Site _withDisplayStatus(
@@ -204,4 +242,39 @@ List<SiteReport> reportsForSite(Iterable<SiteReport> reports, String siteId) {
     for (final r in reports)
       if (r.siteId == siteId) r,
   ];
+}
+
+/// The [inFlight] posts (`InFlightPosts`, issue #50) still standing in for a
+/// document the listener has not [delivered], in posting order. A delivered
+/// one is shadowed — matched by id, which a held post shares with the document
+/// it becomes — so the real report takes over with its server time, on equal
+/// terms with everyone else's, and is never listed twice. A post older than
+/// [window] is dropped like any other report: a vote that has sat in the
+/// offline queue all night is not a current status.
+List<SiteReport> undeliveredPosts(
+  Iterable<SiteReport> inFlight,
+  Iterable<SiteReport> delivered, {
+  DateTime? now,
+  Duration window = statusFreshWindow,
+}) {
+  final held = reportsWithinWindow(inFlight, now: now, window: window);
+  if (held.isEmpty) return held;
+  final deliveredIds = {for (final r in delivered) r.id};
+  return [
+    for (final post in held)
+      if (!deliveredIds.contains(post.id)) post,
+  ];
+}
+
+/// The shared recent-reports list with this device's [inFlight] posts on top —
+/// most-recent first like the stream itself, and an in-flight post is by
+/// construction the newest thing there is. Feeds the cards' Recent reports,
+/// so a "Long queue" is listed at the tap rather than at the ack.
+List<SiteReport> withInFlightPosts(
+  List<SiteReport> delivered,
+  Iterable<SiteReport> inFlight, {
+  DateTime? now,
+}) {
+  final held = undeliveredPosts(inFlight, delivered, now: now);
+  return held.isEmpty ? delivered : [...held.reversed, ...delivered];
 }
