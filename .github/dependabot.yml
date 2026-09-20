@@ -1,0 +1,22 @@
+# Dependabot VERSION updates — for GitHub Actions only.
+#
+# Every action in .github/workflows is pinned to a full commit SHA (a moved
+# tag can't inject code into jobs that hold the deploy key and the store
+# signing secrets). A pin never moves by itself, so something has to move it:
+# this opens ONE grouped pull request a month that bumps the SHAs and the
+# `# vX.Y.Z` comments beside them. Merging it to master is an ordinary web
+# release (the Web Release pipeline runs on the merge commit).
+#
+# Deliberately NOT here: pub / gradle / npm version updates. Those are routine
+# maintenance, not security — vulnerable dependencies are already covered by
+# Dependabot *security* updates (a repository setting, no file needed) — and
+# every merged PR is a production deploy.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]

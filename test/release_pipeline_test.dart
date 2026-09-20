@@ -96,6 +96,40 @@ void main() {
       }
     });
 
+    // A tag can be moved; a commit SHA cannot. These jobs hold the Firebase
+    // deploy key and the store signing secrets, and one action
+    // (subosito/flutter-action) is third-party — so every action is pinned to
+    // the full SHA, with the version beside it for humans and for Dependabot
+    // (.github/dependabot.yml), which is what moves the pins from now on.
+    // CodeQL's actions/unpinned-tag query flags the same thing, after the push.
+    test('every action is pinned to a full commit SHA with its version', () {
+      final uses = RegExp(r'^\s*(?:- )?uses:\s*(\S+)(.*)$', multiLine: true);
+      final pinned = RegExp(r'^[\w.-]+/[\w./-]+@[0-9a-f]{40}$');
+      final version = RegExp(r'^\s+# v\d+\.\d+\.\d+$');
+      var checked = 0;
+
+      for (final file in Directory('.github/workflows').listSync()) {
+        if (file is! File || !file.path.endsWith('.yml')) continue;
+        for (final match in uses.allMatches(file.readAsStringSync())) {
+          final ref = match.group(1)!;
+          // Our own reusable workflows are addressed by path, not by version.
+          if (ref.startsWith('./')) continue;
+          checked++;
+          expect(
+            pinned.hasMatch(ref),
+            isTrue,
+            reason: '${file.path}: "$ref" is not pinned to a 40-char SHA',
+          );
+          expect(
+            version.hasMatch(match.group(2)!),
+            isTrue,
+            reason: '${file.path}: "$ref" needs a "# vX.Y.Z" comment',
+          );
+        }
+      }
+      expect(checked, greaterThan(10), reason: 'the scan found too few uses:');
+    });
+
     test('flutter-ci.yml is callable and no longer double-runs on push', () {
       final wf = _read('.github/workflows/flutter-ci.yml');
       expect(wf, contains('workflow_call:'));

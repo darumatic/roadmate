@@ -144,8 +144,12 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   and `ios/` folders (no Flutter SDK, no generated config), and they are four
   files of Flutter boilerplate — a failing scan would block every release at
   the gate below, the unattended auto-fixer's included. Default setup over an
-  advanced-setup workflow because the two conflict on SARIF uploads. A second
-  scan, GitHub **Code Quality**, runs beside it on the same engine.
+  advanced-setup workflow because the two conflict on SARIF uploads. It runs
+  the **extended** query suite (findings never block a release — the gate
+  only needs the scan itself to finish green). A second scan, GitHub **Code
+  Quality**, runs beside it on the same engine. The whole GitHub-side posture
+  is recorded, checkable and re-appliable: **Deployment → GitHub security
+  settings**.
   The pipeline binds both in by polling for the commit's dynamic workflow
   runs rather than `needs:` (NOT by check-run app: their check runs report
   under plain `github-actions`, indistinguishable from our own jobs), and
@@ -587,6 +591,59 @@ and take contributions as fork PRs (the Flutter CI `pull_request` gate covers
 them; fork PRs get no secrets and cannot dispatch workflows). Per-repo grants
 stack on top of the base: giving someone write on another darumatic repo does
 not touch this one.
+
+### GitHub security settings (`scripts/github_security.sh`)
+
+These live in GitHub, not in the repo, and **nothing re-applies them** — no
+organization security configuration is attached, and the org is on the Free
+plan. So the intended state is code: `scripts/github_security.sh` reports
+drift (`--check`, the default; read-only) or sets everything (`--apply`), exit
+0 ok · 1 drift · 2 could not run; it needs `gh` signed in as a repo admin, and
+`jq`. Unit-tested against a stubbed `gh` in `test/github_security_test.dart`.
+
+| Setting | State |
+|---|---|
+| Secret scanning + **push protection** | on — a push containing a recognised credential is **rejected** |
+| Dependabot alerts + security updates | on |
+| Dependabot version updates | `github-actions` only, monthly, one grouped PR (`.github/dependabot.yml`) |
+| Private vulnerability reporting + `SECURITY.md` | on — reports arrive as private advisories, no address published |
+| CodeQL code scanning (default setup) | `actions`, `javascript-typescript`, `python`; **extended** query suite; every push/PR + weekly |
+| Default workflow token | **read**; Actions may not approve pull requests |
+| Fork pull requests | workflow runs need approval for **all** outside contributors |
+| `master` ruleset | blocks force-push and deletion — nothing else |
+| Actions in workflows | pinned to full commit SHAs with a `# vX.Y.Z` comment (guarded by `test/release_pipeline_test.dart`) |
+
+Deliberately absent — do not "fix":
+- **Non-provider patterns, validity checks, AI secret detection, custom
+  patterns, delegated bypass** are the paid *Secret Protection* product. On the
+  Free plan a public repo gets secret scanning and push protection only; the
+  API answers `200` to those toggles and silently leaves them disabled.
+- **CodeQL for `java-kotlin` / `swift`** — see Key decisions: they must be
+  built, can't be here, and a failed scan blocks every release. Dart is not a
+  CodeQL language, so the app itself is never scanned.
+- **A pull-request requirement on `master`** — releases *are* direct pushes
+  (`release.sh`, the auto-fixer).
+- **The Actions "require SHA pinning" policy** — the pins are enforced by the
+  unit test instead; the policy's effect on GitHub's own dynamic workflows
+  (CodeQL default setup) isn't worth discovering on a release.
+- **pub / gradle / npm version updates** — maintenance, not security (vulnerable
+  dependencies are already covered by Dependabot *security* updates), and every
+  merged PR is a production deploy.
+
+**When push protection rejects a push** the remote answers with the secret's
+type, commit and `path:line`. Fix it by taking the secret *out of the commit*
+(`git commit --amend`, or an interactive rebase for an older commit) — a new
+commit on top still carries it in history and is rejected again. Only if it
+is genuinely not a secret: open the URL in the rejection **as the same user
+that pushed**, pick a reason, and push again within three hours. The Firebase
+client keys (`lib/firebase_options.dart`, `google-services.json`, the iOS
+plist) match GitHub's *Google API Key* pattern and are public by design — a
+regenerated or rotated one is the likely false positive. The auto-fixer pushes
+with the owner's token, so a rejection there surfaces as an ordinary failed
+push in its ntfy alert, and the owner is "the same user" for the bypass URL.
+
+**A merged Dependabot PR is a web release** (any push to `master` is) without a
+version bump, and lands a commit authored by `dependabot[bot]`.
 
 ### Issue auto-fixer (2026-08-25)
 
