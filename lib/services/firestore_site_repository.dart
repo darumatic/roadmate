@@ -13,6 +13,7 @@ import 'ban_logic.dart';
 import 'fresh_window_stream.dart';
 import 'in_flight_posts.dart';
 import 'participation_logic.dart';
+import 'post_sequencer.dart';
 import 'rate_limit.dart';
 import 'report_proximity.dart';
 import 'site_repository.dart';
@@ -51,6 +52,9 @@ class FirestoreSiteRepository implements SiteRepository {
   /// Resolves the device position for the report proximity gate, asking for
   /// permission if needed — see `report_proximity.dart`.
   final DevicePositionResolver locate;
+
+  /// Posts take turns reaching the SDK, in tap order (issue #57).
+  final _tapOrder = PostSequencer();
 
   CollectionReference<Map<String, dynamic>> get _sites =>
       firestore.collection('sites');
@@ -258,14 +262,21 @@ class FirestoreSiteRepository implements SiteRepository {
   ///
   /// Tries the increment shape first (the common case inside an open window);
   /// when the server refuses it — window expired, doc missing, or count
-  /// exhausted — retries once with the reset shape. A denial of both shapes
-  /// means the user really is over the limit.
+  /// exhausted — retries with the reset shape, and when that is denied too,
+  /// with the increment once more (below). A denial of all three means the
+  /// user really is over the limit.
+  ///
+  /// Every attempt reaches the SDK through [write], the post's place in the
+  /// tap order (issue #57) — never by calling `commit()` directly.
   Future<void> _commitWithLedgerStamp(
     String uid,
-    void Function(WriteBatch batch) addOps,
-  ) async {
-    Future<void> attempt(LedgerShape shape) {
-      // Batches are single-use; rebuild for each attempt.
+    void Function(WriteBatch batch) addOps, {
+    required PostWrite write,
+  }) async {
+    // Batches are single-use, so each attempt builds its own — and only when
+    // [write] lets it out: a re-send may first have to wait for the posts
+    // ahead of this one.
+    Future<void> attempt(LedgerShape shape) => write(() {
       final batch = firestore.batch();
       addOps(batch);
       final ledger = _ledgerRef(uid);
@@ -284,22 +295,36 @@ class FirestoreSiteRepository implements SiteRepository {
         );
       }
       return batch.commit();
-    }
+    });
 
     try {
       await attempt(LedgerShape.increment);
+      return;
     } catch (e) {
       if (!shouldTryOtherShape(e)) rethrow;
-      try {
-        await attempt(LedgerShape.reset);
-      } catch (e2) {
-        // Both shapes refused: either the window really is spent, or this uid
-        // is banned and every write of theirs is being denied.
-        if (isRulesDenial(e2)) {
-          await _explainDenial(uid, const RateLimitedException());
-        }
-        rethrow;
+    }
+    try {
+      await attempt(LedgerShape.reset);
+      return;
+    } catch (e) {
+      if (!isRulesDenial(e)) rethrow;
+    }
+    // A denied reset says the window is open — which it may be only since a
+    // moment ago, opened by the post before this one (issue #57). On a slow
+    // link both posts' increments are with the server before either is
+    // answered: it refuses both (no window), accepts the first post's reset,
+    // and refuses this one's because the window is open NOW. One more
+    // increment settles it, and the server still counts: a window that really
+    // is spent refuses this too.
+    try {
+      await attempt(LedgerShape.increment);
+    } catch (e) {
+      // Refused in every shape: either the window really is spent, or this
+      // uid is banned and every write of theirs is being denied.
+      if (isRulesDenial(e)) {
+        await _explainDenial(uid, const RateLimitedException());
       }
+      rethrow;
     }
   }
 
@@ -329,7 +354,7 @@ class FirestoreSiteRepository implements SiteRepository {
     final siteId = site.id;
     final name = storedText(reporterName);
     final reportRef = _newReportRef(siteId);
-    await inFlight.track(
+    await _post(
       SiteReport(
         id: reportRef.id,
         siteId: siteId,
@@ -337,10 +362,10 @@ class FirestoreSiteRepository implements SiteRepository {
         status: status,
         reporterName: name,
       ),
-      () async {
+      (write) async {
         final uid = await ensureSignedIn(auth);
         await _ensureNearSite(site);
-        await _commitWithLedgerStamp(uid, (batch) {
+        await _commitWithLedgerStamp(uid, write: write, (batch) {
           batch.set(reportRef, {
             'siteId': siteId,
             'status': status.name,
@@ -359,6 +384,16 @@ class FirestoreSiteRepository implements SiteRepository {
       },
     );
   }
+
+  /// The way every vote and report is made: [held] is shown from the tap
+  /// until the listeners have it ([inFlight], issue #50), and [post] — the
+  /// whole of it, sign-in and the proximity gate included — takes its turn
+  /// behind the posts tapped before it ([PostSequencer], issue #57). [post]
+  /// hands its [PostWrite] on to [_commitWithLedgerStamp].
+  Future<void> _post(
+    SiteReport held,
+    Future<void> Function(PostWrite write) post,
+  ) => inFlight.track(held, () => _tapOrder.run(post));
 
   /// The reference a post's report document will be written to. Allocated
   /// once per post and **outside** [_commitWithLedgerStamp]'s retry, so both
@@ -401,7 +436,7 @@ class FirestoreSiteRepository implements SiteRepository {
   }) async {
     final siteId = site.id;
     final reportRef = _newReportRef(siteId);
-    await inFlight.track(
+    await _post(
       SiteReport(
         id: reportRef.id,
         siteId: siteId,
@@ -411,7 +446,7 @@ class FirestoreSiteRepository implements SiteRepository {
         reporterName: storedText(reporterName),
         reporterLevel: _knownLevelAfter(credit),
       ),
-      () async {
+      (write) async {
         final uid = await ensureSignedIn(auth);
         await _ensureNearSite(site);
         final data = activityReportPayload(
@@ -428,7 +463,7 @@ class FirestoreSiteRepository implements SiteRepository {
         );
 
         // One atomic batch so a report never lands without its site touch.
-        await _commitWithLedgerStamp(uid, (batch) {
+        await _commitWithLedgerStamp(uid, write: write, (batch) {
           batch.set(reportRef, data);
           batch.update(_sites.doc(siteId), {
             'lastReportAt': FieldValue.serverTimestamp(),

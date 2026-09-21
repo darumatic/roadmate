@@ -33,4 +33,38 @@ Gotchas:
 - Avoid tapping vote/report buttons: they write to the production database.
 - `?cachebust=N` on the URL avoids the service-worker serving a stale build.
 
+## What the Firestore SDK and the rules really do (emulator probe)
+
+Posting can't be driven through the app (it writes to production, and the app
+has no emulator switch), and assumptions about the SDK — pending writes, the
+order of acks and snapshots, what a refused batch does to the ones queued
+behind it — are exactly what unit-test fakes can't check. They can be checked
+locally, against the real JS SDK (the one Flutter web wraps) and the real
+rules, without touching production:
+
+1. Scratch dir with `package.json` `{"type":"module"}`, a `node_modules`
+   symlink to `test/rules/node_modules` (it already holds `firebase` and
+   `@firebase/rules-unit-testing`), and a `probe.mjs`.
+2. In it: `initializeTestEnvironment({projectId: 'demo-<name>', firestore:
+   {host: '127.0.0.1', port: 8080, rules: readFileSync('<repo>/firestore.rules', 'utf8')}})`.
+   `env.authenticatedContext(uid, {firebase: {sign_in_provider: 'anonymous'}}).firestore()`
+   is a client under the real rules; `env.withSecurityRulesDisabled(ctx => …)`
+   seeds and reads back. Modular API throughout (`writeBatch`, `onSnapshot`,
+   `serverTimestamp`, `disableNetwork`/`enableNetwork`).
+3. From the repo root: `firebase emulators:exec --only firestore --project
+   demo-<name> "node <abs path>/probe.mjs"` (Java 21+). A `demo-` project id
+   never reaches a real backend, and the emulator needs no indexes.
+
+`disableNetwork` → write → wait → `enableNetwork` holds a write pending long
+enough to observe; issuing two commits back to back without awaiting is a slow
+link in miniature (both are with the server before either is answered). Mirror
+the Dart logic faithfully and log every attempt. The native Android/iOS SDKs
+can't be probed this way. Established so far: a pending `serverTimestamp()`
+doc is absent from a Timestamp range-filtered listener until the ack, which
+resolves the write's promise ~2 ms *before* the listener's snapshot (#50);
+refusals come back in the order the writes went out, a reset queued behind
+another post's reset is denied because the window is by then open, and a
+re-send joins the SDK's queue at the back — so a post let through while an
+earlier one is mid-retry lands first (#57).
+
 Flows worth driving: Home (speedo, blitz banner, closest sites, speaker mute toggle top-right), tap blitz banner → state detail (site cards, vote-row states, back-to-top after two wheel scrolls), bottom nav tabs.

@@ -289,10 +289,12 @@ service cloud.firestore {
 
     // Rate-limit ledger shapes (issue #15 redux). A reset starts a fresh
     // 5-minute window; an increment adds an action to the open window, capped
-    // at 5. The client never consults its own clock: it tries increment, and
-    // retries with reset when the server denies it. NOTE: the 5-action /
-    // 5-minute values must match kMaxActionsPerWindow / kRateLimitWindow in
-    // lib/services/rate_limit.dart.
+    // at 5. The client never consults its own clock: it tries increment,
+    // retries with reset when the server denies it, and with increment once
+    // more when that is denied too — a reset is denied inside an open window,
+    // and the post just before this one may have only now opened it (issue
+    // #57). NOTE: the 5-action / 5-minute values must match
+    // kMaxActionsPerWindow / kRateLimitWindow in lib/services/rate_limit.dart.
     function isLedgerReset() {
       let d = request.resource.data;
       return d.keys().hasOnly(['count', 'windowStart', 'lastActionAt'])

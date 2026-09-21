@@ -13,8 +13,18 @@ import 'package:firebase_core/firebase_core.dart';
 /// client picked the ledger's reset-vs-increment branch with the device
 /// clock, and clock skew produced false rejections. Now every time judgment
 /// lives server-side (`request.time`); the client only chooses a write shape
-/// and, when the server denies it, retries once with the other shape. No
-/// `DateTime` may ever appear in this file.
+/// and, when the server refuses it, tries the next: increment, reset, then
+/// the increment once more. No `DateTime` may ever appear in this file.
+///
+/// That last increment is for two quick posts (issue #57). On a slow link
+/// both are with the server before either is answered, so when the first one
+/// opens a window the server refuses both increments (no window), accepts the
+/// first post's reset — and denies the second's, *because* the window is now
+/// open. A denied reset alone therefore never meant "spent"; a denied
+/// increment after it does. Stopping at two called a driver's corrective tap
+/// rate-limited after a single action (measured against the emulator with
+/// the real rules). The server still does all the counting, so the extra
+/// attempt can't get anyone past the cap.
 
 /// Display/documentation copies of the enforced values — the authoritative
 /// numbers are the `5` and `duration.value(5, 'm')` in `firestore.rules`
@@ -25,7 +35,7 @@ const Duration kRateLimitWindow = Duration(minutes: 5);
 const String kRateLimitMessage =
     'Easy there — 5 actions per 5 minutes. Try again soon.';
 
-/// The server refused both ledger shapes: the user really has spent all
+/// The server refused every ledger attempt: the user really has spent all
 /// [kMaxActionsPerWindow] actions inside the current window.
 class RateLimitedException implements Exception {
   const RateLimitedException();
@@ -73,9 +83,10 @@ bool shouldTryOtherShape(Object error) {
       (error.code == 'permission-denied' || error.code == 'not-found');
 }
 
-/// Whether a failure is a rules denial. After both shapes have been tried,
-/// a denial means genuinely rate-limited (anything else — offline, missing
-/// doc — is not the limit speaking).
+/// Whether a failure is a rules denial. A denied reset earns the increment
+/// one more try (see the top of this file), and a denial of that last attempt
+/// means genuinely rate-limited; anything else — offline, a missing doc — is
+/// not the limit speaking and surfaces as it is.
 bool isRulesDenial(Object error) {
   return error is FirebaseException && error.code == 'permission-denied';
 }

@@ -17,8 +17,14 @@ import 'package:roadmate/services/status_logic.dart';
 /// is a write the server has not acknowledged. Every read fails, as it would
 /// offline; the repository treats all of its reads here as best-effort.
 class _FakeFirestore implements FirebaseFirestore {
+  /// The batches handed to the SDK, in that order: one counts from its
+  /// `commit()`, not from when it was built.
   final batches = <_FakeBatch>[];
   var _autoIds = 0;
+
+  /// Reads the test is holding open, by document path — a weak connection.
+  /// Let go, one fails like every other read here.
+  final heldReads = <String, Completer<void>>{};
 
   String nextAutoId() => 'auto-${_autoIds++}';
 
@@ -35,11 +41,7 @@ class _FakeFirestore implements FirebaseFirestore {
       _FakeCollection(this, path);
 
   @override
-  WriteBatch batch() {
-    final batch = _FakeBatch();
-    batches.add(batch);
-    return batch;
-  }
+  WriteBatch batch() => _FakeBatch(this);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -80,14 +82,22 @@ class _FakeDoc implements DocumentReference<Map<String, dynamic>> {
       _FakeCollection(store, '${this.path}/$path');
 
   @override
-  Future<DocumentSnapshot<Map<String, dynamic>>> get([GetOptions? options]) =>
-      Future.error(_firestoreError('unavailable'));
+  Future<DocumentSnapshot<Map<String, dynamic>>> get([
+    GetOptions? options,
+  ]) async {
+    await store.heldReads[path]?.future;
+    throw _firestoreError('unavailable');
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _FakeBatch implements WriteBatch {
+  _FakeBatch(this.store);
+
+  final _FakeFirestore store;
+
   /// Everything this batch writes: `'<op> <path>'` → the data, where op is
   /// `set`, `set(merge)` or `update`.
   final writes = <String, Object?>{};
@@ -107,7 +117,10 @@ class _FakeBatch implements WriteBatch {
       writes['update ${document.path}'] = data;
 
   @override
-  Future<void> commit() => _commit.future;
+  Future<void> commit() {
+    store.batches.add(this);
+    return _commit.future;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -146,9 +159,24 @@ const _site = Site(
   address: 'Hume Hwy',
 );
 
+/// [_site] with coordinates, so the proximity gate has something to measure.
+const _marulan = Site(
+  id: 'nsw-1',
+  name: 'Marulan',
+  type: SiteType.checkingStation,
+  state: AusState.nsw,
+  suburb: 'Marulan',
+  address: 'Hume Hwy',
+  lat: -34.71,
+  lng: 150.01,
+);
+
+/// Some 150 km up the Hume from [_marulan] — far outside the gate.
+const DevicePosition _sydney = (lat: -33.87, lng: 151.21);
+
 /// Issue #50: nothing showed until the server acknowledged a post. The
 /// repository is the one place that sees a post's whole life — the tap, the
-/// gate, both ledger attempts, the ack or the refusal — so it is what holds
+/// gate, every ledger attempt, the ack or the refusal — so it is what holds
 /// each post in `InFlightPosts` meanwhile. These run the real repository.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -420,14 +448,17 @@ void main() {
   test('a refused write takes the post back down, and the error still '
       'reaches the caller for its snack', () async {
     final voting = repoWith().vote(_site, SiteStatus.blitz);
-    await pumpEventQueue();
 
-    firestore.batches[0].refuse(_firestoreError('permission-denied'));
-    await pumpEventQueue();
-    firestore.batches[1].refuse(_firestoreError('permission-denied'));
+    // The increment, the reset, and the increment once more (issue #57): a
+    // window that really is spent refuses all three.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await pumpEventQueue();
+      firestore.batches[attempt].refuse(_firestoreError('permission-denied'));
+    }
 
     await expectLater(voting, throwsA(isA<RateLimitedException>()));
     expect(posts.current, isEmpty);
+    expect(firestore.batches, hasLength(3));
   });
 
   test('a write that fails outright is rolled back too', () async {
@@ -442,22 +473,9 @@ void main() {
 
   test('the proximity gate refusing takes the post back down before anything '
       'is written', () async {
-    final marulan = Site(
-      id: _site.id,
-      name: _site.name,
-      type: _site.type,
-      state: _site.state,
-      suburb: _site.suburb,
-      address: _site.address,
-      lat: -34.71,
-      lng: 150.01,
-    );
-    final repo = repoWith(
-      // Sydney — some 150 km up the Hume.
-      locate: () async => (lat: -33.87, lng: 151.21),
-    );
+    final repo = repoWith(locate: () async => _sydney);
 
-    final voting = repo.vote(marulan, SiteStatus.blitz);
+    final voting = repo.vote(_marulan, SiteStatus.blitz);
     expect(posts.current, hasLength(1));
 
     await expectLater(voting, throwsA(isA<TooFarException>()));
@@ -468,5 +486,219 @@ void main() {
   test('a status with no stored form is refused before anything is held', () {
     expect(repoWith().vote(_site, SiteStatus.unknown), throwsArgumentError);
     expect(posts.current, isEmpty);
+  });
+
+  // Issue #57. The status everyone sees is a site's newest status report, and
+  // the server stamps a report when its batch COMMITS — not at the tap. Each
+  // post used to run its own sign-in, GPS fix and (activity path only) stats
+  // read, so whichever got through those first committed first: a Camera
+  // Only / BGD press corrected with Closed a second later landed AFTER its
+  // correction, and stood for everyone for the next 10 hours.
+  group('posts reach Firestore in the order they were tapped', () {
+    const statsDoc = 'users/driver-1/stats/participation';
+    const ledger = 'users/driver-1/limits/actions';
+
+    String pathOf(SiteReport post) => 'sites/nsw-1/reports/${post.id}';
+
+    test('a correction never overtakes the press it corrects, however long '
+        "that press's stats read takes", () async {
+      final statsRead = firestore.heldReads[statsDoc] = Completer<void>();
+      final repo = repoWith();
+
+      unawaited(repo.vote(_site, SiteStatus.cameraOnly));
+      unawaited(repo.vote(_site, SiteStatus.closed));
+      final [press, correction] = posts.current;
+      await pumpEventQueue();
+
+      // Both show from the tap (#50). Neither is written yet: the correction
+      // is waiting its turn rather than racing ahead.
+      expect(firestore.batches, isEmpty);
+
+      statsRead.complete();
+      await pumpEventQueue();
+      expect(firestore.reportPaths, [pathOf(press), pathOf(correction)]);
+    });
+
+    test('nor one whose GPS fix comes quicker', () async {
+      // The first lookup is a cold fix; by the second the fix is warm.
+      final coldFix = Completer<DevicePosition?>();
+      const atTheSite = (lat: -34.71, lng: 150.01);
+      var lookups = 0;
+      final repo = repoWith(
+        locate: () => lookups++ == 0 ? coldFix.future : Future.value(atTheSite),
+      );
+
+      unawaited(repo.vote(_marulan, SiteStatus.blitz));
+      unawaited(repo.vote(_marulan, SiteStatus.closed));
+      final [first, second] = posts.current;
+      await pumpEventQueue();
+      expect(firestore.batches, isEmpty);
+
+      coldFix.complete(atTheSite);
+      await pumpEventQueue();
+      expect(firestore.reportPaths, [pathOf(first), pathOf(second)]);
+    });
+
+    test('the wait is for a write to be handed to the SDK, never for the '
+        'server to acknowledge it — offline that would be forever', () async {
+      final repo = repoWith();
+
+      unawaited(repo.vote(_site, SiteStatus.blitz));
+      unawaited(repo.vote(_site, SiteStatus.closed));
+      final [first, second] = posts.current;
+      await pumpEventQueue();
+
+      // Nothing has been acknowledged, and both are with the SDK — whose own
+      // queue keeps this order and, on a phone, outlives the app being killed.
+      expect(firestore.reportPaths, [pathOf(first), pathOf(second)]);
+    });
+
+    test('a post refused before it writes anything lets the next one '
+        'through', () async {
+      final fix = Completer<DevicePosition?>();
+      final repo = repoWith(locate: () => fix.future);
+
+      final refused = repo.vote(_marulan, SiteStatus.blitz);
+      // [_site] has no coordinates, so this one never asks for a fix.
+      unawaited(repo.vote(_site, SiteStatus.closed));
+      final next = posts.current.last;
+      await pumpEventQueue();
+      expect(firestore.batches, isEmpty);
+
+      fix.complete(_sydney);
+      await expectLater(refused, throwsA(isA<TooFarException>()));
+      await pumpEventQueue();
+      expect(firestore.reportPaths, [pathOf(next)]);
+    });
+
+    // Measured against the emulator with the real rules: on a slow link both
+    // posts' increments are with the server before either is answered. When
+    // the first post opens a rate-limit window, the server refuses its
+    // increment and the second post's, accepts the first's reset — and then
+    // refuses the second's reset, because the window is open NOW. Stopping
+    // there called the correction rate-limited after a single action.
+    test('a post queued behind the one that opens a rate-limit window is not '
+        'mistaken for rate-limited: refused in both shapes, it tries the '
+        'increment once more', () async {
+      final denied = _firestoreError('permission-denied');
+      final repo = repoWith();
+
+      final pressing = repo.vote(_site, SiteStatus.cameraOnly);
+      final correcting = repo.vote(_site, SiteStatus.closed);
+      final [press, correction] = posts.current;
+      await pumpEventQueue();
+
+      firestore.batches[0].refuse(denied); // the press's increment: no window
+      await pumpEventQueue();
+      firestore.batches[1].refuse(denied); // the correction's: still none
+      await pumpEventQueue();
+      // The press is mid-retry, so the correction's re-send waits for it.
+      expect(firestore.batches, hasLength(3));
+      firestore.batches[2].acknowledge(); // the press's reset opens one
+      await pressing;
+      await pumpEventQueue();
+      firestore.batches[3].refuse(denied); // the correction's reset: it's open
+      await pumpEventQueue();
+
+      expect(firestore.batches, hasLength(5));
+      expect(firestore.batches[4].writes.keys, contains('update $ledger'));
+      firestore.batches[4].acknowledge();
+      await correcting;
+
+      // Tap order at every step, and one document per post throughout.
+      expect(firestore.reportPaths, [
+        pathOf(press), pathOf(correction), // the increments
+        pathOf(press), pathOf(correction), // the resets
+        pathOf(correction), // the increment that lands it
+      ]);
+      expect(posts.current, [press, correction]);
+    });
+
+    // A re-send joins the SDK's queue at the BACK. Measured against the
+    // emulator with the real rules: tapped while the second post was between
+    // ledger attempts, a third went in ahead of that post's re-send and landed
+    // before it — open, blitz, closed read "blitz" for everyone. A refusal
+    // proves the server is answering, so waiting out a refused post is no
+    // wait on a dead link.
+    test('three quick posts: the third is not written until the second, '
+        'refused and re-sending, has landed', () async {
+      final denied = _firestoreError('permission-denied');
+      final repo = repoWith();
+
+      final first = repo.vote(_site, SiteStatus.open);
+      final mistake = repo.vote(_site, SiteStatus.blitz);
+      await pumpEventQueue();
+      firestore.batches[0].refuse(denied); // no window: the first re-sends
+      await pumpEventQueue();
+      firestore.batches[1].refuse(denied); // nor for the mistake
+      await pumpEventQueue();
+
+      // The correction, tapped while both are mid-retry.
+      final correcting = repo.vote(_site, SiteStatus.closed);
+      final [open, blitz, closed] = posts.current;
+      await pumpEventQueue();
+      expect(firestore.reportPaths, [
+        pathOf(open),
+        pathOf(blitz),
+        pathOf(open),
+      ]);
+
+      firestore.batches[2].acknowledge(); // the first's reset opens a window
+      await first;
+      await pumpEventQueue();
+      firestore.batches[3].refuse(denied); // the mistake's reset: it's open
+      await pumpEventQueue();
+      // Still nothing of the correction's: the mistake has not landed yet.
+      expect(firestore.reportPaths.skip(3), [pathOf(blitz), pathOf(blitz)]);
+
+      firestore.batches[4].acknowledge();
+      await mistake;
+      await pumpEventQueue();
+      expect(firestore.reportPaths.last, pathOf(closed));
+      // Into the open window, so the increment shape, first time.
+      expect(firestore.batches[5].writes.keys, contains('update $ledger'));
+
+      firestore.batches[5].acknowledge();
+      await correcting;
+      expect(firestore.batches, hasLength(6));
+    });
+
+    test('that last attempt failing for any other reason is not the rate '
+        'limit speaking either', () async {
+      final denied = _firestoreError('permission-denied');
+      final voting = repoWith().vote(_site, SiteStatus.open);
+      for (final error in [denied, denied, _firestoreError('unavailable')]) {
+        await pumpEventQueue();
+        firestore.batches.last.refuse(error);
+      }
+
+      await expectLater(
+        voting,
+        throwsA(
+          isA<FirebaseException>().having((e) => e.code, 'code', 'unavailable'),
+        ),
+      );
+      expect(firestore.batches, hasLength(3));
+      expect(posts.current, isEmpty);
+    });
+
+    test('only a rules denial of the reset earns that last attempt — any '
+        'other failure surfaces as it is', () async {
+      // The site was removed meanwhile: the batch's site update finds nothing,
+      // whatever the ledger shape.
+      final voting = repoWith().vote(_site, SiteStatus.open);
+      for (var attempt = 0; attempt < 2; attempt++) {
+        await pumpEventQueue();
+        firestore.batches[attempt].refuse(_firestoreError('not-found'));
+      }
+
+      await expectLater(
+        voting,
+        throwsA(
+          isA<FirebaseException>().having((e) => e.code, 'code', 'not-found'),
+        ),
+      );
+      expect(firestore.batches, hasLength(2));
+    });
   });
 }

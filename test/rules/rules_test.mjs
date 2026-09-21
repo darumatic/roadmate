@@ -247,6 +247,36 @@ await check(
   })(),
 );
 
+// Two quick posts, the first of which opens a window (issue #57). On a slow
+// link the SDK has both increments with the server before either is answered,
+// so the server sees exactly this sequence — and a client that stopped at the
+// denied reset called the second post rate-limited after ONE action. The
+// client's last attempt, the increment once more, has to land it, and last:
+// the newest status report is the status everyone sees. A fresh uid and site
+// keep the exact-state checks around this one undisturbed.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), 'sites/site-quick'), site('Quick Site'));
+});
+const quinn = env
+  .authenticatedContext('quinn', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+await check(
+  'two quick posts, the first opening a window: the second is denied its reset and lands on the increment after it — in tap order',
+  (async () => {
+    const post = (status, stamp) =>
+      stampedVote(quinn, 'site-quick', status, 'quinn', stamp);
+    await assertFails(post('blitz', stampIncrement)); // 1st: no window yet
+    await assertFails(post('closed', stampIncrement)); // 2nd: still none
+    await assertSucceeds(post('blitz', stampReset)); // 1st opens the window
+    await assertFails(post('closed', stampReset)); // 2nd: it is open NOW
+    await assertSucceeds(post('closed', stampIncrement)); // 2nd lands, last
+    const after = await getDoc(doc(quinn, 'sites/site-quick'));
+    if (after.data().currentStatus !== 'closed') {
+      throw new Error(`the later tap must win, got ${after.data().currentStatus}`);
+    }
+  })(),
+);
+
 // Admins are exempt from the cap: moderating a blitz is a burst of actions.
 // The first stamp still has to be a reset — an update() on a ledger doc that
 // does not exist yet fails the batch precondition, not the rules.

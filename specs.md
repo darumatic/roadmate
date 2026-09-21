@@ -131,7 +131,7 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
     `FirestoreSiteRepository.vote/postActivity` wrap the **whole** write in
     `inFlight.track(...)` — sign-in and the proximity gate included, so the
     feedback is not behind a GPS fix. The repository is the one place that
-    sees a post's whole life (the tap, the gate, both ledger attempts, the ack
+    sees a post's whole life (the tap, the gate, every ledger attempt, the ack
     or the refusal), so call sites and the `SiteRepository` interface are
     untouched; the in-memory seed repository is instant and needs none.
     `inFlight` is a **required** constructor argument on purpose: with a
@@ -185,10 +185,93 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
     write itself — unchanged). A post older than the 10 h window stops
     counting like any other report. Repeat taps are still each posted: the
     overlay removes the *reason* to tap again, it does not de-duplicate. The
-    overlay goes by tap order, the server by commit order, and two posts made
-    within a preamble's latency (sign-in, GPS fix, the first stats read) can
-    commit the other way round — the card then flips at hand-over to what
-    everyone else sees. That race predates the overlay: #57.
+    overlay goes by tap order and the server by commit order — which is why
+    posts are handed to the SDK in tap order (#57, next entry).
+- **Posts reach the server in tap order (issue #57)** — the status everyone
+  sees is a site's newest status report, and the server stamps a report when
+  its batch **commits**, which is not at the tap: a post first awaits sign-in,
+  the proximity gate's one-shot GPS fix and — activity path only — the
+  participation-stats read behind the `reporterLevel` stamp (one `get()`
+  before a session's first activity-path post, seconds on a weak connection).
+  Each post ran those on its own, so whichever got through them first
+  committed first: a Camera Only / BGD press (activity path) corrected with
+  Closed a second later landed *after* its correction and stood for everyone,
+  on every build, for the next 10 h. As built:
+  - **`PostSequencer`** (`lib/services/post_sequencer.dart`, pure Dart): posts
+    take turns. `FirestoreSiteRepository._post` is the one way a vote or
+    report is made — `inFlight.track` (#50, shown at the tap) around
+    `PostSequencer.run`, which starts a post only once the posts before it
+    have **handed their first write to the SDK**. Every commit goes through
+    the turn's `PostWrite` (`_commitWithLedgerStamp` builds and commits each
+    batch inside `write(() => …)`), so the sequencer itself sees each
+    hand-over, each refusal and the end. The SDK sends writes in the order it
+    was given them, online or off, and every post's batch touches the same
+    stats and ledger docs, so commit times follow. The turn is taken
+    synchronously at the tap, so nothing may be awaited in
+    `vote`/`postActivity` before `_post`.
+  - **Never wait for an acknowledgement.** Offline one never comes: the post
+    would sit in Dart, showing as posted, until the app died with it. A post
+    is out of the way once its first write is with the SDK, when it ends
+    before that (a gate refusal must not block the next post), and after
+    `patience` (1 min without progress; the GPS fix gives up at 15 s, so what
+    outlasts it is a post that hung, a link that dropped mid-retry, or a
+    permission prompt left unanswered): ordering must never be what stops a
+    post, and without the bound one stuck post would silently hold back every
+    later one, each showing as posted. Posts behind a stuck one still go in
+    order among themselves.
+  - **The one exception: a post the server has just refused is back in the
+    way until it settles.** A refused write is re-sent in another ledger
+    shape, and the re-send joins the SDK's queue at the **back** — behind any
+    post let through meanwhile, which then lands first. Measured against the
+    emulator with the real rules: three quick posts (open, blitz, closed),
+    the first opening a rate-limit window, the third tapped while the second
+    was between attempts → `open < closed < blitz`, and the site read Blitz.
+    So every write, first or re-sent, waits for the posts ahead of it that
+    are mid-retry. That is no wait on a dead link — a refusal proves the
+    server answered a moment ago — and it is bounded by `patience` like any
+    other. A post only ever waits for posts *ahead* of it, so two refused
+    posts can't wait on each other, and whoever waited checks again before
+    writing (the post it waited for may not be the only one mid-retry). A
+    later post whose first write was already out when the refusal arrived is
+    harmless: queued right behind a refused increment, its own increment is
+    refused too, and its re-send then waits like any other. Each batch is
+    built and committed inside the `write(() => …)` closure with no await in
+    it, so the last check and the hand-over share one synchronous run and
+    nothing can change between them.
+  - **Rejected: never awaiting a read on the post path** (stamp
+    `reporterLevel` from the cached stats only). It changes what is written —
+    most sessions' first report would stamp level 1, or every session would
+    pay a read to warm the cache — and leaves the GPS fix as a second
+    trigger. Taking turns changes nothing on the wire (the key-for-key batch
+    pins pass untouched) and holds whatever a preamble awaits, now or later.
+    As a side effect the second of two quick activity posts stamps the level
+    the first one's read found, where it used to stamp 1.
+  - **The ledger takes three attempts, not two** (increment → reset →
+    increment; see Rate limiting below). With two quick posts the *second*
+    was refused outright: the first post's reset opens the window and the
+    second's reset is denied **because** it is open, which two attempts read
+    as "rate-limited" after a single action. That hit exactly this entry's
+    scenario (a quick correction on a slow link, the first tap being the
+    first in 5 min — the usual case).
+  - **Accepted limits:** order is per device. A post passed over after
+    `patience` — hung, or refused and then cut off — may land out of order,
+    which is what every post risked before; `patience` is per post, so one
+    behind *n* stuck posts can wait *n* times as long. A queued post runs its
+    sign-in, GPS gate and stats read when its turn begins, not at the tap —
+    behind a slow post the 3 km gate is measured those seconds later. An
+    offline post that outlives the app should be replayed by the SDK in the
+    one shape it was queued in, with no Dart left to re-send it — reasoned,
+    not yet reproduced, and it predates this: #58. On Android the plugin hops
+    each commit — and each reply — onto a thread pool, so two commits
+    microseconds apart, or two refusals, could in theory swap there. Between
+    two posts to a geocoded site — nearly all of them — sit the second one's
+    GPS-gate platform round trips; two refusals are at least a write-stream
+    restart apart (a refused write closes the stream); and iOS and the web
+    hand both over in order. Covered by `test/post_sequencer_test.dart`, the
+    tap-order group in `test/site_repository_in_flight_test.dart` (the real
+    repository, with the first post's stats read / GPS fix held open, and the
+    two- and three-post ledger interleavings) and the two-quick-posts check
+    in `test/rules/rules_test.mjs`.
 - **Security posture** — **validated** writes (a vote must bump exactly
   one counter by +1, fields locked); community **Add Site → pending** (moderated);
   posting reports/votes needs a real account (see above).
@@ -444,11 +527,17 @@ window-reset-vs-increment branch with the device clock; the redesign is
 **clock-free**: rules judge both shapes purely with `request.time` (increment:
 count+1 ≤ 5 inside the window and `windowStart` untouched; reset: a fresh
 count-1 window, allowed on create or once the old window expired) and the
-client simply tries increment then retries once with reset — two consecutive
-denials mean genuinely rate-limited (`RateLimitedException` → "Easy there"
-snackbar). **Retrocompat phase 1:** vote/report rules do NOT require the
-stamp, so released mobile builds (plain 2-op batches) keep working
-unthrottled; a deliberate abuser can mimic that legacy shape until phase 2
+client simply tries increment, then reset, then the increment once more — a
+denial of all three means genuinely rate-limited (`RateLimitedException` →
+"Easy there" snackbar). The last attempt is for two quick posts (issue #57):
+on a slow link both increments are with the server before either is answered,
+so when the first post opens a window the second's reset is denied *because*
+the window is now open — a denied reset alone never meant "spent". The server
+still does all the counting, so the extra attempt can't pass the cap; it costs
+one more denied batch (the rules' `bans` + `userRoles` lookups, 2 reads) and
+only for a user who really is over the cap, or banned. **Retrocompat
+phase 1:** vote/report rules do NOT require the stamp, so released mobile
+builds (plain 2-op batches) keep working unthrottled; a deliberate abuser can mimic that legacy shape until phase 2
 flips the rules to require
 `getAfter(/users/$(uid)/limits/actions).lastActionAt == request.time` once the
 min-version gate has pushed adoption. Legacy `sites/{id}/limits/{uid}` docs
@@ -661,6 +750,7 @@ They are approximate — verify exact site positions before production.
 | "Camera Only / BGD" fourth status (issue #48) | ✅ Done (**web-first** — phones get the button with their next store release; old builds keep working and see each press as the "Camera Only" activity report they always listed) — one large blue text-only button under the row of three on the site card and the approach prompt (the Android notification keeps its three actions — the platform shows at most three); when it is current, Closed renders with no red at all. `SiteStatus.cameraOnly` is display-only: stored as the legacy activity report, derived back in `withEffectiveStatus` (see Key decisions). BGD / Camera Only left the Report activity dialog (`ActivityReportType.reportable`); the admin edit dialog keeps every type. A press adds no row under Recent reports on new builds — it only lights the status, like the other three (issue #52). State cards tally it in blue (`StatusCounts.cameraOnly`). Covered by `test/status_logic_test.dart`, `test/models_test.dart` (the wire literal), `test/providers_sites_test.dart`, `test/site_repository_routing_test.dart`, `test/site_card_test.dart`, `test/proximity_prompt_test.dart`, four checks in `test/rules/rules_test.mjs`, and a real press → derive → render pass in `integration_test/app_test.dart` |
 | An activity report no longer revives an old status (issue #49) | ✅ Done (**web-first**; old builds can't be changed) — a status is current only while a status report (Open / Blitz / Closed vote or Camera Only / BGD) is inside the 10 h window; "Long queue", "Delays", "Police present" and "Other" still list under Recent reports and still move "reported Xm ago" / Recently Active, but no longer make a weeks-old vote — or the BLITZ DETECTED banner — reappear. `withEffectiveStatus` derives it from the shared reports stream with the stored rule as the fail-soft fallback (loading / failed / at the query cap); `Site.statusReportedAt` gives the approach prompt the status report's own time. Covered by `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/proximity_notification_test.dart` and a real "Long queue stays Unknown" pass in `integration_test/app_test.dart`; test fakes serve the vote behind each stored status via `test/support/status_reports.dart` |
 | Votes and reports show at the tap (issue #50) | ✅ Done (**web-first**) — the status, "reported just now" and the report row used to change only when the server acknowledged the write (seconds on a weak connection, never while offline), inviting repeat taps. Each post is now held in `InFlightPosts` from the tap and laid over the listeners by `withEffectiveStatus` / `withInFlightPosts`; a refused write rolls it back under the existing error snack; the hand-over to the delivered document is by id, with a 10 s landing grace (see Key decisions). Covered by `test/in_flight_posts_test.dart`, `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/site_repository_in_flight_test.dart` (the real repository: lifecycle, the ledger retry reusing one report id, and the exact batch each post writes) and a card-level pass in `test/feature_screens_test.dart` |
+| Quick posts land in tap order (issue #57) | ✅ Done (**web-first**) — a post's batch commits only after its sign-in, GPS gate and (activity path) stats read, and each post ran those on its own, so a Camera Only / BGD press corrected with Closed a second later could land *after* the correction and stand for 10 h. Posts now take turns (`PostSequencer`): each starts once the ones before it have handed their first write to the SDK — never waiting for an ack, except behind a post the server has just refused (its re-send would otherwise queue behind the later post), and no post is in the way for more than 1 min without progress. The ledger retry gained a third attempt (increment → reset → increment): the second of two quick posts was being refused as rate-limited after one action (see Key decisions). Nothing on the wire changed. Covered by `test/post_sequencer_test.dart`, `test/site_repository_in_flight_test.dart` and `test/rules/rules_test.mjs` |
 | Speaker toggle mutes the over-limit alarm (issue #22) | ✅ Done — icon top-right of Home; `soundEnabledProvider`, persisted via `TripHistoryStore.saveSoundEnabled`; muting doesn't consume the rising edge, so unmuting mid-breach beeps on the next reading |
 | Back-to-top arrow on long lists (issue #25) | ✅ Done — `widgets/back_to_top.dart` overlays a small FAB after 400px of scroll on Home and state detail |
 | Bottom-nav oversized padding on iOS (issue #26) | ✅ Done — the shell's `MediaQuery.removePadding` (context outside the Scaffold) re-introduced the notch top inset into the nav bar's internal SafeArea; now strips top+bottom (`ShellBottomBar`), bar lays out at the bare 80pt M3 height |
