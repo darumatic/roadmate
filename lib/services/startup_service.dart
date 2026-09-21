@@ -10,6 +10,7 @@ import '../firebase_options.dart';
 import 'analytics_reporter.dart';
 import 'auth_service.dart';
 import 'error_reporter.dart';
+import 'providers.dart';
 import 'seed_service.dart';
 
 /// Initializes Firebase before the routed app reads Firestore-backed providers.
@@ -52,6 +53,9 @@ final appStartupProvider = FutureProvider<void>((ref) async {
   unawaited(ref.read(authControllerProvider).completeRedirectSignIn());
 
   unawaited(ensureSignedIn(FirebaseAuth.instance).catchError((_) => ''));
+
+  // The read meter's flusher (issue #54): reading it is what starts it.
+  ref.read(readMeterFlusherProvider);
 
   unawaited(_runSeedMaintenance());
 });

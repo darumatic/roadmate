@@ -4,8 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'auth_service.dart';
+import 'metered_firestore.dart';
 import 'profile_stream.dart';
 import 'rate_limit.dart';
+import 'read_meter.dart';
 import 'username_logic.dart';
 
 // UserProfile moved to profile_stream.dart (pure Dart) so the profile-stream
@@ -73,6 +75,7 @@ class FirestoreUsernameStore implements UsernameStore {
           .collection('users')
           .doc(user.uid)
           .snapshots()
+          .metered(ReadSource.other)
           .map<UserProfile?>((snap) {
             final data = snap.data();
             return UserProfile(
@@ -99,12 +102,12 @@ class FirestoreUsernameStore implements UsernameStore {
 
     try {
       await firestore.runTransaction((tx) async {
-        final claim = await tx.get(claimRef);
+        final claim = await tx.get(claimRef).metered(ReadSource.other);
         if (claim.exists && claim.data()?['uid'] != uid) {
           throw UsernameTakenException(name);
         }
         // Renaming releases the old claim so the name frees up for others.
-        final me = await tx.get(userRef);
+        final me = await tx.get(userRef).metered(ReadSource.other);
         final old = me.data()?['username'] as String?;
         if (old != null && old.trim().isNotEmpty && usernameKey(old) != key) {
           tx.delete(firestore.collection('usernames').doc(usernameKey(old)));
@@ -126,7 +129,7 @@ class FirestoreUsernameStore implements UsernameStore {
       // the time the loser commits). One follow-up read turns that into the
       // honest answer; any other denial (e.g. a ban) surfaces unchanged.
       if (isRulesDenial(e)) {
-        final claim = await claimRef.get();
+        final claim = await claimRef.get().metered(ReadSource.other);
         if (claim.exists && claim.data()?['uid'] != uid) {
           throw UsernameTakenException(name);
         }

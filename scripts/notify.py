@@ -45,15 +45,22 @@ def read_topic(path=None, environ=None):
     return topic or None
 
 
-def send(title, message, topic=None, urlopen=urllib.request.urlopen):
-    """Post one notification. True = delivered; False = skipped or failed."""
+def send(title, message, topic=None, urlopen=urllib.request.urlopen,
+         priority=None):
+    """Post one notification. True = delivered; False = skipped or failed.
+
+    ``priority`` is ntfy's (``high`` makes the phone insist); left out, the
+    alert goes at the default, as every alert did before it existed."""
     topic = topic or read_topic()
     if not topic:
         return False
+    headers = {'Title': title, 'Tags': 'rotating_light'}
+    if priority:
+        headers['Priority'] = priority
     request = urllib.request.Request(
         '%s/%s' % (NTFY_ROOT, topic),
         data=message.encode('utf-8'),
-        headers={'Title': title, 'Tags': 'rotating_light'})
+        headers=headers)
     try:
         with urlopen(request, timeout=15) as response:
             return 200 <= response.status < 300

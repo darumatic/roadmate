@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import 'metered_firestore.dart';
+import 'read_meter.dart';
 import 'site_repository.dart';
 
 /// One-time seeding of the `sites` collection from the bundled authoritative
@@ -18,7 +20,7 @@ class SeedService {
 
   Future<void> ensureSeeded() async {
     final sitesCol = firestore.collection('sites');
-    final existing = await sitesCol.limit(1).get();
+    final existing = await sitesCol.limit(1).get().metered(ReadSource.other);
     if (existing.docs.isNotEmpty) return;
 
     final raw = await rootBundle.loadString(assetPath);
@@ -43,7 +45,10 @@ class SeedService {
   /// read. Write failures (e.g. once strict rules are deployed) are ignored.
   Future<void> ensureCoordinates() async {
     final sitesCol = firestore.collection('sites');
-    final missing = await sitesCol.where('lat', isNull: true).get();
+    final missing = await sitesCol
+        .where('lat', isNull: true)
+        .get()
+        .metered(ReadSource.other);
     if (missing.docs.isEmpty) return;
 
     final raw = await rootBundle.loadString(assetPath);

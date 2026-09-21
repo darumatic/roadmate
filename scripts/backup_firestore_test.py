@@ -6,8 +6,10 @@ Run directly (``python3 scripts/backup_firestore_test.py``), via
 through ``test/backup_firestore_test.dart``. No network, no credentials.
 """
 
+import contextlib
 import datetime as dt
 import gzip
+import io
 import json
 import os
 import sys
@@ -566,6 +568,114 @@ class CliTest(unittest.TestCase):
         args = bf.build_parser().parse_args(['--incremental'])
         self.assertFalse(args.no_verify)
         self.assertTrue(args.incremental)
+
+
+class BilledReadsTest(unittest.TestCase):
+    """Issue #54: the backup is part of the 50,000 reads a day, and the one
+    reader that can know its own cost exactly — so the client counts what
+    Firestore bills it, by Firestore's pricing rules, and the run adds it to
+    the day's read-meter document."""
+
+    def _client(self, answers):
+        fs = bf.Firestore.__new__(bf.Firestore)
+        fs.root = 'https://firestore.example/v1/p/d/documents'
+        fs.project, fs.database = 'p', 'd'
+        fs.calls = []
+
+        def call(url, payload=None):
+            fs.calls.append((url, payload))
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        fs._call = call
+        return fs
+
+    def test_a_list_of_collection_ids_is_one_read_per_request(self):
+        fs = self._client([{'collectionIds': ['a'], 'nextPageToken': 't'},
+                           {'collectionIds': ['b']}])
+        self.assertEqual(fs.list_collection_ids('sites/s1'), ['a', 'b'])
+        self.assertEqual(fs.reads, 2)
+
+    def test_listed_documents_are_a_read_each_but_missing_parents_are_not(
+            self):
+        real = {'name': 'n', 'fields': {}, 'createTime': 't'}
+        fs = self._client([{'documents': [real, real, {'name': 'missing'}]}])
+        fs.list_documents('', 'sites')
+        self.assertEqual(fs.reads, 2)
+
+    def test_an_empty_listing_or_query_still_costs_one_read(self):
+        fs = self._client([{}, [{'readTime': 't'}]])
+        fs.list_documents('sites/s1', 'limits')
+        fs.query_since('reports', 'createdAt', '2026-09-21T00:00:00Z')
+        self.assertEqual(fs.reads, 2)
+
+    def test_a_query_is_billed_what_it_returns(self):
+        fs = self._client([[{'document': {'name': 'a'}},
+                            {'document': {'name': 'b'}},
+                            {'readTime': 't'}]])
+        self.assertEqual(
+            len(fs.query_since('reports', 'createdAt', 'x')), 2)
+        self.assertEqual(fs.reads, 2)
+
+    def test_count_is_one_read_per_thousand_index_entries(self):
+        self.assertEqual(bf.billed_count_reads(0), 1)
+        self.assertEqual(bf.billed_count_reads(1000), 1)
+        self.assertEqual(bf.billed_count_reads(1001), 2)
+        fs = self._client([[{'result': {'aggregateFields': {
+            'n': {'integerValue': '2500'}}}}]])
+        self.assertEqual(fs.count('reports'), 2500)
+        self.assertEqual(fs.reads, 3)
+
+    def test_a_document_is_one_read_found_or_not(self):
+        fs = self._client([{'name': 'n', 'fields': {}},
+                           bf.NotFound('404 Not Found')])
+        self.assertEqual(fs.get_document('usage/2026-09-21')['name'], 'n')
+        self.assertIsNone(fs.get_document('usage/2026-09-22'))
+        self.assertEqual(fs.reads, 2)
+        self.assertIn('usage/2026-09-22', fs.calls[-1][0])
+
+    def test_any_other_failure_is_still_a_failure(self):
+        fs = self._client([RuntimeError('403 Forbidden')])
+        with self.assertRaises(RuntimeError):
+            fs.get_document('usage/2026-09-21')
+
+    def test_increment_adds_to_one_field_and_touches_nothing_else(self):
+        fs = self._client([{}])
+        fs.increment('usage/2026-09-21', 'backup_server', 523)
+        url, payload = fs.calls[0]
+        self.assertTrue(url.endswith(':commit'))
+        self.assertEqual(payload, {'writes': [{
+            'update': {'name': 'projects/p/databases/d/documents/'
+                               'usage/2026-09-21'},
+            # An empty mask: create the document if need be, change no field.
+            'updateMask': {'fieldPaths': []},
+            'updateTransforms': [{
+                'fieldPath': 'backup_server',
+                'increment': {'integerValue': '523'}}],
+        }]})
+        self.assertEqual(fs.reads, 0)  # a write is not a read
+
+    def test_the_run_adds_its_reads_to_the_quota_days_document(self):
+        fs = self._client([{}])
+        fs.reads = 523
+        # 03:00 AEST on the 22nd is still the 21st in Pacific time.
+        now = dt.datetime(2026, 9, 21, 17, 0, tzinfo=dt.timezone.utc)
+        self.assertTrue(bf.record_reads(fs, now))
+        write = fs.calls[0][1]['writes'][0]
+        self.assertTrue(write['update']['name'].endswith('/usage/2026-09-21'))
+        self.assertEqual(write['updateTransforms'][0], {
+            'fieldPath': 'backup_server',
+            'increment': {'integerValue': '523'}})
+
+    def test_a_meter_that_cannot_be_reached_never_fails_the_backup(self):
+        fs = self._client([RuntimeError('503 unavailable')])
+        fs.reads = 523
+        now = dt.datetime(2026, 9, 21, 17, 0, tzinfo=dt.timezone.utc)
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertFalse(bf.record_reads(fs, now))
+        self.assertIn('could not add this run to the read meter',
+                      err.getvalue())
 
 
 class UrlEncodingTest(unittest.TestCase):

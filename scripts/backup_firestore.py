@@ -18,12 +18,20 @@ Backup
   geopoints, integers and references all survive a round trip byte-for-byte.
 
 Read cost
-  A full backup bills one document read per document (~1,100 today, ~2% of the
-  50k/day free tier) and ``reports`` are ~80% of that, growing without bound.
-  ``--incremental`` carries reports forward from the newest snapshot and fetches
-  only those at or after its watermark, cutting a run to ~260 reads. Reports are
-  append-only under ``firestore.rules`` — users may only create them — so this
-  is safe for the shapes clients produce.
+  A backup is billed one read per document **and one per** ``listCollectionIds``
+  **request** — Firestore's pricing: "a request for a list of collection IDs
+  [is] billed for one document read" — and the walk makes one of those for
+  every document, to find its subcollections. So a full backup costs about two
+  reads a document, and ``reports`` are ~80% of the database, growing without
+  bound. ``--incremental`` carries reports forward from the newest snapshot and
+  fetches only those at or after its watermark, which drops them from the walk
+  altogether. Reports are append-only under ``firestore.rules`` — users may
+  only create them — so this is safe for the shapes clients produce.
+
+  The client counts what it is billed (``Firestore.reads``) and every run
+  prints it and adds it to the day's read-meter document (``backup_server`` in
+  ``usage/<quota day>``, issue #54) — the nightly run is part of the 50,000 a
+  day too, and the one reader that knows its own cost exactly.
 
   Admins *can* edit and delete reports, so every run cross-checks its totals
   against server-side ``count()`` aggregations (~7 reads): a deletion changes
@@ -325,6 +333,23 @@ def _b64url(raw: bytes) -> bytes:
     return base64.urlsafe_b64encode(raw).rstrip(b'=')
 
 
+class NotFound(RuntimeError):
+    """A 404 — for a single document that is an answer, not a failure."""
+
+
+def billed_reads(returned: int) -> int:
+    """What a query that returned ``returned`` documents is billed: one read
+    each, and "a minimum charge of one document read for each query that you
+    perform, even if the query returns no results"."""
+    return max(1, returned)
+
+
+def billed_count_reads(index_entries: int) -> int:
+    """A ``count()`` aggregation: one read per 1,000 index entries, minimum
+    one."""
+    return max(1, -(-index_entries // 1000))
+
+
 class Firestore:
     """Minimal Firestore REST client authenticated as the Admin SA."""
 
@@ -338,6 +363,16 @@ class Firestore:
         self._token = None
         self._token_expiry = 0.0
         self._token_lock = threading.Lock()
+
+    # Document reads this client has been billed for, by Firestore's own
+    # pricing rules — see the module docstring. The walk runs on a thread
+    # pool, hence the lock.
+    reads = 0
+    _reads_lock = threading.Lock()
+
+    def _billed(self, reads: int) -> None:
+        with self._reads_lock:
+            self.reads += reads
 
     # -- auth ------------------------------------------------------------
     def _sign(self, payload: bytes) -> bytes:
@@ -394,7 +429,8 @@ class Firestore:
                 detail = err.read().decode(errors='replace')[:500]
                 # 429/5xx are transient; 4xx otherwise is a real error.
                 if err.code != 429 and err.code < 500:
-                    raise RuntimeError(
+                    kind = NotFound if err.code == 404 else RuntimeError
+                    raise kind(
                         f'{err.code} {err.reason} for {req.full_url}\n'
                         f'{detail}') from None
                 last = RuntimeError(f'{err.code} {err.reason}: {detail}')
@@ -421,6 +457,7 @@ class Firestore:
             if page_token:
                 payload['pageToken'] = page_token
             resp = self._call(url, payload)
+            self._billed(1)  # "billed for one document read", per request
             ids.extend(resp.get('collectionIds', []))
             page_token = resp.get('nextPageToken')
             if not page_token:
@@ -436,7 +473,12 @@ class Firestore:
             if page_token:
                 params['pageToken'] = page_token
             resp = self._call(f'{base}?{urllib.parse.urlencode(params)}')
-            docs.extend(resp.get('documents', []))
+            page = resp.get('documents', [])
+            # A 'missing' document is only the parent of a subcollection:
+            # there is nothing there to read.
+            self._billed(billed_reads(
+                sum(1 for doc in page if 'createTime' in doc)))
+            docs.extend(page)
             page_token = resp.get('nextPageToken')
             if not page_token:
                 return docs
@@ -449,7 +491,9 @@ class Firestore:
                     'collectionId': collection_id,
                     'allDescendants': all_descendants}]},
                 'aggregations': [{'alias': 'n', 'count': {}}]}})
-        return int(resp[0]['result']['aggregateFields']['n']['integerValue'])
+        total = int(resp[0]['result']['aggregateFields']['n']['integerValue'])
+        self._billed(billed_count_reads(total))
+        return total
 
     def query_since(self, collection_id: str, field: str, timestamp: str):
         """Collection-group documents with ``field >= timestamp``.
@@ -466,7 +510,31 @@ class Firestore:
             'orderBy': [{'field': {'fieldPath': field},
                          'direction': 'ASCENDING'}],
         }})
-        return [row['document'] for row in resp if 'document' in row]
+        docs = [row['document'] for row in resp if 'document' in row]
+        self._billed(billed_reads(len(docs)))
+        return docs
+
+    def get_document(self, path: str):
+        """One document as the REST API returns it, or None when there is
+        none. One read either way."""
+        self._billed(1)
+        try:
+            return self._call(f'{self.root}/{url_path(path)}')
+        except NotFound:
+            return None
+
+    def increment(self, path: str, field: str, by: int):
+        """Adds ``by`` to an integer field, creating document and field as
+        needed and touching nothing else — what the SDKs send for
+        ``set({field: increment(by)}, merge=True)``."""
+        return self.commit([{
+            'update': {'name': document_name(self.project, self.database,
+                                             path)},
+            'updateMask': {'fieldPaths': []},
+            'updateTransforms': [{
+                'fieldPath': field,
+                'increment': {'integerValue': str(by)}}],
+        }])
 
     def commit(self, writes):
         return self._call(f'{self.root}:commit', {'writes': writes})
@@ -619,8 +687,28 @@ def do_backup(args) -> int:
     if stale:
         print(f'Pruned {len(stale)} snapshot(s) beyond --keep {args.keep}')
 
-    warn_on_report_volume(documents, dt.datetime.now(dt.timezone.utc))
+    now = dt.datetime.now(dt.timezone.utc)
+    warn_on_report_volume(documents, now)
+    print(f'Billed {client.reads:,} document read(s) for this run')
+    record_reads(client, now)
     return 0
+
+
+def record_reads(client, now):
+    """Adds this run's reads to the day's read-meter document (issue #54).
+    Never fails the backup — the snapshot is already safely on disk, and the
+    meter is a floor with or without this."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import read_meter  # noqa: PLC0415 - stdlib-only sibling
+        client.increment(
+            f'{read_meter.COLLECTION}/{read_meter.quota_day(now)}',
+            read_meter.BACKUP_FIELD, client.reads)
+        return True
+    except Exception as exc:  # noqa: BLE001 - see above
+        print(f'  WARNING: could not add this run to the read meter: {exc}',
+              file=sys.stderr)
+        return False
 
 
 def warn_on_report_volume(documents, now, send=None):

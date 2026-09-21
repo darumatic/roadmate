@@ -20,8 +20,11 @@ import 'fresh_window_stream.dart';
 import 'in_flight_posts.dart';
 import 'local_seed_repository.dart';
 import 'location_source.dart';
+import 'metered_firestore.dart';
 import 'participation_logic.dart';
 import 'proximity_notifier.dart';
+import 'read_meter.dart';
+import 'read_meter_flusher.dart';
 import 'refresh_logic.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
@@ -44,6 +47,9 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
     auth: ref.watch(firebaseAuthProvider),
     listenerChecks: ref.watch(listenerChecksProvider),
     inFlight: ref.watch(inFlightPostsProvider),
+    // Only a persisted cache can resume the sites listener across a restart,
+    // and the web has none (see `ListenerBill`).
+    sitesSyncTimes: kIsWeb ? null : const PrefsSyncTimeStore('sites'),
     // The proximity gate's position source — adapted here so the repository
     // stays geolocator-free (see `report_proximity.dart`).
     locate: () async {
@@ -64,13 +70,59 @@ final siteRepositoryProvider = Provider<SiteRepository>((ref) {
 final listenerChecksProvider = Provider<Stream<void>>((ref) {
   final checks = StreamController<void>.broadcast();
   final tick = Timer.periodic(listenerCheckInterval, (_) => checks.add(null));
-  final lifecycle = AppLifecycleListener(onResume: () => checks.add(null));
+  // …and once more shortly after coming back, for the read meter (issue #54):
+  // a glance is often over before the next tick, and by then the SDK has
+  // either re-run its listeners or said it is offline (`ListenerBill`). An
+  // extra check costs `freshWindowStream` nothing.
+  Timer? followUp;
+  final lifecycle = AppLifecycleListener(
+    onResume: () {
+      checks.add(null);
+      followUp?.cancel();
+      followUp = Timer(listenerCheckFollowUp, () {
+        if (!checks.isClosed) checks.add(null);
+      });
+    },
+  );
   ref.onDispose(() {
     tick.cancel();
+    followUp?.cancel();
     lifecycle.dispose();
     checks.close();
   });
   return checks.stream;
+});
+
+/// Empties the read meter into the day's counter document (issue #54 — see
+/// `read_meter.dart`): when the app is put away, and every half hour while it
+/// stays open. Null where nothing is metered — no Firebase (tests, the seed
+/// fallback) or a desktop build. `appStartupProvider` starts it.
+final readMeterFlusherProvider = Provider<ReadMeterFlusher?>((ref) {
+  final platform = readMeterPlatform();
+  if (Firebase.apps.isEmpty || platform == null) return null;
+
+  final auth = ref.watch(firebaseAuthProvider);
+  final flusher = ReadMeterFlusher(
+    meter: readMeter,
+    platform: platform,
+    ready: () => auth.currentUser != null,
+    plus: FieldValue.increment,
+    serverTime: FieldValue.serverTimestamp(),
+    write: (day, data) => FirebaseFirestore.instance
+        .collection(readMeterCollection)
+        .doc(day)
+        .set(data, SetOptions(merge: true)),
+  )..start();
+  final lifecycle = AppLifecycleListener(
+    onHide: flusher.onBackground,
+    onPause: flusher.onBackground,
+    onDetach: flusher.onBackground,
+  );
+  ref.onDispose(() {
+    lifecycle.dispose();
+    flusher.dispose();
+  });
+  return flusher;
 });
 
 /// Where the repository holds this device's votes and reports from the tap
@@ -165,6 +217,7 @@ final announcementProvider = StreamProvider<Announcement?>((ref) {
   return FirebaseFirestore.instance
       .doc('announcements/current')
       .snapshots()
+      .metered(ReadSource.other)
       .map((snap) {
         final data = snap.data();
         if (data == null) return null;

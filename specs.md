@@ -344,6 +344,105 @@ Single **Flutter** codebase targeting **iOS, Android, and web**. Backend is
   pushes an ntfy warning at ≥ 500 — half the cap; under it no 10 h window can
   reach the cap (`report_volume_warning` in `scripts/backup_firestore.py`; a
   test ties `LIVE_WINDOW_CAP` to the Dart constant). It never fails the backup.
+- **An unofficial read meter, because the real one is out of reach (issue
+  #54)** — with no billing account the 50,000 reads/day quota is a cliff
+  (Firestore *refuses* reads until the reset, ~5–6 pm AEST), and the same fact
+  blocks measuring it: Google's metrics API answers "requires billing to be
+  enabled", so usage could only be read by hand in the console. The owner wants
+  an alert at **35,000 (70 %)**. As built:
+  - **The app counts what Firestore bills it for**, by Firestore's own pricing
+    rules (`ListenerBill`, `lib/services/read_meter.dart`, pure): a new
+    listener pays its whole first result (minimum one read); after that one
+    read per document the **server** adds or changes — this device's pending
+    write is not a read, its acknowledgement is, a removal never is; and a
+    listener cut off for more than 30 minutes is billed again **in full**, "as
+    if you had issued a brand-new query". The SDK raises no event for that
+    re-run when nothing changed, so it is inferred the way `freshWindowStream`
+    infers it: snapshots that were from-cache that long, or a process frozen
+    that long (a gap between `listenerChecksProvider` ticks) — billed at the
+    next answer from the server, or on trust at the follow-up check the
+    provider now raises 15 s after a resume (a glance is over before the next
+    one-minute tick, and past the SDK's 10 s offline timeout a listener that
+    is offline says so), or, for a glance shorter still, when the next freeze
+    is noticed — otherwise glance-style use would write off ~89 reads a glance.
+    One-shot gets cost what they return (minimum one); nothing served from the
+    cache costs anything.
+  - **Every read in `lib/` goes through `.metered(source)`**
+    (`lib/services/metered_firestore.dart`) — sites / reports / other — and
+    `test/read_meter_coverage_test.dart` fails on one that doesn't: an
+    uncounted read breaks nothing, so nothing else would ever say so. Metering
+    is passive and can't break a read (a snapshot it can't measure counts for
+    nothing). `watchSites` now listens with `includeMetadataChanges: true` —
+    the only way to see it go offline and sync again — and drops the
+    metadata-only events again (`dataEventsOnly`), so consumers get exactly the
+    events they always did (measured on the JS SDK, side by side with a plain
+    listener: own writes, documents entering and leaving, an offline spell —
+    identical sequences). On phones the last time the sites listener was
+    **connected** is kept across restarts (`PrefsSyncTimeStore`, saved at most
+    every 5 min): a persisted cache resumes for free when that is under 30
+    minutes old and re-reads all 89 sites when it isn't, and nothing else tells
+    the two apart. Connected, not "last changed": the SDK keeps its resume
+    token fresh whether or not a document changes, so after a quiet morning a
+    restart is still a cheap one. The reports query changes its cutoff on every
+    start, so it never resumes; the web has no persisted cache and always pays
+    in full.
+  - **Flushed rarely** (`ReadMeterFlusher`): when the app is put away, every
+    30 minutes while it stays open, and once 30 s into a fresh start — a
+    browser tab opened, read and closed within the half hour would otherwise
+    flush only while unloading, a write that dies with the page, and the cold
+    start is the dearest thing a session does. Never per action, because
+    writes have a 20,000/day quota of their own: about one write per
+    foreground visit. One `set(merge)` of
+    `FieldValue.increment`s on `<source>_<platform>` (`sites_web`,
+    `other_ios`…) in `usage/<quota day>`. A flush that is refused is dropped,
+    not retried: a count that kept growing would outgrow the step the rules
+    accept. Desktop builds are a developer's and are not metered.
+  - **The quota day is the Pacific date** (`quotaDayOf`): that is where the
+    quota resets, and a UTC day would cut an Australian driving day in two at
+    10 am — the meter would never see the total the quota sees. Dart has no
+    zone database and the device's zone is the wrong one, so the US daylight
+    rules are applied by hand; `test/read_meter_script_test.dart` holds them to
+    Python's `zoneinfo` for every hour around both changes, years ahead. Were
+    the US to change them, shipped builds would file up to an hour of reads
+    under the neighbouring day for part of the year — noise for a 70 % alert.
+  - **Rules** (`match /usage/{day}`): signed-in clients (anonymous included)
+    may only **add**, at most 20,000 a step, to the nine listed counters of a
+    document whose id is a date within a day or so of the server's; they can
+    never read, delete, or touch `backup_server`; only admins read. The write
+    path has **no `get()`/`exists()`** — not even the ban check every other
+    write carries — so metering a read can never cost one (a banned build
+    still counts; pinned in `rules_test.mjs`). A new collection no shipped
+    build touches: additive, retro-safe. A vandal can inflate the counters —
+    the cost is a false alert, which is why it is bounded rather than trusted.
+  - **The alert** (`scripts/read_meter.py`, hourly cron on the VPS, stdlib
+    only, the backup's REST client and service account): one read a run — the
+    day's document — plus its own reads so far, summed; the first time the day
+    reaches 35,000 it pushes **one** `high`-priority ntfy alert with the
+    breakdown by source and by platform, and remembers the day (an alert that
+    could not be delivered is retried next run). State:
+    `~/.local/state/roadmate/read_meter.json`. `--dry-run` prints without
+    alerting.
+  - **The backup is part of the 50,000 too**, and the one reader that knows
+    its own cost exactly: its REST client now counts what it is billed and
+    every run adds the total to `backup_server`. Doing so showed the documented
+    cost was half the real one — Firestore bills each `listCollectionIds`
+    request as a document read, and the walk makes one per document.
+  - **It is a floor, not the figure** — say so whenever quoting it: phones on
+    builds without the meter are invisible until they update (the web has it
+    on release); reads made *inside* security rules (the ban check on every
+    post, admin checks) can't be seen by the app; console browsing isn't
+    counted; a session that dies before its next flush takes its tail with it;
+    a flush queued offline for more than ~2 days is refused by the date check;
+    the small `other` listeners (announcement, role, profile, stats,
+    favourites) are plain ones, so on a phone their first answer and their
+    re-runs only show when something changed, and an acknowledgement that
+    changes no data never shows; a laptop that wakes with the tab already
+    visible re-runs the old reports query before the tick notices (#51's known
+    limit — billed, not metered); and reads are filed under the quota day of
+    the *flush*, up to 30 minutes after they were made. The counters are
+    bounded, not trusted: a vandal's fake count would raise a false alert — and
+    so spend the day's one alert before a real breach. What it adds that even
+    Google's total would not: where the reads go.
 - **Trip time is wall-clock time (2026-07, from a 0.1.47 iOS report)** — the Trip
   Logger's ELAPSED readout was derived from GPS *sample* time (last fix − first
   fix) and only repainted when a fix arrived. Recorded indoors, where no fix ever
@@ -749,6 +848,7 @@ They are approximate — verify exact site positions before production.
 | "Unknown" status when the last report is >10h old (issue #21) | ✅ Done — `SiteStatus.unknown` (grey); `effectiveStatus`/`withEffectiveStatus` in `status_logic.dart` applied in `sitesProvider`; vote buttons come from `SiteStatus.votable` so Unknown is display-only and all three buttons render greyed |
 | "Camera Only / BGD" fourth status (issue #48) | ✅ Done (**web-first** — phones get the button with their next store release; old builds keep working and see each press as the "Camera Only" activity report they always listed) — one large blue text-only button under the row of three on the site card and the approach prompt (the Android notification keeps its three actions — the platform shows at most three); when it is current, Closed renders with no red at all. `SiteStatus.cameraOnly` is display-only: stored as the legacy activity report, derived back in `withEffectiveStatus` (see Key decisions). BGD / Camera Only left the Report activity dialog (`ActivityReportType.reportable`); the admin edit dialog keeps every type. A press adds no row under Recent reports on new builds — it only lights the status, like the other three (issue #52). State cards tally it in blue (`StatusCounts.cameraOnly`). Covered by `test/status_logic_test.dart`, `test/models_test.dart` (the wire literal), `test/providers_sites_test.dart`, `test/site_repository_routing_test.dart`, `test/site_card_test.dart`, `test/proximity_prompt_test.dart`, four checks in `test/rules/rules_test.mjs`, and a real press → derive → render pass in `integration_test/app_test.dart` |
 | An activity report no longer revives an old status (issue #49) | ✅ Done (**web-first**; old builds can't be changed) — a status is current only while a status report (Open / Blitz / Closed vote or Camera Only / BGD) is inside the 10 h window; "Long queue", "Delays", "Police present" and "Other" still list under Recent reports and still move "reported Xm ago" / Recently Active, but no longer make a weeks-old vote — or the BLITZ DETECTED banner — reappear. `withEffectiveStatus` derives it from the shared reports stream with the stored rule as the fail-soft fallback (loading / failed / at the query cap); `Site.statusReportedAt` gives the approach prompt the status report's own time. Covered by `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/proximity_notification_test.dart` and a real "Long queue stays Unknown" pass in `integration_test/app_test.dart`; test fakes serve the vote behind each stored status via `test/support/status_reports.dart` |
+| Unofficial read meter + alert at 35,000 reads/day (issue #54) | ✅ Done (**web-first** — phones are invisible to it until their next store release) — metered builds count what Firestore bills them for (`ListenerBill`; every read in `lib/` goes through `.metered(…)`, guarded by a test) and flush it by source and platform to `usage/<Pacific quota day>` when the app is put away and every 30 min; rules allow bounded increments only, with no lookup on the write path, so metering costs no reads; an hourly VPS cron (`scripts/read_meter.py`, one read a run) pushes one ntfy alert per quota day at 70 %; the nightly backup adds its own billed reads. A floor, not the true figure (see Key decisions). Covered by `test/read_meter_test.dart`, `test/metered_firestore_test.dart`, `test/read_meter_flusher_test.dart`, `test/read_meter_coverage_test.dart`, `test/read_meter_script_test.dart` (Dart ↔ Python ↔ rules), `scripts/read_meter_test.py`, `scripts/backup_firestore_test.py` and six checks in `test/rules/rules_test.mjs` |
 | Votes and reports show at the tap (issue #50) | ✅ Done (**web-first**) — the status, "reported just now" and the report row used to change only when the server acknowledged the write (seconds on a weak connection, never while offline), inviting repeat taps. Each post is now held in `InFlightPosts` from the tap and laid over the listeners by `withEffectiveStatus` / `withInFlightPosts`; a refused write rolls it back under the existing error snack; the hand-over to the delivered document is by id, with a 10 s landing grace (see Key decisions). Covered by `test/in_flight_posts_test.dart`, `test/status_logic_test.dart`, `test/providers_sites_test.dart`, `test/site_repository_in_flight_test.dart` (the real repository: lifecycle, the ledger retry reusing one report id, and the exact batch each post writes) and a card-level pass in `test/feature_screens_test.dart` |
 | Quick posts land in tap order (issue #57) | ✅ Done (**web-first**) — a post's batch commits only after its sign-in, GPS gate and (activity path) stats read, and each post ran those on its own, so a Camera Only / BGD press corrected with Closed a second later could land *after* the correction and stand for 10 h. Posts now take turns (`PostSequencer`): each starts once the ones before it have handed their first write to the SDK — never waiting for an ack, except behind a post the server has just refused (its re-send would otherwise queue behind the later post), and no post is in the way for more than 1 min without progress. The ledger retry gained a third attempt (increment → reset → increment): the second of two quick posts was being refused as rate-limited after one action (see Key decisions). Nothing on the wire changed. Covered by `test/post_sequencer_test.dart`, `test/site_repository_in_flight_test.dart` and `test/rules/rules_test.mjs` |
 | Speaker toggle mutes the over-limit alarm (issue #22) | ✅ Done — icon top-right of Home; `soundEnabledProvider`, persisted via `TripHistoryStore.saveSoundEnabled`; muting doesn't consume the rising edge, so unmuting mid-breach beeps on the next reading |
@@ -1037,6 +1137,9 @@ silent no-op). The fixer alerts on **every terminal outcome** (released,
 blocked, rejected, red pipeline, auth failure, crash, misconfiguration) and
 the crontab lines alert on backup failure and on a fixer tick crashing
 (`|| notify.py …` — the direct answer to the silent 20-day backup outage).
+The hourly **read meter** (`scripts/read_meter.py`, issue #54) has the same
+`|| notify.py …` guard for a run that crashes, and pushes its own alert — once
+per quota day, `high` priority — when metered Firestore reads reach 35,000.
 **Release alerts, every platform (owner request 2026-08-25).** A release to
 *any* platform pushes an ntfy alert whose title always carries the version —
 `notify_release()` in `scripts/notify.py` is the single home for that wording.

@@ -66,6 +66,19 @@ resolves the write's promise ~2 ms *before* the listener's snapshot (#50);
 refusals come back in the order the writes went out, a reset queued behind
 another post's reset is denied because the window is by then open, and a
 re-send joins the SDK's queue at the back — so a post let through while an
-earlier one is mid-retry lands first (#57).
+earlier one is mid-retry lands first (#57); a listener opened with
+`includeMetadataChanges: true` and cut down to its first event plus those with
+`docChanges()` raises exactly what a plain listener does — across own writes,
+documents entering and leaving, and an offline spell (#54).
+
+The Python scripts can be probed the same way: the emulator serves the REST
+API at `http://127.0.0.1:8080/v1/projects/<demo-id>/databases/(default)/documents`
+and takes `Authorization: Bearer owner` as admin, so point a
+`backup_firestore.Firestore` at it (subclass: set `project`/`database`/`root`,
+return `'owner'` from `token()`) and run the real code — `do_backup` included —
+against seeded documents. Established that way (#54): an `update` write with an
+empty `updateMask` plus `updateTransforms` is an upsert that touches no other
+field, and a backup is billed about two reads a document (one per document,
+one per `listCollectionIds` request).
 
 Flows worth driving: Home (speedo, blitz banner, closest sites, speaker mute toggle top-right), tap blitz banner → state detail (site cards, vote-row states, back-to-top after two wheel scrolls), bottom nav tabs.

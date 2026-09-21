@@ -13,6 +13,8 @@ import 'display_mode_stub.dart'
 import '../firebase_options.dart';
 import 'auth_switched_stream.dart';
 import 'google_credential.dart';
+import 'metered_firestore.dart';
+import 'read_meter.dart';
 import 'username_logic.dart';
 
 /// Thrown when the user dismisses a sign-in surface (the Android Google
@@ -66,8 +68,12 @@ final currentUserRoleProvider = StreamProvider<AppUserRole>((ref) {
     authUsers: auth.userChanges().map(
       (user) => (user == null || user.isAnonymous) ? null : user.uid,
     ),
-    sourceOf: (uid) =>
-        firestore.collection('userRoles').doc(uid).snapshots().map((doc) {
+    sourceOf: (uid) => firestore
+        .collection('userRoles')
+        .doc(uid)
+        .snapshots()
+        .metered(ReadSource.other)
+        .map((doc) {
           final role = doc.data()?['role'] as String?;
           return role == 'admin' ? AppUserRole.admin : AppUserRole.truckie;
         }),
@@ -194,7 +200,7 @@ class AuthController {
     // inconsistent claim doc would fail the whole batch, and nothing may ever
     // block the user's right to delete their account (App Store 5.1.1(v)).
     try {
-      final profile = await userDoc.get();
+      final profile = await userDoc.get().metered(ReadSource.other);
       final username = profile.data()?['username'] as String?;
       if (username != null && username.trim().isNotEmpty) {
         await firestore
@@ -206,7 +212,10 @@ class AuthController {
       debugPrint('RoadMate: road-name release skipped: $e');
     }
 
-    final favourites = await userDoc.collection('favourites').get();
+    final favourites = await userDoc
+        .collection('favourites')
+        .get()
+        .metered(ReadSource.other);
     final batch = firestore.batch();
     for (final favourite in favourites.docs) {
       batch.delete(favourite.reference);
@@ -391,7 +400,7 @@ class AuthController {
 
     if (email == null || !initialAdminEmails.contains(email)) return;
     final roleRef = firestore.collection('userRoles').doc(user.uid);
-    final role = await roleRef.get();
+    final role = await roleRef.get().metered(ReadSource.other);
     if (role.exists) return;
     await roleRef.set({
       'role': 'admin',

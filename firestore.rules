@@ -283,8 +283,75 @@ service cloud.firestore {
       allow create, update: if isAdmin() && isValidAnnouncement();
       allow delete: if isAdmin();
     }
+
+    // Unofficial read meter (issue #54). The project has no billing account,
+    // so the 50,000 reads/day quota is a cliff and Google's own usage figures
+    // are out of reach; metered builds therefore add what Firestore billed
+    // them for — by source and platform — to one counter document per quota
+    // day (`usage/2026-09-21`: the day in Pacific time, where the quota
+    // resets), and an hourly cron reads that document and alerts at 70 %.
+    //
+    // Deliberately NO get()/exists() on the write path — not even the ban
+    // check every other write carries — so metering reads can never cost a
+    // read itself. Clients may only ever ADD, a bounded step at a time, to the
+    // counters listed in isUsageCount(); `backup_server` is the nightly
+    // backup's own (Admin SDK) and frozen for them. Only admins read. A
+    // collection no shipped build touches: additive, retro-safe.
+    match /usage/{day} {
+      allow read: if isAdmin();
+      allow create: if signedIn() && isUsageDay(day)
+        && isUsageCount(request.resource.data, {});
+      allow update: if signedIn() && isUsageDay(day)
+        && isUsageCount(request.resource.data, resource.data);
+    }
     function affectedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Read-meter shapes (issue #54). The document id is a date within a day
+    // or so of the server's own: the quota day runs up to 8 hours behind UTC,
+    // and a flush queued offline lands late. A malformed id never reaches the
+    // date arithmetic (the regex short-circuits), and an impossible date
+    // (02-31) errors there — which denies.
+    function isUsageDay(day) {
+      return day.matches('^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+        && request.time >= usageDayStart(day) - duration.value(1, 'd')
+        && request.time < usageDayStart(day) + duration.value(3, 'd');
+    }
+
+    function usageDayStart(day) {
+      return timestamp.date(int(day[0:4]), int(day[5:7]), int(day[8:10]));
+    }
+
+    // `old` is {} on create. NOTE: the counter names are
+    // readCounterField(source, platform) and the 20000 is readMeterMaxStep,
+    // both in lib/services/read_meter.dart — keep them in step.
+    function isUsageCount(d, old) {
+      return d.keys().hasOnly([
+          'sites_web', 'sites_android', 'sites_ios',
+          'reports_web', 'reports_android', 'reports_ios',
+          'other_web', 'other_android', 'other_ios',
+          'backup_server', 'updatedAt'
+        ])
+        && d.updatedAt == request.time
+        && d.get('backup_server', 0) == old.get('backup_server', 0)
+        && usageStep(d, old, 'sites_web')
+        && usageStep(d, old, 'sites_android')
+        && usageStep(d, old, 'sites_ios')
+        && usageStep(d, old, 'reports_web')
+        && usageStep(d, old, 'reports_android')
+        && usageStep(d, old, 'reports_ios')
+        && usageStep(d, old, 'other_web')
+        && usageStep(d, old, 'other_android')
+        && usageStep(d, old, 'other_ios');
+    }
+
+    // A counter only grows, by at most 20000 a write, and is never removed.
+    function usageStep(d, old, field) {
+      return d.get(field, 0) is int
+        && d.get(field, 0) >= old.get(field, 0)
+        && d.get(field, 0) - old.get(field, 0) <= 20000
+        && (field in d || !(field in old));
     }
 
     // Rate-limit ledger shapes (issue #15 redux). A reset starts a fresh

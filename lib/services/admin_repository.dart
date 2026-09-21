@@ -8,6 +8,8 @@ import '../models/site_report.dart';
 import '../models/user_ban.dart';
 import 'announcement.dart';
 import 'ban_logic.dart';
+import 'metered_firestore.dart';
+import 'read_meter.dart';
 import 'report_purge.dart';
 
 /// Whether the cached site-name map already resolves every referenced site.
@@ -86,6 +88,7 @@ class AdminRepository {
         .where('approved', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .snapshots()
+        .metered(ReadSource.other)
         .map(
           (snap) => snap.docs
               .where((doc) => doc.data()['rejected'] != true)
@@ -104,6 +107,7 @@ class AdminRepository {
         .orderBy('createdAt', descending: true)
         .limit(100)
         .snapshots()
+        .metered(ReadSource.other)
         .asyncMap((snap) async {
           final siteIds = [
             for (final doc in snap.docs)
@@ -111,7 +115,7 @@ class AdminRepository {
                   (doc.data()['siteId'] as String? ?? ''),
           ];
           if (!siteNamesCover(siteNames, siteIds)) {
-            final sitesSnap = await _sites.get();
+            final sitesSnap = await _sites.get().metered(ReadSource.other);
             siteNames = {
               for (final doc in sitesSnap.docs)
                 doc.id: doc.data()['name'] as String? ?? doc.id,
@@ -194,8 +198,14 @@ class AdminRepository {
   /// so this cleanup must stay. See the matching note in firestore.rules.
   Future<void> deleteSite(String siteId) async {
     final siteRef = _sites.doc(siteId);
-    final reports = await siteRef.collection('reports').get();
-    final limits = await siteRef.collection('limits').get();
+    final reports = await siteRef
+        .collection('reports')
+        .get()
+        .metered(ReadSource.other);
+    final limits = await siteRef
+        .collection('limits')
+        .get()
+        .metered(ReadSource.other);
     final batch = firestore.batch();
     for (final doc in reports.docs) {
       batch.delete(doc.reference);
@@ -251,7 +261,8 @@ class AdminRepository {
           'createdAt',
           isGreaterThanOrEqualTo: Timestamp.fromDate(at.subtract(window)),
         )
-        .get();
+        .get()
+        .metered(ReadSource.other);
 
     final bySite = groupReportIdsBySite([
       for (final doc in snap.docs)
@@ -282,7 +293,7 @@ class AdminRepository {
     if (reportIds.isEmpty) return;
     final siteRef = _sites.doc(siteId);
     final reportsRef = siteRef.collection('reports');
-    final allReports = await reportsRef.get();
+    final allReports = await reportsRef.get().metered(ReadSource.other);
     final remaining = allReports.docs
         .where((doc) => !reportIds.contains(doc.id))
         .map((doc) => SiteReport.fromMap(doc.id, _normalise(doc.data())))
@@ -319,6 +330,7 @@ class AdminRepository {
     return _bans
         .orderBy('createdAt', descending: true)
         .snapshots()
+        .metered(ReadSource.other)
         .map(
           (snap) => snap.docs
               .map((doc) => UserBan.fromMap(doc.id, _normalise(doc.data())))

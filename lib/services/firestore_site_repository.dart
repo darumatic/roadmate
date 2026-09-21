@@ -12,9 +12,11 @@ import 'auth_switched_stream.dart';
 import 'ban_logic.dart';
 import 'fresh_window_stream.dart';
 import 'in_flight_posts.dart';
+import 'metered_firestore.dart';
 import 'participation_logic.dart';
 import 'post_sequencer.dart';
 import 'rate_limit.dart';
+import 'read_meter.dart';
 import 'report_proximity.dart';
 import 'site_repository.dart';
 import 'status_logic.dart';
@@ -32,6 +34,7 @@ class FirestoreSiteRepository implements SiteRepository {
     required this.locate,
     required this.inFlight,
     this.listenerChecks = const Stream.empty(),
+    this.sitesSyncTimes,
   });
 
   final FirebaseFirestore firestore;
@@ -48,6 +51,12 @@ class FirestoreSiteRepository implements SiteRepository {
   /// every [watchAllRecentReports] call subscribes. With none, the listener
   /// simply keeps the cutoff it started with.
   final Stream<void> listenerChecks;
+
+  /// Where the sites listener's last sync is remembered across restarts, for
+  /// the read meter (issue #54): with a persisted cache that is what tells a
+  /// cheap resume from a full re-read. Null where there is no such cache (the
+  /// web) — every start is a full read there.
+  final SyncTimeStore? sitesSyncTimes;
 
   /// Resolves the device position for the report proximity gate, asking for
   /// permission if needed — see `report_proximity.dart`.
@@ -72,9 +81,19 @@ class FirestoreSiteRepository implements SiteRepository {
 
   @override
   Stream<List<Site>> watchSites() {
+    // Metadata changes are for the read meter alone (issue #54) — they are how
+    // it sees the listener go offline and sync again, which is when Firestore
+    // re-bills all of it. Not billed themselves, and filtered out again, so
+    // consumers get exactly the events they always did.
     return _sites
         .where('approved', isEqualTo: true)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
+        .metered(
+          ReadSource.sites,
+          checks: listenerChecks,
+          syncTimes: sitesSyncTimes,
+        )
+        .dataEventsOnly
         .map(
           (snap) => snap.docs
               .map((d) => Site.fromMap(d.id, _normalise(d.data())))
@@ -105,6 +124,9 @@ class FirestoreSiteRepository implements SiteRepository {
           // Metadata changes are how the listener says it went offline (and
           // came back) — not billed, and not re-emitted downstream.
           .snapshots(includeMetadataChanges: true)
+          // No checks: a swap at the moments they would flag IS a new
+          // listener, which the meter bills in full by itself.
+          .metered(ReadSource.reports)
           .map(
             (snap) => WindowSnapshot(
               [
@@ -154,7 +176,7 @@ class FirestoreSiteRepository implements SiteRepository {
     if (_lastKnownStats != null || _statsLoadAttempted) return _lastKnownStats;
     _statsLoadAttempted = true;
     try {
-      final snap = await _statsRef(uid).get();
+      final snap = await _statsRef(uid).get().metered(ReadSource.other);
       _lastKnownStats = ParticipationStats.fromMap(snap.data() ?? const {});
     } catch (_) {
       // Gamification must never block a post — an unknown score just stamps
@@ -203,7 +225,11 @@ class FirestoreSiteRepository implements SiteRepository {
   /// leave the original error to speak for itself.
   Future<UserBan?> _activeBan(String uid) async {
     try {
-      final snap = await firestore.collection('bans').doc(uid).get();
+      final snap = await firestore
+          .collection('bans')
+          .doc(uid)
+          .get()
+          .metered(ReadSource.other);
       final data = snap.data();
       if (!snap.exists || data == null) return null;
       final ban = UserBan.fromMap(uid, _normalise(data));
@@ -250,7 +276,11 @@ class FirestoreSiteRepository implements SiteRepository {
     final uid = auth.currentUser?.uid;
     if (uid == null) return false;
     try {
-      final snap = await firestore.collection('userRoles').doc(uid).get();
+      final snap = await firestore
+          .collection('userRoles')
+          .doc(uid)
+          .get()
+          .metered(ReadSource.other);
       return snap.data()?['role'] == 'admin';
     } catch (_) {
       return false;
@@ -522,12 +552,13 @@ class FirestoreSiteRepository implements SiteRepository {
   Stream<ParticipationStats?> watchMyStats() {
     return authSwitchedStream<String, ParticipationStats?>(
       authUsers: auth.authStateChanges().map((user) => user?.uid),
-      sourceOf: (uid) => _statsRef(uid).snapshots().map((snap) {
-        final stats = ParticipationStats.fromMap(snap.data() ?? const {});
-        // Keep the reporterLevel stamp fresh while the listener is live.
-        _cacheStats(uid, stats);
-        return stats;
-      }),
+      sourceOf: (uid) =>
+          _statsRef(uid).snapshots().metered(ReadSource.other).map((snap) {
+            final stats = ParticipationStats.fromMap(snap.data() ?? const {});
+            // Keep the reporterLevel stamp fresh while the listener is live.
+            _cacheStats(uid, stats);
+            return stats;
+          }),
       signedOutValue: null,
     );
   }
@@ -541,6 +572,7 @@ class FirestoreSiteRepository implements SiteRepository {
           .doc(uid)
           .collection('favourites')
           .snapshots()
+          .metered(ReadSource.other)
           .map((snap) => snap.docs.map((d) => d.id).toSet()),
       signedOutValue: const <String>{},
     );
@@ -554,7 +586,7 @@ class FirestoreSiteRepository implements SiteRepository {
         .doc(uid)
         .collection('favourites')
         .doc(siteId);
-    final snap = await ref.get();
+    final snap = await ref.get().metered(ReadSource.other);
     // Un-favouriting stays open to banned users: the rules only close the
     // create/update side, so nobody is stuck with a starred site they can't
     // remove (and account deletion keeps working).

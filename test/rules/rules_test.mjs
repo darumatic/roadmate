@@ -1581,5 +1581,133 @@ await check(
   })(),
 );
 
+// ---------------------------------------------------------------------------
+// Unofficial read meter (issue #54): usage/<quota day>. Metered builds add what
+// Firestore billed them for; an hourly cron reads the day's document. Clients
+// may only ever ADD — a bounded step, to the listed counters — and never read;
+// and the write path must cost no read of its own, so it carries no ban check.
+// ---------------------------------------------------------------------------
+const pacificDay = (offsetDays = 0) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(
+    new Date(Date.now() + offsetDays * 86_400_000),
+  );
+const usageDoc = (db, day = pacificDay()) => doc(db, `usage/${day}`);
+const flush = (db, counts, day) =>
+  setDoc(
+    usageDoc(db, day),
+    { ...counts, updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+const meterUser = env
+  .authenticatedContext('uma', { firebase: { sign_in_provider: 'anonymous' } })
+  .firestore();
+
+await check(
+  'read meter: an anonymous build creates the day\'s counter and keeps adding to it',
+  (async () => {
+    await assertSucceeds(
+      flush(meterUser, { sites_web: increment(89), reports_web: increment(14) }),
+    );
+    await assertSucceeds(flush(meterUser, { other_web: increment(6) }));
+    await assertSucceeds(
+      flush(meterUser, { sites_android: increment(3), sites_web: increment(1) }),
+    );
+    // The quota day runs behind UTC and an offline flush lands late: the
+    // neighbouring days are writable too.
+    await assertSucceeds(flush(meterUser, { sites_ios: increment(1) }, pacificDay(-1)));
+    await assertSucceeds(flush(meterUser, { sites_ios: increment(1) }, pacificDay(1)));
+  })(),
+);
+
+await check(
+  'read meter: counters only grow, by a bounded step, and only the listed ones',
+  (async () => {
+    await assertFails(flush(meterUser, { sites_web: increment(-1) }));
+    await assertFails(flush(meterUser, { sites_web: 5 }));
+    await assertFails(flush(meterUser, { sites_web: increment(20_001) }));
+    await assertSucceeds(flush(meterUser, { sites_web: increment(20_000) }));
+    await assertFails(flush(meterUser, { sites_web: increment(0.5) }));
+    await assertFails(flush(meterUser, { sites_web: 'many' }));
+    await assertFails(flush(meterUser, { sites_desktop: increment(1) }));
+    await assertFails(flush(meterUser, { sites_web: deleteField() }));
+    await assertFails(deleteDoc(usageDoc(meterUser)));
+    // The timestamp is the server's, never the device's.
+    await assertFails(
+      setDoc(
+        usageDoc(meterUser),
+        { sites_web: increment(1), updatedAt: Timestamp.now() },
+        { merge: true },
+      ),
+    );
+    await assertFails(
+      setDoc(usageDoc(meterUser), { sites_web: increment(1) }, { merge: true }),
+    );
+  })(),
+);
+
+await check(
+  'read meter: the document id is a date near the server\'s, nothing else',
+  (async () => {
+    for (const day of ['today', '2026-9-1', '2026-13-01', '2026-02-31', '1999-01-01']) {
+      await assertFails(flush(meterUser, { sites_web: increment(1) }, day));
+    }
+    await assertFails(flush(meterUser, { sites_web: increment(1) }, pacificDay(-3)));
+    await assertFails(flush(meterUser, { sites_web: increment(1) }, pacificDay(4)));
+  })(),
+);
+
+await check(
+  'read meter: the backup\'s own counter is frozen for clients, and survives their flushes',
+  (async () => {
+    await assertFails(flush(meterUser, { backup_server: increment(1) }));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        usageDoc(ctx.firestore()),
+        { backup_server: increment(260) },
+        { merge: true },
+      );
+    });
+    await assertSucceeds(flush(meterUser, { reports_web: increment(1) }));
+    await assertFails(flush(meterUser, { backup_server: increment(1) }));
+    let after;
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      after = (await getDoc(usageDoc(ctx.firestore()))).data();
+    });
+    if (after.backup_server !== 260 || after.sites_web !== 20_090) {
+      throw new Error(`unexpected counters: ${JSON.stringify(after)}`);
+    }
+  })(),
+);
+
+await check(
+  'read meter: signed-out writes are refused; only admins may read it',
+  (async () => {
+    const nobody = env.unauthenticatedContext().firestore();
+    await assertFails(flush(nobody, { sites_web: increment(1) }));
+    await assertFails(getDoc(usageDoc(meterUser)));
+    await assertFails(getDocs(collection(meterUser, 'usage')));
+    await assertSucceeds(getDoc(usageDoc(admin)));
+  })(),
+);
+
+// The write path carries no get()/exists(), so a flush can never cost a read
+// of its own — which also means no ban check. A banned build still counts.
+await check(
+  'read meter: a banned user can still flush (the write path reads nothing)',
+  (async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'bans/vandal'), {
+        createdAt: serverTimestamp(),
+        createdBy: 'admin1',
+      });
+    });
+    const vandal = env
+      .authenticatedContext('vandal', { firebase: { sign_in_provider: 'anonymous' } })
+      .firestore();
+    await assertFails(voteBatch(vandal, 'site-1', 'open', 'vandal')); // banned for real
+    await assertSucceeds(flush(vandal, { sites_web: increment(1) }));
+  })(),
+);
+
 console.log(`\nALL ${checks.length} RULES CHECKS PASSED`);
 await env.cleanup();

@@ -95,6 +95,18 @@ class SendTest(unittest.TestCase):
         self.assertEqual(seen['title'], 'Backup FAILED')
         self.assertEqual(seen['data'], b'check the log')
 
+    def test_priority_is_sent_only_when_asked_for(self):
+        seen = []
+
+        def fake_urlopen(request, timeout=None):
+            seen.append(request.get_header('Priority'))
+            return FakeResponse(200)
+
+        notify.send('t', 'm', topic='x', urlopen=fake_urlopen)
+        notify.send('t', 'm', topic='x', urlopen=fake_urlopen,
+                    priority='high')
+        self.assertEqual(seen, [None, 'high'])
+
     def test_network_error_returns_false_not_raise(self):
         def boom(request, timeout=None):
             raise OSError('no network')

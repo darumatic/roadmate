@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../version.dart';
+import 'metered_firestore.dart';
+import 'read_meter.dart';
 import 'update_checker.dart';
 import 'version_logic.dart';
 
@@ -93,6 +95,7 @@ final forceUpdateProvider = StreamProvider<bool>((ref) {
   return FirebaseFirestore.instance
       .doc('config/app')
       .snapshots()
+      .metered(ReadSource.other)
       .map(
         (snap) => isBelowMinimum(
           current: appVersion,
