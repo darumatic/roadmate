@@ -42,17 +42,30 @@ else
   export CHROME_EXECUTABLE="$CHROME"
 fi
 
+# chromedriver makes Chrome's profile (45-140 MB) as a scoped temp dir and only
+# removes it when the WebDriver *session* is deleted. `flutter drive` ends
+# without that, and a SIGTERM'd chromedriver doesn't clean up after itself, so
+# every run left one behind in /tmp — and where /tmp is a tmpfs with a per-user
+# quota, a handful of runs breaks everything that writes there (issue #56).
+# So the driver gets a temp dir this script owns (Chromium takes it from
+# TMPDIR, and Chrome inherits the variable), removed once the driver is gone.
 echo "==> chromedriver: $DRIVER"
-"$DRIVER" --port=$DRIVER_PORT &
+DRIVER_TMP="$(mktemp -d)"
+TMPDIR="$DRIVER_TMP" "$DRIVER" --port=$DRIVER_PORT &
 DRIVER_PID=$!
-trap 'kill $DRIVER_PID 2>/dev/null || true' EXIT
+cleanup() {
+  kill "$DRIVER_PID" 2>/dev/null || true
+  wait "$DRIVER_PID" 2>/dev/null || true
+  rm -rf "$DRIVER_TMP"
+}
+trap cleanup EXIT
 sleep 2
 
 rm -rf build/integration_screenshots
 
 # Chrome refuses to run sandboxed as root (the VPS case); harmless elsewhere.
 echo "==> flutter drive (web-server + headless Chrome)"
-flutter drive \
+"${FLUTTER:-flutter}" drive \
   --driver=test_driver/integration_test.dart \
   --target=integration_test/app_test.dart \
   -d web-server \

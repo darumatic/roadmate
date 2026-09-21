@@ -30,6 +30,7 @@ For flows the suite doesn't cover, live Firestore data, or the deployed site
 
 Gotchas:
 - Console will show `wakelock toggle failed: NotAllowedError` — headless artifact, not a bug.
+- Chrome's profile (45–140 MB a run) is only removed by chromedriver when the WebDriver *session* is deleted, which `flutter drive` and a killed driver never do. `verify_web.sh` therefore starts the driver with a private `TMPDIR` and removes it on exit (`test/verify_web_script_test.dart`) — give any hand-rolled chromedriver/puppeteer run the same, because on a tmpfs `/tmp` with a per-user quota a handful of leaked profiles makes every write there fail, a shell's buffered output included. `df -h /tmp` before a run; leftovers are `/tmp/org.chromium.Chromium.*`, safe to delete when no chrome process is alive.
 - Avoid tapping vote/report buttons: they write to the production database.
 - `?cachebust=N` on the URL avoids the service-worker serving a stale build.
 
