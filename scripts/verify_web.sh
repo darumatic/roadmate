@@ -50,7 +50,9 @@ fi
 # So the driver gets a temp dir this script owns (Chromium takes it from
 # TMPDIR, and Chrome inherits the variable), removed once the driver is gone.
 echo "==> chromedriver: $DRIVER"
-DRIVER_TMP="$(mktemp -d)"
+# An explicit template: without one, macOS's mktemp puts the dir under the
+# system temp dir whatever TMPDIR says (seen on the macOS release runner).
+DRIVER_TMP="$(mktemp -d "${TMPDIR:-/tmp}/roadmate-verify.XXXXXX")"
 TMPDIR="$DRIVER_TMP" "$DRIVER" --port=$DRIVER_PORT &
 DRIVER_PID=$!
 cleanup() {

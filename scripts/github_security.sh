@@ -67,6 +67,15 @@ get() {
 }
 
 drift=0
+# yes/no: is $1 among the space-separated CodeQL languages in $languages?
+# A plain test, not a `case` inside "$(...)": bash 3.2 - still /bin/bash on
+# every Mac - cannot parse a case pattern's ')' inside a command substitution
+# and dies with "syntax error near unexpected token `newline'" (seen on the
+# macOS release runner, where the store build runs this whole suite).
+analyses() {
+  if [[ " $languages " == *" $1 "* ]]; then echo yes; else echo no; fi
+}
+
 expect() {  # expect <label> <actual> <wanted>
   if [ "$2" = "$3" ]; then
     echo "  ok     $1 = $2"
@@ -149,13 +158,11 @@ check() {
   expect "CodeQL query suite" "$(echo "$setup" | jq -r '.query_suite')" extended
   languages="$(echo "$setup" | jq -r '.languages | join(" ")')"
   for lang in "${CODEQL_LANGUAGES[@]}"; do
-    expect "CodeQL analyses ${lang}" \
-      "$(case " $languages " in *" $lang "*) echo yes ;; *) echo no ;; esac)" yes
+    expect "CodeQL analyses ${lang}" "$(analyses "$lang")" yes
   done
   for lang in "${CODEQL_FORBIDDEN[@]}"; do
     # Must stay off: it cannot be built here, and a failed scan blocks releases.
-    expect "CodeQL analyses ${lang}" \
-      "$(case " $languages " in *" $lang "*) echo yes ;; *) echo no ;; esac)" no
+    expect "CodeQL analyses ${lang}" "$(analyses "$lang")" no
   done
 
   workflow="$(get "${API}/actions/permissions/workflow")"
