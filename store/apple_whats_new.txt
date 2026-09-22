@@ -3,15 +3,10 @@ Welcome to RoadMate AU — know before you roll.
 New in this version:
 
 • New status: Camera Only / BGD (boom gate down). One big blue button under Open/Working, Blitz and Closed — on every site card and on the alert you get as you approach a site
+• Pressing it sets the site's status, like the other three — it no longer adds a line under Recent reports with every press
+• Your vote or report now shows on the site card the moment you tap — no waiting on a weak signal, and no reason to tap twice
+• Fixed: change your mind within seconds — say Camera Only, then Closed — and it's your correction everyone sees, not the first tap
 • Fixed: a site's status now stays current only while someone has actually reported a status. Reporting a queue, delays or police still shows up on the site, but no longer brings an old Open, Blitz or Closed back as if it were new
-• Fixed: speed alerts no longer turn your music down — the alarm now sounds over it
-• Each state's sites are now listed in alphabetical order, so they're quicker to find
-• Choosing your road name: the box now sits above the keyboard, so you can see what you type
-• Fixed: your road name is now remembered — reporting a site status no longer asks you to pick a nickname every time
-• Announcements from the RoadMate team: when there's important service news, it appears as a banner across the top of the app
-• An announcement may occasionally invite you to rate RoadMate — it now appears as a popup, and one tap opens the App Store rating page
-• The whole address on a site card is now tappable — tap it to open the site in your maps app for turn-by-turn directions
-• The app title now reads "RoadMate Australia"
 • Small behind-the-scenes fixes
 
 Live status of NHVR heavy-vehicle inspection sites across Australia, powered by drivers on the road:

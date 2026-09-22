@@ -1,6 +1,7 @@
 • New status: Camera Only / BGD (boom gate down) — a big blue button under Open/Working, Blitz and Closed
-• Fixed: an old status no longer comes back when someone reports a queue or delays
-• Speed alerts no longer turn your music down — the alarm now sounds over it
-• Each state's sites are now listed in alphabetical order
-• Choosing your road name: the box now sits above the keyboard, so you can see what you type
-• A rating invitation now appears as a popup instead of a banner
+• Your vote or report shows on the card the moment you tap, even on a weak signal
+• Fixed: change your mind within seconds and your correction is what everyone sees
+• Fixed: an old status no longer comes back when someone reports a queue
+• Speed alerts no longer turn your music down
+• Sites listed alphabetically; road-name box now above the keyboard
+• Rating invitations now appear as a popup
